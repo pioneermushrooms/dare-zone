@@ -1,0 +1,20 @@
+; groupdef.dir/arenastaff  (Dare.Arenas)
+; Staff decisions on arena requests. Included by [mod], [smod] and [sysop] in groupdef.conf;
+; never by [arenaowner]/[arenamod], so owners and co-mods cannot approve requests.
+cmd_approvearena
+cmd_declinearena
+
+; Owner/co-mod commands for global staff who own or co-mod an arena. The module never grants
+; arena groups to global staff (that would override their global group in the arena), so they
+; get the commands here. Each command still checks the arena role in the module's store, so
+; staff can use them only in an arena they own (or co-mod, for ?arenaset/?arenaget).
+cmd_arenaset
+cmd_arenaget
+cmd_comod
+cmd_arenamap
+cmd_putlvz
+cmd_rmlvz
+cmd_weblogin
+
+; Never add cmd_quickfix/changesettings here for arena purposes: changesettings edits shared
+; config files zone-wide.

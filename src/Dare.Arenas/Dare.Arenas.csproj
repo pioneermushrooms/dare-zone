@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Dare.Arenas</AssemblyName>
+    <RootNamespace>Dare.Arenas</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <OutDir>$(MSBuildThisFileDirectory)../../out/modules/Dare.Arenas/</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../vendor/SubspaceServer/src/Core/Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>all</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="../Dare.Arenas.Core/Dare.Arenas.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Web pages, served from the assembly (no files to deploy beside the dll). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Web/wwwroot/*" LogicalName="wwwroot/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!--
+    The server already ships Microsoft.Data.Sqlite 9.0.3 / SQLitePCLRaw 2.1.10 (managed + native) in its bin/.
+    Exclude their runtime/native assets so the plugin folder carries no copy and the server's are used.
+    Versions must match what Dare.Arenas.Core references and what the server ships.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.3" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.3" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.core" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.provider.e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

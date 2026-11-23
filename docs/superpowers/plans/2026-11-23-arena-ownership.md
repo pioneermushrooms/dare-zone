@@ -14,7 +14,7 @@
 
 - Build against SubspaceServer **v4.0.0** (`vendor/SubspaceServer`, submodule at tag `v4.0.0`), `net9.0`; plugin `ProjectReference` to `vendor/SubspaceServer/src/Core/Core.csproj` with `<Private>false</Private><ExcludeAssets>all</ExcludeAssets>`; `<EnableDynamicLoading>true</EnableDynamicLoading>`.
 - Plugin type `Dare.Arenas.ArenaOwnership`, loaded from `bin/modules/Dare.Arenas/Dare.Arenas.dll`.
-- Arena names: 3–16 chars, `a-z 0-9 -`, start with a letter, must not end in a digit; reserved: existing arena folder names, `public`, anything starting `(`, and `2v2pub 3v3pub 4v4pub duel`.
+- Arena names: 3–15 chars, `a-z 0-9`, start with a letter, must not end in a digit; reserved: existing arena folder names, `public`, anything starting `(`, and `2v2pub 3v3pub 4v4pub duel`. (Changed after live testing from 3–16 with `-`: SubspaceServer v4.0.0 maps `-` to `x` and truncates arena names at 15, so such arenas could never be entered.)
 - Player names compare case-insensitively.
 - Limits: 1 arena per player; 1 pending request per player; 5 co-mods; `.lvl` ≤ 2 MB (1 per arena); `.lvz` ≤ 5 MB, ≤ 10 per arena; 20 setting changes / minute / arena; archive after 30 days with no entry.
 - Owner-editable settings: only keys the server's config help documents with `Scope == Arena`, excluding section `Modules` and keys `General:Map`, `General:LevelFiles` (those change only via uploads). *(Ruling: v4.0.0 has no "restricted" flag, so this allow-list replaces the spec's deny-by-restricted.)*

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your arena · Dare</title>
+<link rel="stylesheet" href="/arena/style.css">
+<script src="/arena/app.js" defer></script>
+</head>
+<body data-page="me">
+<header class="top">
+  <h1>YOUR ARENA</h1>
+  <span class="sub" id="who"></span>
+  <nav><a href="/arena/">All arenas</a></nav>
+</header>
+
+<section class="panel" id="signin" hidden>
+  <h2>Sign in</h2>
+  <p>Type <b>?weblogin</b> in game. You get a private message with a one-time link (valid 10 minutes).</p>
+</section>
+
+<section class="panel" id="norole" hidden>
+  <h2>Request an arena</h2>
+  <p id="pendinginfo" class="dim"></p>
+  <form class="row" id="requestform">
+    <input type="text" id="reqname" placeholder="name (3-15 letters and digits)" maxlength="15" pattern="[A-Za-z][A-Za-z0-9]{1,13}[A-Za-z]" title="3-15 letters and digits (a-z, 0-9); start with a letter, do not end in a digit" required autocomplete="off">
+    <input type="text" id="reqpitch" placeholder="what is it for? (up to 120 characters)" maxlength="120" required autocomplete="off">
+    <button type="submit">Request</button>
+  </form>
+  <p class="msg" id="reqmsg"></p>
+</section>
+
+<div id="owner" hidden>
+  <section class="panel">
+    <div class="row">
+      <h2 id="arenatitle" class="inline"></h2>
+      <select id="arenapick" hidden></select>
+    </div>
+    <p class="dim" id="arenameta"></p>
+  </section>
+
+  <section class="panel" id="uploads">
+    <h2>Map and graphics</h2>
+    <p class="dim">Current map: <b class="name" id="curmap"></b> · Graphics: <span id="curlvz"></span></p>
+    <div class="drop" id="drop">Drop a <b>.lvl</b> map (2 MB max) or <b>.lvz</b> graphics file (5 MB max, up to 10; the same name replaces the old file) here, or
+      <label><u>choose a file</u><input type="file" id="file" accept=".lvl,.lvz" hidden></label></div>
+    <p class="msg" id="upmsg"></p>
+    <p class="dim" id="uponly" hidden>Only the owner can upload files.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Settings</h2>
+    <p class="dim">Changes are written to your arena only (at most 20 per minute). Most take effect for players right away; some need <b>?recyclearena</b>.</p>
+    <input type="search" class="filter" id="filter" placeholder="Filter, e.g. warbird bulletspeed">
+    <p class="msg" id="setmsg"></p>
+    <div id="settings"></div>
+  </section>
+</div>
+</body>
+</html>

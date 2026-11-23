@@ -1,0 +1,7 @@
+; groupdef.dir/arenaadmin  (Dare.Arenas)
+; Staff overrides for player-owned arenas (?arenaadmin suspend|revive|transfer|archive), and the
+; right to change/remove the arena-scoped owner and co-mod groups by hand (?setgroup/?rmgroup).
+; Included by [smod] and [sysop] in groupdef.conf only.
+cmd_arenaadmin
+higher_than_arenaowner
+higher_than_arenamod

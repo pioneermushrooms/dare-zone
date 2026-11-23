@@ -1,0 +1,20 @@
+; groupdef.dir/arenaowner  (Dare.Arenas)
+; Owner of a player-owned arena. Granted arena-scoped only (staff.conf [<arena>] Player = arenaowner)
+; by the Dare.Arenas module; never global, and never to global staff (they get the owner commands
+; from groupdef.dir/arenastaff instead). The [arenaowner] section in groupdef.conf also includes
+; groupdef.dir/default and groupdef.dir/arenacaps.
+;
+; NEVER add cmd_quickfix or changesettings to this file, arenamod or arenacaps: the server's
+; ?quickfix checks "changesettings", and that capability edits svs.conf and every other shared
+; file zone-wide with no allow-list. Owners change settings with ?arenaset or the web page.
+
+; owner commands (Dare.Arenas)
+cmd_arenaset
+cmd_arenaget
+cmd_comod
+; map upload is ?arenamap, NOT ?putmap: never grant cmd_putmap to owners. The core AdminCommand
+; module registers ?putmap too; it writes maps/uploads/ with no size limit and would run as well.
+cmd_arenamap
+cmd_putlvz
+cmd_rmlvz
+cmd_weblogin

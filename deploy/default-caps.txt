@@ -1,0 +1,5 @@
+cmd_requestarena
+cmd_arenarequests
+cmd_myarena
+cmd_arenalog
+cmd_weblogin

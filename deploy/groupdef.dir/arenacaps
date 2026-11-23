@@ -1,0 +1,56 @@
+; groupdef.dir/arenacaps  (Dare.Arenas)
+; Curated capabilities shared by [arenaowner] and [arenamod]. Every entry acts only on the
+; arena the player is standing in: cmd_* targets the current arena; privcmd_* targets a
+; player/team in the same arena (another arena would need rprivcmd_*, never granted here).
+; Deliberately NOT groupdef.dir/mod: no modchat, zone messages, private-freq/arena spying,
+; kicks/bans/warns, isstaff, bypasslock, or anything not verified as arena-limited in v4.0.0.
+
+; arena (green) messages
+cmd_a
+privcmd_a
+
+; game timer
+cmd_timer
+cmd_timereset
+cmd_pausetimer
+
+; arena state
+cmd_recyclearena
+cmd_setjackpot
+cmd_lockarena
+cmd_unlockarena
+cmd_resetkoth
+
+; flags and balls
+cmd_flagreset
+cmd_flaginfo
+cmd_neutflag
+cmd_ballcount
+cmd_ballinfo
+cmd_giveball
+cmd_moveball
+cmd_spawnball
+
+; ships/freqs of players in the arena (ship locks persist per arena)
+cmd_setship
+privcmd_setship
+cmd_setfreq
+privcmd_setfreq
+cmd_specall
+privcmd_specall
+cmd_shipreset
+privcmd_shipreset
+cmd_prize
+privcmd_prize
+cmd_lock
+privcmd_lock
+cmd_unlock
+privcmd_unlock
+privcmd_warpto
+privcmd_where
+privcmd_spec
+
+; arena chat mask (the per-player ?setcm is excluded: a timed player mask follows them zone-wide)
+cmd_getcm
+cmd_setcm
+privcmd_getcm

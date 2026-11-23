@@ -56,8 +56,10 @@ only fill one or two zones.
   (v4.0.0, .NET 9 runtime on the VPS). Built and tested against that release's
   `SS.Core.dll`.
 - Arena groups: `turf1`, `turf2` share the group `turf` (trailing digits). Arena names are
-  therefore **3–16 chars, `a-z`, `0-9`, `-`, starting with a letter and not ending in a
-  digit**, so each owned arena is its own group. Reserved: every existing arena folder
+  therefore **3–15 chars, `a-z`, `0-9`, starting with a letter and not ending in a
+  digit**, so each owned arena is its own group. (Changed after live testing from 3–16 with
+  `-`: SubspaceServer v4.0.0 maps `-` to `x` and truncates names at 15 on ?go, so such
+  arenas could never be entered.) Reserved: every existing arena folder
   name, `public`, names starting with `(`, and the matchmaking base names.
 - Continuum players can upload via the client file transfer (`?putfile`-style); oss-client
   and web players have no file transfer, so the web page is their upload path.

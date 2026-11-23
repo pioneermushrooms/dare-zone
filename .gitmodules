@@ -1,0 +1,3 @@
+[submodule "vendor/SubspaceServer"]
+	path = vendor/SubspaceServer
+	url = https://github.com/gigamon-dev/SubspaceServer

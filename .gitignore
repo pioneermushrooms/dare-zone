@@ -4,3 +4,5 @@ bin/
 obj/
 *.user
 .DS_Store
+.local-zone/
+out/
