@@ -262,4 +262,64 @@ public sealed class ArenaStoreTests : IDisposable
         var s2 = Open();
         Assert.Equal("a", s2.Get("one")!.Owner);
     }
+
+    [Fact]
+    public void staff_archive_moves_active_or_suspended_to_archived_with_public_event()
+    {
+        var s = Owned("one", "a");
+        Assert.True(s.Archive("one", "Staffer").Ok);
+        Assert.Equal(ArenaStatus.Archived, s.Get("one")!.Status);
+        var e = s.Events("one", 10)[0];
+        Assert.Equal("archive", e.Kind);
+        Assert.Equal("Staffer", e.Actor);
+        Assert.Null(s.RoleIn("one", "a"));
+
+        Assert.False(s.Archive("one", "Staffer").Ok);      // already archived
+        Assert.False(s.Archive("missing", "Staffer").Ok);
+
+        Assert.True(s.Revive("one", "Staffer").Ok);
+        Assert.True(s.Suspend("one", "Staffer", "r").Ok);
+        Assert.True(s.Archive("one", "Staffer").Ok);       // suspended -> archived
+        Assert.Equal(ArenaStatus.Archived, s.Get("one")!.Status);
+        Assert.Equal("a", s.Get("one")!.Owner);             // ownership kept
+    }
+
+    [Fact]
+    public void failed_archive_appends_no_event()
+    {
+        var s = Owned("one", "a");
+        s.Archive("one", "st");
+        var n = s.Events("one", 100).Count;
+        s.Archive("one", "st");
+        Assert.Equal(n, s.Events("one", 100).Count);
+    }
+
+    [Fact]
+    public void roles_for_lists_active_arenas_where_player_is_owner_or_comod()
+    {
+        var s = Owned("one", "a");
+        Assert.True(s.Request("b", "two", "x").Ok);
+        Assert.True(s.Approve("two", "staff", NoFolder).Ok);
+        Assert.True(s.Request("c", "three", "x").Ok);
+        Assert.True(s.Approve("three", "staff", NoFolder).Ok);
+        s.AddCoMod("two", "b", "A");
+        s.AddCoMod("three", "c", "a");
+        s.Suspend("three", "staff", "r");
+
+        var roles = s.RolesFor("A");
+        Assert.Equal(new[] { ("one", "owner"), ("two", "comod") }, roles.Select(r => (r.Arena, r.Role)));
+        Assert.Empty(s.RolesFor("nobody"));
+    }
+
+    [Fact]
+    public void arenas_lists_every_owned_arena_by_name()
+    {
+        var s = Owned("zeta", "a");
+        Assert.True(s.Request("b", "alpha", "x").Ok);
+        Assert.True(s.Approve("alpha", "staff", NoFolder).Ok);
+        s.Suspend("zeta", "staff", "r");
+        var all = s.Arenas();
+        Assert.Equal(new[] { "alpha", "zeta" }, all.Select(a => a.Name));
+        Assert.Equal(ArenaStatus.Suspended, all[1].Status);
+    }
 }

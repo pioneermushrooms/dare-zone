@@ -184,6 +184,17 @@ public sealed class ArenaStore : IDisposable
         return Ok($"Transferred '{arena}' to {newOwner}.");
     });
 
+    /// <summary>Staff archive (Active or Suspended → Archived); ownership and co-mods are kept.</summary>
+    public Result Archive(string arena, string staff) => Tx(() =>
+    {
+        var a = Load(arena);
+        if (a is null) return Fail($"No such arena '{arena}'.");
+        if (a.Status == ArenaStatus.Archived) return Fail($"Arena '{arena}' is already archived.");
+        Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", arena));
+        AddEvent(Now(), arena, staff, "archive", $"by staff (was {a.Status})");
+        return Ok($"Archived '{arena}'.");
+    });
+
     public IReadOnlyList<string> ArchiveIdle(TimeSpan idle)
     {
         var archived = new List<string>();
@@ -237,6 +248,38 @@ public sealed class ArenaStore : IDisposable
         if (a is null || a.Status != ArenaStatus.Active) return null;
         if (Same(a.Owner, player)) return "owner";
         return a.CoMods.Any(c => Same(c, player)) ? "comod" : null;
+    }
+
+    /// <summary>Active arenas where <paramref name="player"/> is owner or co-mod; owned arena first, then by name.</summary>
+    public IReadOnlyList<(string Arena, string Role)> RolesFor(string player)
+    {
+        lock (_gate)
+        {
+            using var cmd = Cmd("""
+                SELECT name, 'owner' AS role, 0 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
+                UNION ALL
+                SELECT a.name, 'comod', 1 FROM comods c JOIN arenas a ON a.name = c.arena
+                  WHERE c.player = $p AND a.status = 'Active'
+                ORDER BY ord, name
+                """, ("$p", player));
+            using var r = cmd.ExecuteReader();
+            var list = new List<(string, string)>();
+            while (r.Read()) list.Add((r.GetString(0), r.GetString(1)));
+            return list;
+        }
+    }
+
+    /// <summary>Every player-owned arena (any status), by name.</summary>
+    public IReadOnlyList<OwnedArena> Arenas()
+    {
+        lock (_gate)
+        {
+            var names = new List<string>();
+            using (var cmd = Cmd("SELECT name FROM arenas ORDER BY name"))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) names.Add(r.GetString(0));
+            return names.Select(n => Load(n)!).ToList();
+        }
     }
 
     public IReadOnlyList<ArenaRequest> Requests(bool pendingOnly, int max)

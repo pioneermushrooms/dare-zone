@@ -6,7 +6,7 @@ using SS.Core.ComponentInterfaces;
 namespace Dare.Arenas;
 
 // In-game commands. Each command needs the capability cmd_<name> in the player's group
-// (see deploy/). Grouped by audience; Task 7 adds the staff-override section.
+// (see deploy/). Grouped by audience; staff overrides are in StaffCommands.cs.
 public sealed partial class ArenaOwnership
 {
     internal const int MaxPitchLength = 120;
@@ -35,6 +35,9 @@ public sealed partial class ArenaOwnership
         // staff (mod and up)
         Add("approvearena", Command_approvearena);
         Add("declinearena", Command_declinearena);
+
+        // staff overrides (smod and up: cmd_arenaadmin)
+        Add("arenaadmin", Command_arenaadmin);
     }
 
     private void Add(string name, CommandDelegate handler)
@@ -88,27 +91,38 @@ public sealed partial class ArenaOwnership
             return;
         }
 
-        if (pitch.Length > MaxPitchLength)
-        {
-            Reply(player, $"Your pitch is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer.");
-            return;
-        }
-
-        if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
-        {
-            Reply(player, $"Can't request '{rawName}': {error}");
-            return;
-        }
-
-        var result = Store.Request(player.Name, name, pitch);
+        var result = SubmitRequest(player.Name, rawName, pitch);
         Reply(player, result.Ok
             ? $"{result.Message} Staff will review it publicly; check ?arenarequests."
             : result.Message);
+    }
+
+    /// <summary>
+    /// The shared request path for ?requestarena and the web form (caller has checked the name is
+    /// authenticated): pitch length, name rules and store limits; logs and notifies staff. Mainloop.
+    /// </summary>
+    internal Result SubmitRequest(string playerName, string rawName, string pitch)
+    {
+        rawName = rawName.Trim();
+        pitch = pitch.Trim();
+        if (rawName.Length == 0 || pitch.Length == 0)
+            return new Result(false, "An arena name and a pitch are both required.");
+
+        if (pitch.Length > MaxPitchLength)
+            return new Result(false, $"Your pitch is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer.");
+        if (pitch.Any(char.IsControl))
+            return new Result(false, "The pitch must be a single line of text.");
+
+        if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
+            return new Result(false, $"Can't request '{rawName}': {error}");
+
+        var result = Store.Request(playerName, name, pitch);
         if (result.Ok)
         {
-            Log(LogLevel.Info, $"{player.Name} requested arena '{name}': {pitch}");
-            _chat.SendModMessage($"[Dare.Arenas] {player.Name} requested arena '{name}': {pitch}  (?approvearena {name} / ?declinearena {name} <reason>)");
+            Log(LogLevel.Info, $"{playerName} requested arena '{name}': {pitch}");
+            _chat.SendModMessage($"[Dare.Arenas] {playerName} requested arena '{name}': {pitch}  (?approvearena {name} / ?declinearena {name} <reason>)");
         }
+        return result;
     }
 
     [CommandHelp(
@@ -274,7 +288,8 @@ public sealed partial class ArenaOwnership
 
     // ---- arena owners and co-mods -----------------------------------------------------
 
-    internal const string WebLoginUrl = "https://subspacefoundation.com/arena/login?t=";
+    /// <summary>Public base URL of the web pages (no trailing '/'); config DareArenas:WebBaseUrl.</summary>
+    internal const string DefaultWebBaseUrl = "https://subspacefoundation.com/arena";
     private static readonly TimeSpan WebLoginInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>Single-use web sign-in tokens; the web server (Task 7) redeems them.</summary>
@@ -492,12 +507,23 @@ public sealed partial class ArenaOwnership
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = null,
-        Description = "Sends you a one-time sign-in link for your arena's web page (owner or co-mod, in your arena). Valid 10 minutes, one use.")]
+        Description = """
+            Sends you a one-time sign-in link for the arena web page (valid 10 minutes, one use).
+            Owners and co-mods edit their arena there; any logged-in player can request an arena.
+            """)]
     private void Command_weblogin(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        if (!TryArenaRole(player, ownerOnly: false, out _, out var arenaName, out _)) return;
+        if (player.Name is null) return;
 
-        var key = player.Name!.ToLowerInvariant();
+        // Any authenticated name may sign in (the web request form needs it); the web pages check
+        // the arena role on every write. Unauthenticated names could be anyone's, so never.
+        if (!player.Flags.Authenticated)
+        {
+            Reply(player, "Only players logged in with a registered (password-protected) name can sign in to the web page.");
+            return;
+        }
+
+        var key = player.Name.ToLowerInvariant();
         var now = DateTimeOffset.UtcNow;
         foreach (var stale in _lastWebLogin.Where(p => now - p.Value >= WebLoginInterval).Select(p => p.Key).ToList())
             _lastWebLogin.Remove(stale);
@@ -509,10 +535,10 @@ public sealed partial class ArenaOwnership
         }
         _lastWebLogin[key] = now;
 
-        var token = WebAuth.IssueLoginToken(player.Name!);
-        _chat.SendMessage(player, $"Sign in to your arena's web page: {WebLoginUrl}{token}");
+        var roles = Store.RolesFor(player.Name);
+        var token = WebAuth.IssueLoginToken(player.Name);
+        _chat.SendMessage(player, $"Sign in to the arena web page: {WebBaseUrl}/login?t={token}");
         _chat.SendMessage(player, "The link is valid 10 minutes, one use. Don't share it.");
-        Log(LogLevel.Info, $"Issued a web sign-in link to {player.Name} ({arenaName}).");
+        Log(LogLevel.Info, $"Issued a web sign-in link to {player.Name} ({(roles.Count == 0 ? "no arena role" : string.Join(", ", roles.Select(r => $"{r.Role} of {r.Arena}")))}).");
     }
 }
-

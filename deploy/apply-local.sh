@@ -3,10 +3,11 @@
 #
 #   deploy/apply-local.sh <zoneDir> [pluginDir]
 #
-# - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff} into <zone>/conf/groupdef.dir/
+# - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff,arenaadmin} into <zone>/conf/groupdef.dir/
 #   (overwrites: module-owned files)
 # - adds "#include groupdef.dir/arenastaff" to the [mod], [smod] and [sysop] sections of
 #   conf/groupdef.conf (once each), so only real staff can approve/decline requests
+# - adds "#include groupdef.dir/arenaadmin" to [smod] and [sysop] (staff overrides, ?arenaadmin)
 # - replaces the Dare.Arenas [arenaowner]/[arenamod] block in conf/groupdef.conf with
 #   groupdef-sections.conf (also upgrades the old block that included groupdef.dir/mod)
 # - removes the old staff caps that earlier versions appended to groupdef.dir/mod
@@ -45,10 +46,10 @@ append_missing() { # <capsFile> <target>
   done < "$1"
 }
 
-for f in arenaowner arenamod arenacaps arenastaff; do
+for f in arenaowner arenamod arenacaps arenastaff arenaadmin; do
   cp "$HERE/groupdef.dir/$f" "$CONF/groupdef.dir/"
 done
-echo "groupdef.dir/arenaowner, arenamod, arenacaps, arenastaff copied"
+echo "groupdef.dir/arenaowner, arenamod, arenacaps, arenastaff, arenaadmin copied"
 
 GD="$CONF/groupdef.conf"
 tmp=$(mktemp)
@@ -67,13 +68,19 @@ awk '
 # trim trailing blank lines left behind
 awk '{ lines[NR]=$0 } END { n=NR; while (n>0 && lines[n] ~ /^[ \t]*$/) n--; for (i=1;i<=n;i++) print lines[i] }' "$tmp" > "$tmp.2"
 
-# 2. make sure [mod], [smod], [sysop] include arenastaff (added at the end of each section)
-#    (blank lines at the end of a section are held back so the include stays inside it)
+# 2. make sure [mod], [smod], [sysop] include arenastaff and [smod], [sysop] include arenaadmin
+#    (added at the end of each section; blank lines at the end of a section are held back so the
+#    includes stay inside it)
 awk '
-  function flush() { if (want && !seen) print "#include groupdef.dir/arenastaff"; printf "%s", blanks; blanks="" }
+  function flush() {
+    if (want && !seen) print "#include groupdef.dir/arenastaff"
+    if (wantadm && !seenadm) print "#include groupdef.dir/arenaadmin"
+    printf "%s", blanks; blanks=""
+  }
   /^[ \t]*$/ { blanks = blanks $0 "\n"; next }
-  /^\[.*\][ \t]*$/ { flush(); sec=tolower($0); want=(sec=="[mod]" || sec=="[smod]" || sec=="[sysop]"); seen=0 }
+  /^\[.*\][ \t]*$/ { flush(); sec=tolower($0); want=(sec=="[mod]" || sec=="[smod]" || sec=="[sysop]"); wantadm=(sec=="[smod]" || sec=="[sysop]"); seen=0; seenadm=0 }
   want && $0 == "#include groupdef.dir/arenastaff" { seen=1 }
+  wantadm && $0 == "#include groupdef.dir/arenaadmin" { seenadm=1 }
   { printf "%s", blanks; blanks=""; print }
   END { flush() }
 ' "$tmp.2" > "$tmp"
@@ -85,7 +92,7 @@ if cmp -s "$tmp" "$GD"; then
   echo "groupdef.conf already up to date"
 else
   cat "$tmp" > "$GD"
-  echo "groupdef.conf: arenastaff includes + [arenaowner]/[arenamod] block written"
+  echo "groupdef.conf: arenastaff/arenaadmin includes + [arenaowner]/[arenamod] block written"
 fi
 rm -f "$tmp" "$tmp.2"
 

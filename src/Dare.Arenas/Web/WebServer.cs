@@ -1,0 +1,657 @@
+using System.Net;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using Dare.Arenas.Core;
+using SS.Core;
+using SS.Core.ComponentInterfaces;
+using SS.Core.Configuration;
+
+namespace Dare.Arenas;
+
+// ---------------------------------------------------------------------------------------------
+// Module side of the web pages: start/stop, and the API handlers. Handlers that touch server
+// state (config, arenas, players, chat) run on the mainloop via WebServer.OnMain; the store,
+// WebAuth and the rate limiter are thread-safe.
+// ---------------------------------------------------------------------------------------------
+public sealed partial class ArenaOwnership
+{
+    internal const string ConfigSection = "DareArenas";
+    internal const string DefaultWebListen = "http://127.0.0.1:8088/";
+    private const int PublicListMax = 30;
+
+    private WebServer? _web;
+
+    /// <summary>Public base URL used in ?weblogin links (DareArenas:WebBaseUrl), no trailing '/'.</summary>
+    internal string WebBaseUrl =>
+        (_configManager.GetStr(_configManager.Global, ConfigSection, "WebBaseUrl") is { Length: > 0 } url ? url : DefaultWebBaseUrl).TrimEnd('/');
+
+    private void StartWeb()
+    {
+        var listen = _configManager.GetStr(_configManager.Global, ConfigSection, "WebListen");
+        if (string.IsNullOrWhiteSpace(listen)) listen = DefaultWebListen;
+        if (!listen.EndsWith('/')) listen += "/";
+
+        try
+        {
+            _web = new WebServer(this, _mainloop, listen);
+            _web.Start();
+            Log(LogLevel.Info, $"Web pages listening on {listen} (public links: {WebBaseUrl}/).");
+        }
+        catch (Exception ex)
+        {
+            // The in-game commands keep working without the web pages.
+            Log(LogLevel.Error, $"Could not start the web listener on {listen}: {ex.Message}");
+            _web?.Dispose();
+            _web = null;
+        }
+    }
+
+    private void StopWeb()
+    {
+        if (_web is null) return;
+        _web.Dispose();
+        _web = null;
+        // Run anything the web threads already queued while the store is still open.
+        _mainloop.WaitForMainWorkItemDrain();
+    }
+
+    internal ArenaStore WebStore => Store;
+
+    /// <summary>
+    /// Opens arenas/&lt;name&gt;/arena.conf through the config manager (shared with the running arena,
+    /// if any). Null when the arena's own arena.conf does not exist: the config search path would
+    /// otherwise fall back to a shared file. <paramref name="name"/> must come from the store.
+    /// </summary>
+    internal async Task<ConfigHandle?> OpenArenaConfigAsync(string name)
+    {
+        var path = ArenaPaths.Resolve(ArenasDir, name, "arena.conf");
+        if (path is null || !File.Exists(path)) return null;
+        return await _configManager.OpenConfigFileAsync(name, null).ConfigureAwait(false);
+    }
+
+    internal void CloseArenaConfig(ConfigHandle handle) => _configManager.CloseConfigFile(handle);
+
+    // ---- handlers (mainloop) ------------------------------------------------------------------
+
+    internal object PublicData()
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        _playerData.Lock();
+        try
+        {
+            foreach (var p in _playerData.Players)
+                if (p.Arena is not null)
+                    counts[p.Arena.BaseName] = counts.GetValueOrDefault(p.Arena.BaseName) + 1;
+        }
+        finally
+        {
+            _playerData.Unlock();
+        }
+
+        var requests = Store.Requests(pendingOnly: false, 100);
+        return new
+        {
+            pending = requests.Where(r => r.Status == RequestStatus.Pending).Reverse()
+                .Select(r => new { r.Arena, r.Player, r.Pitch, r.At }),
+            decisions = requests.Where(r => r.Status != RequestStatus.Pending).Take(PublicListMax)
+                .Select(r => new { r.Arena, r.Player, r.Pitch, status = r.Status.ToString(), r.DecidedBy, r.Reason, r.At }),
+            arenas = Store.Arenas().Select(a => new
+            {
+                a.Name, a.Owner, status = a.Status.ToString(), a.Created, a.LastEntered, a.CoMods,
+                players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
+            }),
+            events = Store.Events(null, PublicListMax).Select(e => new { e.At, e.Arena, e.Actor, e.Kind, e.Detail }),
+        };
+    }
+
+    /// <summary>The owner page's data for <paramref name="arena"/> (role already checked by the caller).</summary>
+    internal object ArenaData(string player, IReadOnlyList<(string Arena, string Role)> roles, string arena, string role, ConfigHandle? cfg)
+    {
+        var owned = Store.Get(arena);
+        var levelFiles = cfg is null ? new List<string>() : LevelFiles.Parse(_configManager.GetStr(cfg, "General", "LevelFiles")).ToList();
+        return new
+        {
+            player,
+            arenas = roles.Select(r => new { name = r.Arena, role = r.Role }),
+            arena,
+            role,
+            owner = owned?.Owner,
+            status = owned?.Status.ToString(),
+            coMods = owned?.CoMods ?? (IReadOnlyList<string>)Array.Empty<string>(),
+            lastEntered = owned?.LastEntered,
+            map = cfg is null ? null : _configManager.GetStr(cfg, "General", "Map"),
+            levelFiles,
+            limits = new { maxLevelFiles = MaxLevelFiles, mapBytes = 2 * 1024 * 1024, lvzBytes = 5 * 1024 * 1024, settingChangesPerMinute = SettingChangesPerMinute },
+            settings = cfg is null ? null : SettingsForWeb(cfg),
+            configMissing = cfg is null,
+        };
+    }
+
+    internal object NoArenaData(string player)
+    {
+        var pending = Store.Requests(pendingOnly: true, 1000)
+            .FirstOrDefault(r => string.Equals(r.Player, player, StringComparison.OrdinalIgnoreCase));
+        return new
+        {
+            player,
+            arenas = Array.Empty<object>(),
+            arena = (string?)null,
+            role = (string?)null,
+            pendingRequest = pending is null ? null : new { pending.Arena, pending.Pitch, pending.At },
+            maxPitch = MaxPitchLength,
+        };
+    }
+
+    /// <summary>Every owner-editable setting, grouped by section, with the server's config help.</summary>
+    private object SettingsForWeb(ConfigHandle cfg)
+    {
+        var documented = DocumentedArenaSettings();
+        var policy = new SettingsPolicy(documented.Values);
+        var editable = documented.Values.Where(v => policy.IsEditable(v.Section, v.Key)).ToList();
+
+        var help = new Dictionary<(string, string), IConfigHelpAttribute?>();
+        _configHelp.Lock();
+        try
+        {
+            foreach (var (section, key) in editable)
+            {
+                var helpSection = ShipSections.Contains(section) ? "All" : section;
+                help[(section, key)] = _configHelp.TryGetSettingHelp(helpSection, key, out var list) && list.Count > 0
+                    ? (list.FirstOrDefault(r => r.Attribute.Scope == ConfigScope.Arena).Attribute ?? list[0].Attribute)
+                    : null;
+            }
+        }
+        finally
+        {
+            _configHelp.Unlock();
+        }
+
+        return editable
+            .GroupBy(v => v.Section)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                section = g.Key,
+                settings = g.OrderBy(v => v.Key, StringComparer.OrdinalIgnoreCase).Select(v =>
+                {
+                    var h = help.GetValueOrDefault((v.Section, v.Key));
+                    return new
+                    {
+                        key = v.Key,
+                        value = _configManager.GetStr(cfg, v.Section, v.Key),
+                        description = h?.Description is { } d ? string.Join(' ', d.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) : null,
+                        @default = h?.DefaultValue,
+                        min = h?.Min,
+                        max = h?.Max,
+                        range = h?.Range,
+                    };
+                }),
+            });
+    }
+
+    /// <summary>Re-checks the role at the moment of writing (it may have changed since the request began).</summary>
+    internal bool HasRole(string arena, string player, bool ownerOnly)
+    {
+        var role = Store.RoleIn(arena, player);
+        return role is not null && (!ownerOnly || role == "owner");
+    }
+
+    internal Result WebSetting(ConfigHandle cfg, string arena, string player, string sectionKey, string value)
+    {
+        if (!HasRole(arena, player, ownerOnly: false))
+            return new Result(false, "You are no longer an owner or co-mod of this arena.");
+        var result = ApplySetting(cfg, arena, player, sectionKey, value);
+        if (result.Ok) Log(LogLevel.Info, $"(web) {player} changed a setting of [{arena}]: {result.Message}");
+        return result;
+    }
+
+    internal Result WebUpload(ConfigHandle cfg, string arena, string player, UploadKind kind, string fileName, byte[] content)
+    {
+        if (!HasRole(arena, player, ownerOnly: true))
+            return new Result(false, "Only the arena's owner can upload files.");
+        var result = StoreUpload(cfg, arena, player, kind, fileName, content);
+        Log(LogLevel.Info, $"(web) {player} upload of {kind} '{fileName}' to [{arena}]: {(result.Ok ? "stored" : "refused: " + result.Message)}");
+        return result;
+    }
+
+    internal Result WebRequest(string player, string arena, string pitch)
+    {
+        var result = SubmitRequest(player, arena, pitch);
+        if (result.Ok)
+        {
+            var online = _playerData.FindPlayer(player);
+            if (online is not null)
+                Reply(online, $"Your web request for arena '{arena.Trim().ToLowerInvariant()}' was submitted. See ?arenarequests.");
+        }
+        return result;
+    }
+}
+
+/// <summary>
+/// The HttpListener for the arena pages. Accepts paths with or without the <c>/arena</c> prefix
+/// (Caddy's <c>handle_path /arena/*</c> strips it; local testing keeps it); public links and
+/// redirects always use <c>/arena/...</c>. Requests are handled on thread-pool threads; anything
+/// touching server state is queued to the mainloop with <see cref="IMainloop.QueueMainWorkItem"/>.
+/// </summary>
+internal sealed class WebServer : IDisposable
+{
+    private const int MaxJsonBytes = 4096;
+    private const int MaxConcurrent = 16;
+    private const string CsrfHeader = "X-Requested-With";
+    private const string CsrfValue = "dare-arena";
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private readonly ArenaOwnership _m;
+    private readonly IMainloop _mainloop;
+    private readonly HttpListener _listener = new();
+    private readonly SemaphoreSlim _slots = new(MaxConcurrent, MaxConcurrent);
+    private readonly Dictionary<string, (byte[] Body, string Type)> _static;
+    private volatile bool _stopped;
+
+    public WebServer(ArenaOwnership module, IMainloop mainloop, string prefix)
+    {
+        _m = module;
+        _mainloop = mainloop;
+        _listener.Prefixes.Add(prefix);
+        _static = LoadStatic();
+    }
+
+    public void Start()
+    {
+        _listener.Start();
+        _ = Task.Run(AcceptLoop);
+    }
+
+    public void Dispose()
+    {
+        _stopped = true;
+        try { _listener.Close(); } catch { /* already closed */ }
+    }
+
+    private async Task AcceptLoop()
+    {
+        while (!_stopped)
+        {
+            HttpListenerContext ctx;
+            try
+            {
+                ctx = await _listener.GetContextAsync().ConfigureAwait(false);
+            }
+            catch when (_stopped)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _m.Log(LogLevel.Warn, $"Web accept failed: {ex.Message}");
+                await Task.Delay(100).ConfigureAwait(false);
+                continue;
+            }
+
+            _ = Task.Run(() => HandleAsync(ctx));
+        }
+    }
+
+    private async Task HandleAsync(HttpListenerContext ctx)
+    {
+        if (!_slots.Wait(0))
+        {
+            TryWrite(ctx, Text(503, "Busy; try again shortly."));
+            return;
+        }
+
+        try
+        {
+            Reply reply;
+            try
+            {
+                reply = await RouteAsync(ctx).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _m.Log(LogLevel.Error, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath} failed: {ex}");
+                reply = JsonReply(500, new { ok = false, message = "Server error; staff can see the details in the log." });
+            }
+            TryWrite(ctx, reply);
+        }
+        finally
+        {
+            _slots.Release();
+        }
+    }
+
+    // ---- routing ------------------------------------------------------------------------------
+
+    private async Task<Reply> RouteAsync(HttpListenerContext ctx)
+    {
+        var req = ctx.Request;
+        var path = WebPaths.Normalize(req.Url?.AbsolutePath);
+        var method = req.HttpMethod;
+
+        switch (path)
+        {
+            case "/": return Get(method, () => Static("index.html"));
+            case "/me": return Get(method, () => Static("arena.html"));
+            case "/app.js": return Get(method, () => Static("app.js"));
+            case "/style.css": return Get(method, () => Static("style.css"));
+            case "/login": return method == "GET" ? Login(req) : MethodNotAllowed();
+            case "/api/public":
+                return method == "GET" ? JsonReply(200, await OnMain(() => _m.PublicData()).ConfigureAwait(false)) : MethodNotAllowed();
+            case "/api/me": return method == "GET" ? await MeAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/settings": return method == "POST" ? await SettingsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/request": return method == "POST" ? await RequestAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            default: return Text(404, "Not found.");
+        }
+    }
+
+    private Reply Get(string method, Func<Reply> f) => method is "GET" or "HEAD" ? f() : MethodNotAllowed();
+
+    private Reply Login(HttpListenerRequest req)
+    {
+        var token = req.QueryString["t"];
+        var session = string.IsNullOrEmpty(token) ? null : _m.WebAuth.Redeem(token);
+        if (session is null)
+            return Html(400, "<p>This sign-in link is invalid, used or expired. Type <b>?weblogin</b> in game for a new one.</p>"
+                             + "<p><a href=\"/arena/\">Arena list</a></p>");
+
+        _m.Log(LogLevel.Info, $"Web sign-in for {_m.WebAuth.PlayerFor(session)}.");
+        return new Reply(303, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Signed in."),
+            [("Set-Cookie", WebPaths.SessionCookie(session, secure: true)), ("Location", WebPaths.Prefix + "/me")]);
+    }
+
+    private string? SessionPlayer(HttpListenerRequest req)
+    {
+        var session = req.Cookies[WebPaths.SessionCookieName]?.Value;
+        return string.IsNullOrEmpty(session) ? null : _m.WebAuth.PlayerFor(session);
+    }
+
+    /// <summary>401 without a session; 403 for writes without the anti-CSRF header.</summary>
+    private Reply? Gate(HttpListenerRequest req, bool write, out string player)
+    {
+        player = SessionPlayer(req) ?? "";
+        if (player.Length == 0)
+            return JsonReply(401, new { ok = false, message = "Not signed in. Type ?weblogin in game for a sign-in link." });
+        if (write && req.Headers[CsrfHeader] != CsrfValue)
+            return JsonReply(403, new { ok = false, message = "Missing request header." });
+        return null;
+    }
+
+    /// <summary>Picks the arena the request is about: <c>?arena=</c> if given, else the player's first role.</summary>
+    private static (string Arena, string Role)? Pick(IReadOnlyList<(string Arena, string Role)> roles, string? wanted)
+    {
+        if (string.IsNullOrWhiteSpace(wanted))
+            return roles.Count > 0 ? roles[0] : null;
+        foreach (var r in roles)
+            if (string.Equals(r.Arena, wanted.Trim(), StringComparison.OrdinalIgnoreCase))
+                return r;
+        return null;
+    }
+
+    private async Task<Reply> MeAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+
+        var roles = _m.WebStore.RolesFor(player);
+        var wanted = req.QueryString["arena"];
+        var pick = Pick(roles, wanted);
+        if (pick is null)
+        {
+            if (!string.IsNullOrWhiteSpace(wanted))
+                return JsonReply(403, new { ok = false, message = "You are not an owner or co-mod of that arena." });
+            return JsonReply(200, await OnMain(() => _m.NoArenaData(player)).ConfigureAwait(false));
+        }
+
+        var (arena, role) = pick.Value;
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        try
+        {
+            return JsonReply(200, await OnMain(() => _m.ArenaData(player, roles, arena, role, cfg)).ConfigureAwait(false));
+        }
+        finally
+        {
+            if (cfg is not null) _m.CloseArenaConfig(cfg);
+        }
+    }
+
+    private async Task<Reply> SettingsAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var section = Str(body, "section");
+        var key = Str(body, "key");
+        var value = Str(body, "value");
+
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null)
+            return JsonReply(403, new { ok = false, message = "Only this arena's owner or co-mods can change its settings." });
+        if (section is null || key is null || value is null)
+            return JsonReply(400, new { ok = false, message = "Send {\"section\", \"key\", \"value\"}." });
+
+        var arena = pick.Value.Arena;
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        if (cfg is null)
+            return JsonReply(409, new { ok = false, message = "Your arena's settings file is missing; ask staff." });
+        try
+        {
+            var result = await OnMain(() => _m.WebSetting(cfg, arena, player, $"{section}:{key}", value)).ConfigureAwait(false);
+            return ResultReply(result);
+        }
+        finally
+        {
+            _m.CloseArenaConfig(cfg);
+        }
+    }
+
+    private async Task<Reply> UploadAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var kind = req.QueryString["kind"]?.ToLowerInvariant() switch
+        {
+            "map" => UploadKind.Map,
+            "lvz" => UploadKind.Lvz,
+            _ => (UploadKind?)null,
+        };
+        if (kind is null)
+            return JsonReply(400, new { ok = false, message = "kind must be map or lvz." });
+
+        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can upload files." });
+        var arena = pick.Value.Arena;
+
+        var name = req.QueryString["name"]?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            if (kind == UploadKind.Lvz)
+                return JsonReply(400, new { ok = false, message = "name is required for graphics (.lvz) uploads." });
+            name = arena + ".lvl";
+        }
+
+        // Refuse oversized bodies before reading them into memory.
+        var limit = kind == UploadKind.Map ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+        if (req.ContentLength64 > limit)
+            return JsonReply(413, new { ok = false, message = kind == UploadKind.Map ? "Map files must be 2 MB or smaller." : "Graphics files must be 5 MB or smaller." });
+        var content = await ReadBodyAsync(req, limit).ConfigureAwait(false);
+        if (content is null)
+            return JsonReply(413, new { ok = false, message = kind == UploadKind.Map ? "Map files must be 2 MB or smaller." : "Graphics files must be 5 MB or smaller." });
+
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        if (cfg is null)
+            return JsonReply(409, new { ok = false, message = "Your arena's settings file is missing; ask staff." });
+        try
+        {
+            var k = kind.Value;
+            var result = await OnMain(() => _m.WebUpload(cfg, arena, player, k, name, content)).ConfigureAwait(false);
+            return ResultReply(result);
+        }
+        finally
+        {
+            _m.CloseArenaConfig(cfg);
+        }
+    }
+
+    private async Task<Reply> RequestAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var arena = Str(body, "arena") ?? "";
+        var pitch = Str(body, "pitch") ?? "";
+        var result = await OnMain(() => _m.WebRequest(player, arena, pitch)).ConfigureAwait(false);
+        return ResultReply(result);
+    }
+
+    // ---- mainloop marshalling -------------------------------------------------------------------
+
+    /// <summary>Runs <paramref name="f"/> on the mainloop thread and returns its result.</summary>
+    private Task<T> OnMain<T>(Func<T> f)
+    {
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_stopped)
+        {
+            tcs.SetException(new ObjectDisposedException(nameof(WebServer)));
+            return tcs.Task;
+        }
+
+        var queued = _mainloop.QueueMainWorkItem(static s =>
+        {
+            var (server, func, t) = s;
+            if (server._stopped)
+            {
+                t.TrySetException(new ObjectDisposedException(nameof(WebServer)));
+                return;
+            }
+            try { t.TrySetResult(func()); }
+            catch (Exception ex) { t.TrySetException(ex); }
+        }, (this, f, tcs));
+
+        if (!queued) tcs.TrySetException(new InvalidOperationException("The server is shutting down."));
+        return tcs.Task;
+    }
+
+    // ---- bodies ---------------------------------------------------------------------------------
+
+    /// <summary>Reads at most <paramref name="limit"/> bytes; null if the body is larger.</summary>
+    private static async Task<byte[]?> ReadBodyAsync(HttpListenerRequest req, int limit)
+    {
+        using var ms = new MemoryStream(req.ContentLength64 > 0 ? (int)req.ContentLength64 : 0);
+        var buffer = new byte[81920];
+        int n;
+        while ((n = await req.InputStream.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+        {
+            if (ms.Length + n > limit) return null;
+            ms.Write(buffer, 0, n);
+        }
+        return ms.ToArray();
+    }
+
+    private static async Task<(JsonElement? Body, Reply? Error)> ReadJsonAsync(HttpListenerRequest req)
+    {
+        if (req.ContentLength64 > MaxJsonBytes)
+            return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
+        if (req.ContentType is null || !req.ContentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
+            return (null, JsonReply(415, new { ok = false, message = "Send JSON (Content-Type: application/json)." }));
+        var bytes = await ReadBodyAsync(req, MaxJsonBytes).ConfigureAwait(false);
+        if (bytes is null)
+            return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
+        try
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return (null, JsonReply(400, new { ok = false, message = "Send a JSON object." }));
+            return (doc.RootElement.Clone(), null);
+        }
+        catch (JsonException)
+        {
+            return (null, JsonReply(400, new { ok = false, message = "Invalid JSON." }));
+        }
+    }
+
+    private static string? Str(JsonElement? body, string name) =>
+        body is { } b && b.TryGetProperty(name, out var v)
+            ? v.ValueKind switch
+            {
+                JsonValueKind.String => v.GetString(),
+                JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => v.GetRawText(),
+                _ => null,
+            }
+            : null;
+
+    // ---- replies --------------------------------------------------------------------------------
+
+    private sealed record Reply(int Status, string ContentType, byte[] Body, (string Name, string Value)[]? Headers = null);
+
+    private static Reply ResultReply(Result r) => JsonReply(r.Ok ? 200 : 400, new { ok = r.Ok, message = r.Message });
+
+    private static Reply JsonReply(int status, object payload) =>
+        new(status, "application/json; charset=utf-8", JsonSerializer.SerializeToUtf8Bytes(payload, Json));
+
+    private static Reply Text(int status, string text) => new(status, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(text));
+
+    private static Reply MethodNotAllowed() => Text(405, "Method not allowed.");
+
+    private static Reply Html(int status, string body) => new(status, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(
+        $"<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+        + $"<link rel=stylesheet href=\"/arena/style.css\"><title>Dare arenas</title><main class=panel>{body}</main>"));
+
+    private Reply Static(string name) =>
+        _static.TryGetValue(name, out var f) ? new Reply(200, f.Type, f.Body) : Text(404, "Not found.");
+
+    private void TryWrite(HttpListenerContext ctx, Reply reply)
+    {
+        try
+        {
+            var res = ctx.Response;
+            res.StatusCode = reply.Status;
+            res.ContentType = reply.ContentType;
+            res.Headers["X-Content-Type-Options"] = "nosniff";
+            res.Headers["Referrer-Policy"] = "no-referrer";
+            res.Headers["X-Frame-Options"] = "DENY";
+            res.Headers["Cache-Control"] = "no-store";
+            if (reply.ContentType.StartsWith("text/html", StringComparison.Ordinal))
+                res.Headers["Content-Security-Policy"] =
+                    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+            if (reply.Headers is not null)
+                foreach (var (n, v) in reply.Headers)
+                    res.AppendHeader(n, v);
+            res.ContentLength64 = ctx.Request.HttpMethod == "HEAD" ? 0 : reply.Body.Length;
+            if (ctx.Request.HttpMethod != "HEAD")
+                res.OutputStream.Write(reply.Body);
+            res.Close();
+        }
+        catch (Exception ex)
+        {
+            if (!_stopped) _m.Log(LogLevel.Warn, $"Web response failed: {ex.Message}");
+            try { ctx.Response.Abort(); } catch { }
+        }
+    }
+
+    private static Dictionary<string, (byte[], string)> LoadStatic()
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css" })
+        {
+            using var s = asm.GetManifestResourceStream("wwwroot/" + name)
+                          ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            var type = Path.GetExtension(name) switch
+            {
+                ".html" => "text/html; charset=utf-8",
+                ".js" => "text/javascript; charset=utf-8",
+                ".css" => "text/css; charset=utf-8",
+                _ => "application/octet-stream",
+            };
+            map[name] = (ms.ToArray(), type);
+        }
+        return map;
+    }
+}

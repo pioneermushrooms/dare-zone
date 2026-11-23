@@ -28,6 +28,8 @@ public sealed partial class ArenaOwnership : IModule
     private readonly ILogManager _logManager;
     private readonly IMainloopTimer _mainloopTimer;
     private readonly IFileTransfer _fileTransfer;
+    private readonly ICapabilityManager _capabilityManager;
+    private readonly IMainloop _mainloop;
 
     private ArenaStore? _store;
 
@@ -42,7 +44,9 @@ public sealed partial class ArenaOwnership : IModule
         IConfigHelp configHelp,
         ILogManager logManager,
         IMainloopTimer mainloopTimer,
-        IFileTransfer fileTransfer)
+        IFileTransfer fileTransfer,
+        ICapabilityManager capabilityManager,
+        IMainloop mainloop)
     {
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -55,6 +59,8 @@ public sealed partial class ArenaOwnership : IModule
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
         _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
+        _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
     }
 
     private ArenaStore Store => _store ?? throw new InvalidOperationException("Dare.Arenas store is not open.");
@@ -75,6 +81,8 @@ public sealed partial class ArenaOwnership : IModule
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();
+        RegisterStaff(broker);
+        StartWeb();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
         return true;
@@ -82,6 +90,8 @@ public sealed partial class ArenaOwnership : IModule
 
     bool IModule.Unload(IComponentBroker broker)
     {
+        StopWeb(); // first: no new web work reaches the mainloop after this
+        UnregisterStaff(broker);
         UnregisterCommands();
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
         _store?.Dispose();
