@@ -33,6 +33,8 @@ public class SettingValueTests
     [InlineData("1\t2")]
     [InlineData("1\u00002")]
     [InlineData("1\u007f2")]
+    [InlineData("x\\")]
+    [InlineData("a\\b")]
     public void Refuses_empty_control_and_semicolon(string? raw)
     {
         Assert.False(SettingValue.TryValidate(raw, out var value, out var error));

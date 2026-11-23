@@ -41,7 +41,7 @@ public static class SettingValue
 {
     public const int MaxLength = 64;
 
-    /// <summary>Trimmed, non-empty, at most 64 chars, no control characters and no ';'.</summary>
+    /// <summary>Trimmed, non-empty, at most 64 chars, no control characters, no ';' and no backslash.</summary>
     public static bool TryValidate(string? raw, out string value, out string error)
     {
         value = "";
@@ -53,6 +53,8 @@ public static class SettingValue
         {
             if (char.IsControl(c)) { error = "Values must not contain control characters or line breaks."; return false; }
             if (c == ';') { error = "Values must not contain ';'."; return false; }
+            // The conf reader treats a trailing '\' as a line continuation; refuse any backslash.
+            if (c == '\\') { error = "Values must not contain '\\'."; return false; }
         }
         value = t;
         return true;

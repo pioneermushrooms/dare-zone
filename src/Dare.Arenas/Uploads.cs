@@ -64,7 +64,7 @@ public sealed partial class ArenaOwnership
         {
             WriteArenaSetting(cfg, arenaName, "General", "Map", storedName, $"{actor} uploaded a map with Dare.Arenas");
             Log(LogLevel.Info, $"{actor} uploaded map '{fileName}' ({content.Length} bytes) to [{arenaName}] as {storedName}.");
-            return new Result(true, $"Map saved as {storedName} ({content.Length} bytes) and set as this arena's map. Players get it on their next entry.");
+            return new Result(true, $"Map saved as {storedName} ({content.Length} bytes) and set as this arena's map; it takes effect after ?recyclearena or when the arena next starts.");
         }
 
         WriteArenaSetting(cfg, arenaName, "General", "LevelFiles", updatedLevelFiles, $"{actor} uploaded {storedName} with Dare.Arenas");
