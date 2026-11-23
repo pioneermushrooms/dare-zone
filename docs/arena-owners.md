@@ -46,8 +46,8 @@ follow it with `?arenarequests`. Once approved, go to your arena with `?go <name
 
 In **your own arena** (the powers do not work anywhere else):
 
-- **Owner:** change settings, upload the map and graphics, pick co-mods, use Continuum's settings
-  editor (`?quickfix`), and the moderator tools below.
+- **Owner:** change settings (`?arenaset` or the web page), upload the map and graphics, pick
+  co-mods, and the moderator tools below.
 - **Co-mods** (up to 5): change settings and use the moderator tools. They cannot upload files
   or change who the co-mods are.
 - **Moderator tools** (both): arena messages (`?a`), the game timer, locking or recycling the
@@ -78,21 +78,28 @@ Owners only, in their own arena:
 | Command | What it does |
 | --- | --- |
 | `?comod` | Lists your co-mods. |
-| `?comod add <player>` / `?comod remove <player>` | Adds or removes a co-mod (public in `?arenalog`). |
+| `?comod add <player>` / `?comod remove <player>` | Adds or removes a co-mod (public in `?arenalog`). A new co-mod must have claimed their name with `?passwd` (or be online and logged in with it). |
 | `?arenamap <file.lvl>` | Uploads a map from your Continuum folder; it becomes the arena's map. |
-| `?putlvz <file.lvz>` | Uploads a graphics file from your Continuum folder and adds it to the arena. |
-| `?quickfix` | Continuum's built-in settings editor for your arena. |
+| `?putlvz <file.lvz>` | Uploads a graphics file from your Continuum folder and adds it to the arena. Uploading a file with the same name as one already there replaces it. |
+| `?rmlvz <file.lvz>` | Removes a graphics file from the arena (and deletes it). |
 
 Staff:
 
 | Command | What it does |
 | --- | --- |
 | `?approvearena <name>` | Approves a request: creates the arena and makes the asker its owner (moderators and up). |
-| `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). |
+| `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request. |
 | `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
 | `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
-| `?arenaadmin transfer <name> <player>` | Gives the arena to another player. |
-| `?arenaadmin archive <name>` | Closes the arena and stores its folder away (nothing is deleted). |
+| `?arenaadmin transfer <name> <player>` | Gives the arena to another player (a name claimed with `?passwd`). |
+| `?arenaadmin archive <name>` | Closes the arena at once; its folder is stored away at the next server restart (nothing is deleted). |
+
+To take an arena or its powers away from an owner, use `?arenaadmin` (suspend, transfer or
+archive). Removing the owner's group with `?rmgroup` does not last: the module grants it again
+the next time they enter their arena.
+
+Staff who own or co-mod an arena keep their own staff group there; their staff group already has
+the owner commands, which still work only in the arena they own (or co-mod).
 
 Uploads with `?arenamap`/`?putlvz` need Continuum (it sends the file). With any other client, use
 the web page.
@@ -110,17 +117,20 @@ signs you in for 24 hours. No password is ever typed on the web.
   `?requestarena`).
 - **Owners and co-mods** see their arena's settings, grouped by section, with a description,
   default and range for each, and can change them.
-- **Owners** can also upload the map (`.lvl`) and graphics (`.lvz`) by drag-and-drop.
+- **Owners** can also upload the map (`.lvl`) and graphics (`.lvz`) by drag-and-drop, and remove
+  a graphics file with its **remove** button. A graphics file with the same name as one already
+  there replaces it.
 
 ## Limits
 
 - One arena per player, and one waiting request per player.
 - Up to 5 co-mods per arena.
 - Map: one `.lvl` per arena, at most 2 MB.
-- Graphics: `.lvz` files of at most 5 MB each, at most 10 per arena.
+- Graphics: `.lvz` files of at most 5 MB each, at most 10 per arena. Replacing a file keeps its
+  slot; `?rmlvz` (or the web page) frees one.
 - Settings: at most 20 changes per minute per arena (in game and web together). `Modules`
   settings can't be changed, and the map and graphics lists change only through uploads.
-- An arena nobody enters for **30 days** is archived: it closes and its files are stored away,
-  not deleted. Staff can bring it back with `?arenaadmin revive`.
+- An arena nobody enters for **30 days** is archived (never while players are in it): it closes
+  and its files are stored away at the next server restart, not deleted. Staff can bring it back with `?arenaadmin revive`.
 - Every decision (request, approval, decline, transfer, suspend, revive, archive, co-mod change)
   is public in `?arenalog` and on the web page.

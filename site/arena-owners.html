@@ -61,7 +61,7 @@
   <h2>What owners and co-mods can do</h2>
   <p>In <b>your own arena</b> (the powers do not work anywhere else):</p>
   <ul>
-    <li><b>Owner:</b> change settings, upload the map and graphics, pick co-mods, use Continuum's settings editor (<code>?quickfix</code>), and the moderator tools below.</li>
+    <li><b>Owner:</b> change settings (<code>?arenaset</code> or the web page), upload the map and graphics, pick co-mods, and the moderator tools below.</li>
     <li><b>Co-mods</b> (up to 5): change settings and use the moderator tools. They cannot upload files or change who the co-mods are.</li>
     <li><b>Moderator tools</b> (both): arena messages (<code>?a</code>), the game timer, locking or recycling the arena, flags and balls, setting players' ships and teams, prizes, spectating, and chat masks. Kicks, bans and zone-wide messages stay with zone staff.</li>
   </ul>
@@ -86,21 +86,23 @@
   <table>
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>?comod</code></td><td>Lists your co-mods.</td></tr>
-    <tr><td><code>?comod add &lt;player&gt;</code> / <code>?comod remove &lt;player&gt;</code></td><td>Adds or removes a co-mod (public in <code>?arenalog</code>).</td></tr>
+    <tr><td><code>?comod add &lt;player&gt;</code> / <code>?comod remove &lt;player&gt;</code></td><td>Adds or removes a co-mod (public in <code>?arenalog</code>). A new co-mod must have claimed their name with <code>?passwd</code> (or be online and logged in with it).</td></tr>
     <tr><td><code>?arenamap &lt;file.lvl&gt;</code></td><td>Uploads a map from your Continuum folder; it becomes the arena's map.</td></tr>
-    <tr><td><code>?putlvz &lt;file.lvz&gt;</code></td><td>Uploads a graphics file from your Continuum folder and adds it to the arena.</td></tr>
-    <tr><td><code>?quickfix</code></td><td>Continuum's built-in settings editor for your arena.</td></tr>
+    <tr><td><code>?putlvz &lt;file.lvz&gt;</code></td><td>Uploads a graphics file from your Continuum folder and adds it to the arena. Uploading a file with the same name as one already there replaces it.</td></tr>
+    <tr><td><code>?rmlvz &lt;file.lvz&gt;</code></td><td>Removes a graphics file from the arena (and deletes it).</td></tr>
   </table>
   <h3>Staff</h3>
   <table>
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>?approvearena &lt;name&gt;</code></td><td>Approves a request: creates the arena and makes the asker its owner (moderators and up).</td></tr>
-    <tr><td><code>?declinearena &lt;name&gt; &lt;reason&gt;</code></td><td>Declines a request; the reason is public (moderators and up).</td></tr>
+    <tr><td><code>?declinearena &lt;name&gt; &lt;reason&gt;</code></td><td>Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request.</td></tr>
     <tr><td><code>?arenaadmin suspend &lt;name&gt; &lt;reason&gt;</code></td><td>Closes an arena to players (super moderators and sysops).</td></tr>
     <tr><td><code>?arenaadmin revive &lt;name&gt;</code></td><td>Reopens a suspended or archived arena.</td></tr>
-    <tr><td><code>?arenaadmin transfer &lt;name&gt; &lt;player&gt;</code></td><td>Gives the arena to another player.</td></tr>
-    <tr><td><code>?arenaadmin archive &lt;name&gt;</code></td><td>Closes the arena and stores its folder away (nothing is deleted).</td></tr>
+    <tr><td><code>?arenaadmin transfer &lt;name&gt; &lt;player&gt;</code></td><td>Gives the arena to another player (a name claimed with <code>?passwd</code>).</td></tr>
+    <tr><td><code>?arenaadmin archive &lt;name&gt;</code></td><td>Closes the arena at once; its folder is stored away at the next server restart (nothing is deleted).</td></tr>
   </table>
+  <p>To take an arena or its powers away from an owner, use <code>?arenaadmin</code> (suspend, transfer or archive). Removing the owner's group with <code>?rmgroup</code> does not last: the module grants it again the next time they enter their arena.</p>
+  <p>Staff who own or co-mod an arena keep their own staff group there; their staff group already has the owner commands, which still work only in the arena they own (or co-mod).</p>
   <p>Uploads with <code>?arenamap</code>/<code>?putlvz</code> need Continuum (it sends the file). With any other client, use the web page.</p>
 
   <h2>The web page</h2>
@@ -109,7 +111,7 @@
     <li><b>Everyone</b> can see the public page, <a href="/arena/">subspacefoundation.com/arena/</a>: every player-owned arena with its owner, co-mods and players online, waiting requests, decisions and the public log.</li>
     <li><b>Without an arena</b>, the signed-in page lets you send a request (same rules as <code>?requestarena</code>).</li>
     <li><b>Owners and co-mods</b> see their arena's settings, grouped by section, with a description, default and range for each, and can change them.</li>
-    <li><b>Owners</b> can also upload the map (<code>.lvl</code>) and graphics (<code>.lvz</code>) by drag-and-drop.</li>
+    <li><b>Owners</b> can also upload the map (<code>.lvl</code>) and graphics (<code>.lvz</code>) by drag-and-drop, and remove a graphics file with its <b>remove</b> button. A graphics file with the same name as one already there replaces it.</li>
   </ul>
 
   <h2>Limits</h2>
@@ -117,9 +119,9 @@
     <li>One arena per player, and one waiting request per player.</li>
     <li>Up to 5 co-mods per arena.</li>
     <li>Map: one <code>.lvl</code> per arena, at most 2 MB.</li>
-    <li>Graphics: <code>.lvz</code> files of at most 5 MB each, at most 10 per arena.</li>
+    <li>Graphics: <code>.lvz</code> files of at most 5 MB each, at most 10 per arena. Replacing a file keeps its slot; <code>?rmlvz</code> (or the web page) frees one.</li>
     <li>Settings: at most 20 changes per minute per arena (in game and web together). <code>Modules</code> settings can't be changed, and the map and graphics lists change only through uploads.</li>
-    <li>An arena nobody enters for <b>30 days</b> is archived: it closes and its files are stored away, not deleted. Staff can bring it back with <code>?arenaadmin revive</code>.</li>
+    <li>An arena nobody enters for <b>30 days</b> is archived (never while players are in it): it closes and its files are stored away at the next server restart, not deleted. Staff can bring it back with <code>?arenaadmin revive</code>.</li>
     <li>Every decision (request, approval, decline, transfer, suspend, revive, archive, co-mod change) is public in <code>?arenalog</code> and on the web page.</li>
   </ul>
   <footer><a href="/">SubSpace Foundation</a> · <a href="/arena/">Arenas</a></footer>
