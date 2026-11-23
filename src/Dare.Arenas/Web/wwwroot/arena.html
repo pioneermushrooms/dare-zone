@@ -23,7 +23,7 @@
   <h2>Request an arena</h2>
   <p id="pendinginfo" class="dim"></p>
   <form class="row" id="requestform">
-    <input type="text" id="reqname" placeholder="name (3-16: a-z 0-9 -)" maxlength="16" required autocomplete="off">
+    <input type="text" id="reqname" placeholder="name (3-15 letters and digits)" maxlength="15" pattern="[A-Za-z][A-Za-z0-9]{1,13}[A-Za-z]" title="3-15 letters and digits (a-z, 0-9); start with a letter, do not end in a digit" required autocomplete="off">
     <input type="text" id="reqpitch" placeholder="what is it for? (up to 120 characters)" maxlength="120" required autocomplete="off">
     <button type="submit">Request</button>
   </form>

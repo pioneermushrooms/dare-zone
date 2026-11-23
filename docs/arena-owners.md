@@ -33,8 +33,7 @@ for example `?requestarena skyrace Fast racing laps for warbirds`.
 
 - The name is 3 to 15 characters of lowercase letters and digits. It must start with a letter
   and must not end in a digit. Names already in use (and `public`, `2v2pub`, `3v3pub`, `4v4pub`,
-  `duel`) are taken. Don't use `-` or a 16th character: the zone turns other characters into
-  `x` and cuts names at 15 when you travel with `?go`, so such an arena can't be entered.
+  `duel`) are taken.
 - The description is up to 120 characters. Everyone can read it.
 - You can have one request waiting and own one arena at a time.
 

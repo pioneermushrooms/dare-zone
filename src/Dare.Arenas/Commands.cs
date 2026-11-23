@@ -70,7 +70,7 @@ public sealed partial class ArenaOwnership
         Targets = CommandTarget.None,
         Args = "<name> <pitch>",
         Description = """
-            Requests a new arena that you will own. Names are 3-16 characters (a-z, 0-9, -),
+            Requests a new arena that you will own. Names are 3-15 letters and digits (a-z, 0-9),
             start with a letter and do not end in a digit. The pitch (up to 120 characters) says
             what the arena is for. Staff decide publicly; see ?arenarequests.
             """)]

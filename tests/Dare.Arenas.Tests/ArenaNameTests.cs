@@ -9,14 +9,19 @@ public class ArenaNameTests
     [Fact]
     public void Valid_name_is_lowercased()
     {
-        Assert.True(ArenaName.TryValidate("Pipe-Dreams", NoArenas, out var normalized, out var error));
-        Assert.Equal("pipe-dreams", normalized);
+        Assert.True(ArenaName.TryValidate("PipeDreams", NoArenas, out var normalized, out var error));
+        Assert.Equal("pipedreams", normalized);
         Assert.Equal("", error);
     }
 
     [Theory]
     [InlineData("ab")]
     [InlineData("abcdefghijklmnopq")]
+    [InlineData("abcdefghijklmnop")]
+    [InlineData("Pipe-Dreams")]
+    [InlineData("pipe-dreams")]
+    [InlineData("sky-race")]
+    [InlineData("skyrace-")]
     [InlineData("turf1")]
     [InlineData("1turf")]
     [InlineData("a b")]
@@ -36,9 +41,26 @@ public class ArenaNameTests
     }
 
     [Fact]
-    public void Sixteen_characters_is_allowed()
+    public void Fifteen_characters_is_allowed()
     {
-        Assert.True(ArenaName.TryValidate("abcdefghijklmnop", NoArenas, out _, out _));
+        Assert.True(ArenaName.TryValidate("abcdefghijklmno", NoArenas, out var normalized, out _));
+        Assert.Equal("abcdefghijklmno", normalized);
+    }
+
+    [Fact]
+    public void Three_characters_is_allowed()
+    {
+        Assert.True(ArenaName.TryValidate("abc", NoArenas, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("sky-race")]
+    [InlineData("abcdefghijklmnop")]
+    public void Error_states_the_rule(string input)
+    {
+        Assert.False(ArenaName.TryValidate(input, NoArenas, out _, out var error));
+        Assert.Contains("3-15", error);
+        Assert.Contains("letters and digits", error);
     }
 
     [Fact]
