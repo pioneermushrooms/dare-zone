@@ -41,7 +41,7 @@ append_missing() { # <capsFile> <target>
     if ! grep -qxF "$line" "$2"; then
       ensure_nl "$2"
       printf '%s\n' "$line" >> "$2"
-      echo "  + $line -> ${2#$ZONE/}"
+      echo "  + $line -> ${2#"$ZONE"/}"
     fi
   done < "$1"
 }
