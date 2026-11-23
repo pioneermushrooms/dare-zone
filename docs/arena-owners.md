@@ -10,15 +10,17 @@ for what, who decided, and why.
 Arena requests and arena powers only work for a **logged-in, password-protected name**. Anyone
 could type your name, so the zone only trusts a name once it has been checked against a password.
 
-How Foundation checks names today: the zone keeps its own password list (there is no billing
-server). You can enter with any new name and any password, but then the zone treats you as **not
-logged in**: you can play, but you cannot request or run an arena. The zone also only lets a
-logged-in name set a password, so the first password has to be saved by staff:
+How it works on Foundation: the zone keeps its own password list (there is no billing server).
+A name nobody has claimed yet can be used with any password, but the zone treats it as **not
+logged in**: you can play, but you cannot request or run an arena or use `?weblogin`. To claim
+your name:
 
-1. Log in with the name and the password you want to keep.
-2. Ask a sysop (in the same arena) to run `?set_local_password` on you. It saves the password you
-   logged in with.
-3. From then on, always log in with that password. To change it, type `?passwd <new password>`.
+1. Log in with your name.
+2. Type `?passwd <password>` once. The name is now yours, with that password. It's first come,
+   first served: a name someone else already claimed needs their password.
+3. Log out and back in with that password, and always use it from then on. That makes you
+   logged in, which you need to request or own an arena or to use `?weblogin`. You can change
+   it later with `?passwd <new password>`.
 
 If you see "Your name is not authenticated" or "Only players logged in with a registered
 (password-protected) name …", this is the step you are missing.

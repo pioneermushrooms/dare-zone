@@ -39,11 +39,11 @@
 
   <h2>First: you need a password on your name</h2>
   <p>Arena requests and arena powers only work for a <b>logged-in, password-protected name</b>. Anyone could type your name, so the zone only trusts a name once it has been checked against a password.</p>
-  <p>How Foundation checks names today: the zone keeps its own password list (there is no billing server). You can enter with any new name and any password, but then the zone treats you as <b>not logged in</b>: you can play, but you cannot request or run an arena. The zone also only lets a logged-in name set a password, so the first password has to be saved by staff:</p>
+  <p>How it works on Foundation: the zone keeps its own password list (there is no billing server). A name nobody has claimed yet can be used with any password, but the zone treats it as <b>not logged in</b>: you can play, but you cannot request or run an arena or use <code>?weblogin</code>. To claim your name:</p>
   <ol>
-    <li>Log in with the name and the password you want to keep.</li>
-    <li>Ask a sysop (in the same arena) to run <code>?set_local_password</code> on you. It saves the password you logged in with.</li>
-    <li>From then on, always log in with that password. To change it, type <code>?passwd &lt;new password&gt;</code>.</li>
+    <li>Log in with your name.</li>
+    <li>Type <code>?passwd &lt;password&gt;</code> once. The name is now yours, with that password. It's first come, first served: a name someone else already claimed needs their password.</li>
+    <li>Log out and back in with that password, and always use it from then on. That makes you logged in, which you need to request or own an arena or to use <code>?weblogin</code>. You can change it later with <code>?passwd &lt;new password&gt;</code>.</li>
   </ol>
   <p>If you see "Your name is not authenticated" or "Only players logged in with a registered (password-protected) name …", this is the step you are missing.</p>
 
