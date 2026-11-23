@@ -3,9 +3,14 @@
 #
 #   deploy/apply-local.sh <zoneDir> [pluginDir]
 #
-# - copies groupdef.dir/arenaowner + arenamod into <zone>/conf/groupdef.dir/ (overwrites: module-owned files)
-# - appends the [arenaowner]/[arenamod] sections to conf/groupdef.conf (once)
-# - appends default-caps.txt to groupdef.dir/default and mod-caps.txt to groupdef.dir/mod (missing lines only)
+# - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff} into <zone>/conf/groupdef.dir/
+#   (overwrites: module-owned files)
+# - adds "#include groupdef.dir/arenastaff" to the [mod], [smod] and [sysop] sections of
+#   conf/groupdef.conf (once each), so only real staff can approve/decline requests
+# - replaces the Dare.Arenas [arenaowner]/[arenamod] block in conf/groupdef.conf with
+#   groupdef-sections.conf (also upgrades the old block that included groupdef.dir/mod)
+# - removes the old staff caps that earlier versions appended to groupdef.dir/mod
+# - appends default-caps.txt to groupdef.dir/default (missing lines only)
 # - copies arenas/_template/ into <zone>/arenas/_template/ (existing files are kept, so local edits survive)
 # - adds the Dare.Arenas <module> line to conf/Modules.config before </modules> (once)
 # - if pluginDir is given (e.g. out/modules/Dare.Arenas), replaces <zone>/bin/modules/Dare.Arenas with it
@@ -40,25 +45,62 @@ append_missing() { # <capsFile> <target>
   done < "$1"
 }
 
-cp "$HERE/groupdef.dir/arenaowner" "$HERE/groupdef.dir/arenamod" "$CONF/groupdef.dir/"
-echo "groupdef.dir/arenaowner, arenamod copied"
+for f in arenaowner arenamod arenacaps arenastaff; do
+  cp "$HERE/groupdef.dir/$f" "$CONF/groupdef.dir/"
+done
+echo "groupdef.dir/arenaowner, arenamod, arenacaps, arenastaff copied"
 
-if grep -qxF '[arenaowner]' "$CONF/groupdef.conf"; then
-  echo "groupdef.conf already has [arenaowner]"
+GD="$CONF/groupdef.conf"
+tmp=$(mktemp)
+
+# 1. drop any existing Dare.Arenas block (new format ends with the end marker; the old one,
+#    written by the first version of this script, ended with "#include groupdef.dir/arenamod")
+awk '
+  $0 == "; ---- Dare.Arenas: player-owned arenas (granted arena-scoped by the module) ----" { skip=1; next }
+  skip && $0 == "; ---- end Dare.Arenas ----" { skip=0; next }
+  skip && $0 == "#include groupdef.dir/arenamod" { skip=2; next }
+  skip == 2 && $0 == "; ---- end Dare.Arenas ----" { skip=0; next }
+  skip == 2 { skip=0 }
+  skip { next }
+  { print }
+' "$GD" > "$tmp"
+# trim trailing blank lines left behind
+awk '{ lines[NR]=$0 } END { n=NR; while (n>0 && lines[n] ~ /^[ \t]*$/) n--; for (i=1;i<=n;i++) print lines[i] }' "$tmp" > "$tmp.2"
+
+# 2. make sure [mod], [smod], [sysop] include arenastaff (added at the end of each section)
+#    (blank lines at the end of a section are held back so the include stays inside it)
+awk '
+  function flush() { if (want && !seen) print "#include groupdef.dir/arenastaff"; printf "%s", blanks; blanks="" }
+  /^[ \t]*$/ { blanks = blanks $0 "\n"; next }
+  /^\[.*\][ \t]*$/ { flush(); sec=tolower($0); want=(sec=="[mod]" || sec=="[smod]" || sec=="[sysop]"); seen=0 }
+  want && $0 == "#include groupdef.dir/arenastaff" { seen=1 }
+  { printf "%s", blanks; blanks=""; print }
+  END { flush() }
+' "$tmp.2" > "$tmp"
+
+# 3. append the current Dare.Arenas block
+printf '\n' >> "$tmp"
+cat "$HERE/groupdef-sections.conf" >> "$tmp"
+if cmp -s "$tmp" "$GD"; then
+  echo "groupdef.conf already up to date"
 else
-  ensure_nl "$CONF/groupdef.conf"
-  cat "$HERE/groupdef-sections.conf" >> "$CONF/groupdef.conf"
-  echo "groupdef.conf: [arenaowner] and [arenamod] appended"
+  cat "$tmp" > "$GD"
+  echo "groupdef.conf: arenastaff includes + [arenaowner]/[arenamod] block written"
 fi
+rm -f "$tmp" "$tmp.2"
 
 if ! grep -qx '; Dare.Arenas' "$CONF/groupdef.dir/default"; then
   ensure_nl "$CONF/groupdef.dir/default"; printf '\n; Dare.Arenas\n' >> "$CONF/groupdef.dir/default"
 fi
 append_missing "$HERE/default-caps.txt" "$CONF/groupdef.dir/default"
-if ! grep -qx '; Dare.Arenas' "$CONF/groupdef.dir/mod"; then
-  ensure_nl "$CONF/groupdef.dir/mod"; printf '\n; Dare.Arenas\n' >> "$CONF/groupdef.dir/mod"
+
+# undo what earlier versions appended to groupdef.dir/mod (staff caps now live in arenastaff)
+if grep -qxE 'cmd_approvearena|cmd_declinearena|; Dare.Arenas' "$CONF/groupdef.dir/mod"; then
+  grep -vxE 'cmd_approvearena|cmd_declinearena|; Dare.Arenas' "$CONF/groupdef.dir/mod" \
+    | awk '{ l[NR]=$0 } END { n=NR; while (n>0 && l[n] ~ /^[ \t]*$/) n--; for (i=1;i<=n;i++) print l[i] }' > "$tmp" || true
+  cat "$tmp" > "$CONF/groupdef.dir/mod"; rm -f "$tmp"
+  echo "groupdef.dir/mod: old Dare.Arenas staff caps removed"
 fi
-append_missing "$HERE/mod-caps.txt" "$CONF/groupdef.dir/mod"
 
 mkdir -p "$ZONE/arenas/_template"
 cp -Rn "$HERE/arenas/_template/." "$ZONE/arenas/_template/" 2>/dev/null || true

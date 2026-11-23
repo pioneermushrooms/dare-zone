@@ -1,0 +1,5 @@
+; groupdef.dir/arenastaff  (Dare.Arenas)
+; Staff decisions on arena requests. Included by [mod], [smod] and [sysop] in groupdef.conf;
+; never by [arenaowner]/[arenamod], so owners and co-mods cannot approve requests.
+cmd_approvearena
+cmd_declinearena

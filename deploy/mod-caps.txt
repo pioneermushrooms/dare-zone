@@ -1,2 +1,0 @@
-cmd_approvearena
-cmd_declinearena

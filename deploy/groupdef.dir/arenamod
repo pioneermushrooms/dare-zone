@@ -1,7 +1,7 @@
 ; groupdef.dir/arenamod  (Dare.Arenas)
 ; Co-moderator of a player-owned arena (up to 5 per arena). Granted arena-scoped only by the
 ; Dare.Arenas module. The [arenamod] section in groupdef.conf also includes
-; groupdef.dir/default and groupdef.dir/mod.
+; groupdef.dir/default and groupdef.dir/arenacaps.
 
 ; co-mod commands (Dare.Arenas)
 cmd_arenaset

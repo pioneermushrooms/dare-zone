@@ -1,7 +1,7 @@
 ; groupdef.dir/arenaowner  (Dare.Arenas)
 ; Owner of a player-owned arena. Granted arena-scoped only (staff.conf [<arena>] Player = arenaowner)
 ; by the Dare.Arenas module; never global. The [arenaowner] section in groupdef.conf also
-; includes groupdef.dir/default and groupdef.dir/mod.
+; includes groupdef.dir/default and groupdef.dir/arenacaps.
 
 ; Continuum's in-game settings editor, for the owner's own arena
 cmd_quickfix
