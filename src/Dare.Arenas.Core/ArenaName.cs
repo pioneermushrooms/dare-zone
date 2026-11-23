@@ -16,6 +16,9 @@ public static class ArenaName
     private static readonly HashSet<string> Reserved = new(StringComparer.Ordinal)
     {
         "public", "2v2pub", "3v3pub", "4v4pub", "duel",
+        // staff.conf sections the server reserves (CapabilityManager.IsReservedStaffConfSection):
+        // arena-scoped groups can't be stored for arenas with these names.
+        "general", "grouppasswords",
     };
 
     /// <param name="existing">Folder names already in <c>arenas/</c>; compared case-insensitively.</param>

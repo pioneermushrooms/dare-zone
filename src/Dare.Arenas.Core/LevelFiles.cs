@@ -51,5 +51,34 @@ public static class LevelFiles
                 return false;
         return true;
     }
-}
 
+    /// <summary>The stored entry matching <paramref name="name"/> (trimmed, case-insensitive), or null.</summary>
+    public static string? Find(string? current, string name)
+    {
+        var n = name?.Trim() ?? "";
+        if (n.Length == 0) return null;
+        return Parse(current).FirstOrDefault(e => string.Equals(e, n, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Removes the entry matching <paramref name="name"/> (case-insensitive). <paramref name="removed"/>
+    /// is the stored spelling. On failure <paramref name="updated"/> is <paramref name="current"/>
+    /// unchanged ("" if null) and <paramref name="removed"/> is "".
+    /// </summary>
+    public static bool Remove(string? current, string name, out string updated, out string removed, out string error)
+    {
+        updated = current ?? "";
+        removed = "";
+        error = "";
+        var entry = Find(current, name);
+        if (entry is null)
+        {
+            error = string.IsNullOrWhiteSpace(name) ? "A file name is required." : $"{name.Trim()} is not in the arena's LevelFiles.";
+            return false;
+        }
+
+        removed = entry;
+        updated = string.Join(",", Parse(current).Where(e => !ReferenceEquals(e, entry) && !string.Equals(e, entry, StringComparison.OrdinalIgnoreCase)));
+        return true;
+    }
+}

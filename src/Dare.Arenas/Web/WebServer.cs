@@ -62,20 +62,6 @@ public sealed partial class ArenaOwnership
 
     internal ArenaStore WebStore => Store;
 
-    /// <summary>
-    /// Opens arenas/&lt;name&gt;/arena.conf through the config manager (shared with the running arena,
-    /// if any). Null when the arena's own arena.conf does not exist: the config search path would
-    /// otherwise fall back to a shared file. <paramref name="name"/> must come from the store.
-    /// </summary>
-    internal async Task<ConfigHandle?> OpenArenaConfigAsync(string name)
-    {
-        var path = ArenaPaths.Resolve(ArenasDir, name, "arena.conf");
-        if (path is null || !File.Exists(path)) return null;
-        return await _configManager.OpenConfigFileAsync(name, null).ConfigureAwait(false);
-    }
-
-    internal void CloseArenaConfig(ConfigHandle handle) => _configManager.CloseConfigFile(handle);
-
     // ---- handlers (mainloop) ------------------------------------------------------------------
 
     /// <summary>Players per arena base name. Mainloop (player data).</summary>
@@ -102,7 +88,7 @@ public sealed partial class ArenaOwnership
         var requests = Store.Requests(pendingOnly: false, 100);
         return new
         {
-            pending = requests.Where(r => r.Status == RequestStatus.Pending).Reverse()
+            pending = Store.PendingRequestsOldestFirst(100)
                 .Select(r => new { r.Arena, r.Player, r.Pitch, r.At }),
             decisions = requests.Where(r => r.Status != RequestStatus.Pending).Take(PublicListMax)
                 .Select(r => new { r.Arena, r.Player, r.Pitch, status = r.Status.ToString(), r.DecidedBy, r.Reason, r.At }),
@@ -225,6 +211,15 @@ public sealed partial class ArenaOwnership
         return result;
     }
 
+    internal Result WebRemoveLvz(ConfigHandle cfg, string arena, string player, string fileName)
+    {
+        if (!HasRole(arena, player, ownerOnly: true))
+            return new Result(false, "Only the arena's owner can remove files.");
+        var result = RemoveLvz(cfg, arena, player, fileName);
+        Log(LogLevel.Info, $"(web) {player} remove of lvz '{fileName}' in [{arena}]: {(result.Ok ? "removed" : "refused: " + result.Message)}");
+        return result;
+    }
+
     internal Result WebRequest(string player, string arena, string pitch)
     {
         var result = SubmitRequest(player, arena, pitch);
@@ -248,6 +243,9 @@ internal sealed class WebServer : IDisposable
 {
     private const int MaxJsonBytes = 4096;
     private const int MaxConcurrent = 16;
+    // A request body must arrive within these, so slow senders can't hold the 16 slots.
+    private static readonly TimeSpan JsonBodyTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan UploadBodyTimeout = TimeSpan.FromSeconds(120);
     private const string CsrfHeader = "X-Requested-With";
     private const string CsrfValue = "dare-arena";
 
@@ -326,6 +324,13 @@ internal sealed class WebServer : IDisposable
             {
                 reply = await RouteAsync(ctx).ConfigureAwait(false);
             }
+            catch (TimeoutException)
+            {
+                // The body did not arrive in time: drop the connection (that also ends the pending read).
+                _m.Log(LogLevel.Info, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath}: request body too slow; connection dropped.");
+                try { ctx.Response.Abort(); } catch { }
+                return;
+            }
             catch (Exception ex)
             {
                 _m.Log(LogLevel.Error, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath} failed: {ex}");
@@ -359,6 +364,7 @@ internal sealed class WebServer : IDisposable
             case "/api/me": return method == "GET" ? await MeAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/settings": return method == "POST" ? await SettingsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/rmlvz": return method == "POST" ? await RemoveLvzAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/request": return method == "POST" ? await RequestAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
@@ -526,7 +532,7 @@ internal sealed class WebServer : IDisposable
         var limit = kind == UploadKind.Map ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
         if (req.ContentLength64 > limit)
             return JsonReply(413, new { ok = false, message = kind == UploadKind.Map ? "Map files must be 2 MB or smaller." : "Graphics files must be 5 MB or smaller." });
-        var content = await ReadBodyAsync(req, limit).ConfigureAwait(false);
+        var content = await ReadBodyAsync(req, limit, UploadBodyTimeout).ConfigureAwait(false);
         if (content is null)
             return JsonReply(413, new { ok = false, message = kind == UploadKind.Map ? "Map files must be 2 MB or smaller." : "Graphics files must be 5 MB or smaller." });
 
@@ -537,6 +543,36 @@ internal sealed class WebServer : IDisposable
         {
             var k = kind.Value;
             var result = await OnMain(() => _m.WebUpload(cfg, arena, player, k, name, content)).ConfigureAwait(false);
+            return ResultReply(result);
+        }
+        finally
+        {
+            _m.CloseArenaConfig(cfg);
+        }
+    }
+
+    /// <summary>Owner only: removes a graphics file (same rules as ?rmlvz). Body {"arena", "name"}.</summary>
+    private async Task<Reply> RemoveLvzAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var name = Str(body, "name");
+
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can remove files." });
+        if (string.IsNullOrWhiteSpace(name))
+            return JsonReply(400, new { ok = false, message = "Send {\"arena\", \"name\"}." });
+
+        var arena = pick.Value.Arena;
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        if (cfg is null)
+            return JsonReply(409, new { ok = false, message = ArenaOwnership.ConfigMissingMessage });
+        try
+        {
+            var result = await OnMain(() => _m.WebRemoveLvz(cfg, arena, player, name)).ConfigureAwait(false);
             return ResultReply(result);
         }
         finally
@@ -587,14 +623,23 @@ internal sealed class WebServer : IDisposable
 
     // ---- bodies ---------------------------------------------------------------------------------
 
-    /// <summary>Reads at most <paramref name="limit"/> bytes; null if the body is larger.</summary>
-    private static async Task<byte[]?> ReadBodyAsync(HttpListenerRequest req, int limit)
+    /// <summary>
+    /// Reads at most <paramref name="limit"/> bytes; null if the body is larger. Throws
+    /// <see cref="TimeoutException"/> when the whole body has not arrived within <paramref name="timeout"/>
+    /// (the caller then aborts the connection, which also ends the abandoned read).
+    /// </summary>
+    private static async Task<byte[]?> ReadBodyAsync(HttpListenerRequest req, int limit, TimeSpan timeout)
     {
+        var deadline = DateTime.UtcNow + timeout;
         using var ms = new MemoryStream(req.ContentLength64 > 0 ? (int)req.ContentLength64 : 0);
         var buffer = new byte[81920];
-        int n;
-        while ((n = await req.InputStream.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+        while (true)
         {
+            var left = deadline - DateTime.UtcNow;
+            if (left <= TimeSpan.Zero) throw new TimeoutException();
+            // WaitAsync: the managed HttpListener's stream does not honour cancellation tokens.
+            var n = await req.InputStream.ReadAsync(buffer).AsTask().WaitAsync(left).ConfigureAwait(false);
+            if (n == 0) break;
             if (ms.Length + n > limit) return null;
             ms.Write(buffer, 0, n);
         }
@@ -607,7 +652,7 @@ internal sealed class WebServer : IDisposable
             return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
         if (req.ContentType is null || !req.ContentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
             return (null, JsonReply(415, new { ok = false, message = "Send JSON (Content-Type: application/json)." }));
-        var bytes = await ReadBodyAsync(req, MaxJsonBytes).ConfigureAwait(false);
+        var bytes = await ReadBodyAsync(req, MaxJsonBytes, JsonBodyTimeout).ConfigureAwait(false);
         if (bytes is null)
             return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
         try

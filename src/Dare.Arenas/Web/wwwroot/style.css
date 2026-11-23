@@ -37,6 +37,7 @@ input:focus, select:focus, textarea:focus { outline:1px solid var(--accent); }
 button { cursor:pointer; color:#071018; background:var(--accent); border-color:var(--accent); font-weight:bold; }
 button.hot { background:var(--hot); border-color:var(--hot); }
 button:disabled { opacity:.5; cursor:default; }
+button.small { padding:0 .4em; font-size:.8em; background:var(--panel2); color:var(--text); border-color:var(--line); }
 form.row, .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .row input[type=text] { flex:1 1 160px; min-width:0; }
 .drop { border:2px dashed var(--line); border-radius:6px; padding:18px; text-align:center; color:var(--dim); }

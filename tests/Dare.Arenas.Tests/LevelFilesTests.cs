@@ -90,3 +90,45 @@ public class LevelFilesTests
     [InlineData("abcdefghijklmnopqrstuvwxyz0123456789.lvz")]
     public void Unsafe_names(string name) => Assert.False(LevelFiles.IsSafeFileName(name));
 }
+
+public class LevelFilesFindRemoveTests
+{
+    [Theory]
+    [InlineData("a.lvz,B.lvz", "b.lvz", "B.lvz")]
+    [InlineData("a.lvz, b.lvz ", "b.lvz", "b.lvz")]
+    [InlineData("a.lvz", "c.lvz", null)]
+    [InlineData(null, "c.lvz", null)]
+    [InlineData("a.lvz", " ", null)]
+    public void find_returns_the_stored_entry(string? current, string name, string? expected)
+    {
+        Assert.Equal(expected, LevelFiles.Find(current, name));
+    }
+
+    [Fact]
+    public void remove_takes_the_entry_out_case_insensitively()
+    {
+        Assert.True(LevelFiles.Remove("a.lvz,B.lvz,c.lvz", "b.LVZ", out var updated, out var removed, out var error));
+        Assert.Equal("a.lvz,c.lvz", updated);
+        Assert.Equal("B.lvz", removed);
+        Assert.Equal("", error);
+    }
+
+    [Fact]
+    public void removing_the_last_entry_leaves_an_empty_list()
+    {
+        Assert.True(LevelFiles.Remove("a.lvz", "a.lvz", out var updated, out _, out _));
+        Assert.Equal("", updated);
+    }
+
+    [Theory]
+    [InlineData("a.lvz", "x.lvz")]
+    [InlineData(null, "x.lvz")]
+    [InlineData("a.lvz", "")]
+    public void removing_a_missing_entry_fails_and_changes_nothing(string? current, string name)
+    {
+        Assert.False(LevelFiles.Remove(current, name, out var updated, out var removed, out var error));
+        Assert.Equal(current ?? "", updated);
+        Assert.Equal("", removed);
+        Assert.NotEmpty(error);
+    }
+}

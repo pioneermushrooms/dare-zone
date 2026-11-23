@@ -2,6 +2,7 @@ using Dare.Arenas.Core;
 using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Configuration;
 
 namespace Dare.Arenas;
 
@@ -16,6 +17,7 @@ public sealed partial class ArenaOwnership : IModule
     internal const string ArenasDir = "arenas";
     internal const string TemplateDir = "_template";
     internal const string DbPath = "data/dare-arenas.db";
+    internal const string PasswdFile = "passwd.conf";
 
     private readonly IComponentBroker _broker;
     private readonly ICommandManager _commandManager;
@@ -32,6 +34,11 @@ public sealed partial class ArenaOwnership : IModule
     private readonly IMainloop _mainloop;
 
     private ArenaStore? _store;
+
+    // staff.conf (for players' [(global)] groups) and passwd.conf (claimed names). Same documents
+    // the CapabilityManager and AuthFile modules use, so values are current in memory.
+    private ConfigHandle? _staffConf;
+    private ConfigHandle? _passwdConf;
 
     public ArenaOwnership(
         IComponentBroker broker,
@@ -79,6 +86,28 @@ public sealed partial class ArenaOwnership : IModule
             return false;
         }
 
+        try
+        {
+            // Load runs before the mainloop; Task.Run keeps the config manager's awaits off this thread.
+            _staffConf = Task.Run(() => _configManager.OpenConfigFileAsync(null, "staff.conf")).GetAwaiter().GetResult();
+            _passwdConf = Task.Run(() => _configManager.OpenConfigFileAsync(null, PasswdFile)).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Could not open staff.conf/passwd.conf: {ex.Message}");
+        }
+        if (_staffConf is null || _passwdConf is null)
+        {
+            Log(LogLevel.Error, "staff.conf and passwd.conf are required (global groups, claimed names); not loading.");
+            CloseConfs();
+            _store.Dispose();
+            _store = null;
+            return false;
+        }
+
+        // Archived arenas' folders move now, before any arena with that name can be created.
+        ProcessPendingArchiveMoves();
+
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();
         RegisterStaff(broker);
@@ -94,9 +123,18 @@ public sealed partial class ArenaOwnership : IModule
         UnregisterStaff(broker);
         UnregisterCommands();
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+        CloseConfs();
         _store?.Dispose();
         _store = null;
         return true;
+    }
+
+    private void CloseConfs()
+    {
+        if (_staffConf is not null) _configManager.CloseConfigFile(_staffConf);
+        if (_passwdConf is not null) _configManager.CloseConfigFile(_passwdConf);
+        _staffConf = null;
+        _passwdConf = null;
     }
 
     // ---- arena entry: grants + activity -----------------------------------------
@@ -129,6 +167,7 @@ public sealed partial class ArenaOwnership : IModule
 
         // A module group with no role behind it (co-mod removed, transferred, suspended) is stale.
         var currentGroup = _groupManager.GetGroup(player);
+        var global = GlobalGroupOf(player.Name);
         if (GrantLogic.ShouldRevoke(Store.RoleIn(arena.BaseName, player.Name), currentGroup))
         {
             Revoke(player, arena, $"no longer has a role (was '{currentGroup}')");
@@ -146,24 +185,42 @@ public sealed partial class ArenaOwnership : IModule
 
         var role = Store.RoleIn(arena.BaseName, player.Name);
         var current = _groupManager.GetGroup(player);
-        var group = GrantLogic.GroupToApply(role, current);
+        var group = GrantLogic.GroupToApply(role, current, global);
         if (group is null)
+        {
+            // Global staff keep their own group; their staff group carries the owner commands.
+            if (role is not null && GrantLogic.IsGlobalStaff(global))
+                _chat.SendMessage(player, $"You are {(role == "owner" ? "the owner" : "a co-mod")} of this arena; your staff group '{global}' already has the arena commands. Type ?myarena for details.");
             return;
+        }
 
         _groupManager.SetPermGroup(player, group, false, ModuleName);
+        if (GrantLogic.IsGlobalStaff(global))
+        {
+            // an arena group granted before global staff were excluded: put back their own group
+            Log(LogLevel.Info, $"Restored '{group}' (global group) for {player.Name} in [{arena.BaseName}] (was '{current}').");
+            return;
+        }
         Log(LogLevel.Info, $"Granted '{group}' to {player.Name} in [{arena.BaseName}] (role {role}, was '{current}').");
         _chat.SendMessage(player, $"You are {(role == "owner" ? "the owner" : "a co-mod")} of this arena. Type ?myarena for details.");
     }
 
+    /// <summary>The player's group in staff.conf <c>[(global)]</c>, or null.</summary>
+    internal string? GlobalGroupOf(string playerName) =>
+        _staffConf is null ? null : _configManager.GetStr(_staffConf, Constants.ArenaGroup_Global, playerName);
+
     /// <summary>
-    /// Sets the player back to <c>default</c> in this arena's staff.conf section. Deliberately not
+    /// Sets the player back to their own <c>[(global)]</c> group (<c>default</c> when none) in this
+    /// arena's staff.conf section. The v4.0.0 config API can't delete the arena-scoped key, and
+    /// writing <c>default</c> would demote global staff in this arena. Deliberately not
     /// <see cref="IGroupManager.RemoveGroup"/>: that writes <c>[(global)]</c> when the group came from
     /// there, and this module never edits the global section.
     /// </summary>
     private void Revoke(Player player, Arena arena, string why)
     {
-        _groupManager.SetPermGroup(player, "default", false, $"{ModuleName}: {why}");
-        Log(LogLevel.Info, $"Revoked arena group of {player.Name} in [{arena.BaseName}]: {why}.");
+        var to = GrantLogic.RevokeTo(player.Name is null ? null : GlobalGroupOf(player.Name));
+        _groupManager.SetPermGroup(player, to, false, $"{ModuleName}: {why}");
+        Log(LogLevel.Info, $"Revoked arena group of {player.Name} in [{arena.BaseName}] (now '{to}'): {why}.");
     }
 
     // ---- helpers ------------------------------------------------------------------
@@ -181,6 +238,34 @@ public sealed partial class ArenaOwnership : IModule
     }
 
     private static bool ArenaFolderExists(string name) => Directory.Exists(Path.Combine(ArenasDir, name));
+
+    /// <summary>
+    /// <see cref="CreateArenaFolder"/> for the approval transaction: null on success, else a short
+    /// reason (logged), with any half-copied folder removed again.
+    /// </summary>
+    private string? TryCreateArenaFolder(string name)
+    {
+        var target = Path.GetFullPath(Path.Combine(ArenasDir, name));
+        var existed = Directory.Exists(target);
+        try
+        {
+            CreateArenaFolder(name);
+            if (ArenaConfigFile.OwnPath(ArenasDir, name) is null)
+                throw new IOException($"the template has no {ArenaConfigFile.FileName}");
+            Log(LogLevel.Info, $"Created folder {Path.Combine(ArenasDir, name)} from template.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Creating folder for arena '{name}' failed: {ex.Message}");
+            if (!existed && Directory.Exists(target))
+            {
+                try { Directory.Delete(target, recursive: true); }
+                catch (Exception cleanup) { Log(LogLevel.Error, $"Could not remove half-created {target}: {cleanup.Message}"); }
+            }
+            return ex.Message;
+        }
+    }
 
     /// <summary>Copies <c>arenas/_template/</c> into a new <c>arenas/&lt;name&gt;/</c>; never overwrites.</summary>
     private static void CreateArenaFolder(string name)

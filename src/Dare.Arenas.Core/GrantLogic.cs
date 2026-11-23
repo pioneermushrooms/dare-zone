@@ -45,8 +45,39 @@ public static class GrantLogic
     public static bool ShouldRevoke(string? role, string? currentGroup)
     {
         if (role is not null || currentGroup is null) return false;
-        return string.Equals(currentGroup, OwnerGroup, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(currentGroup, CoModGroup, StringComparison.OrdinalIgnoreCase);
+        return IsModuleGroup(currentGroup);
     }
-}
 
+    /// <summary>
+    /// True when the player's <c>[(global)]</c> group is anything other than <c>default</c> (mod, smod,
+    /// sysop, bot, ...). Global staff never get arena groups: an arena-scoped entry would override
+    /// their global group in that arena (and outlive it), and mod/smod/sysop already carry the
+    /// owner commands through groupdef.dir/arenastaff.
+    /// </summary>
+    public static bool IsGlobalStaff(string? globalGroup) =>
+        !string.IsNullOrWhiteSpace(globalGroup) && !string.Equals(globalGroup.Trim(), "default", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Like <see cref="GroupToApply(string?, string?)"/>, for a player whose <c>[(global)]</c> group is
+    /// <paramref name="globalGroup"/>. Global staff get no arena group; if they still hold one of
+    /// this module's groups (granted before this rule), it is put back to their global group.
+    /// </summary>
+    public static string? GroupToApply(string? role, string? currentGroup, string? globalGroup)
+    {
+        if (IsGlobalStaff(globalGroup))
+            return IsModuleGroup(currentGroup) ? globalGroup!.Trim() : null;
+        return GroupToApply(role, currentGroup);
+    }
+
+    /// <summary>
+    /// What a revoke writes into the arena's staff.conf section. The v4.0.0 config API cannot delete
+    /// a key, so the player's own <c>[(global)]</c> group is written (default when none); writing
+    /// <c>default</c> would demote global staff in that arena.
+    /// </summary>
+    public static string RevokeTo(string? globalGroup) =>
+        string.IsNullOrWhiteSpace(globalGroup) ? "default" : globalGroup.Trim();
+
+    private static bool IsModuleGroup(string? group) =>
+        string.Equals(group, OwnerGroup, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(group, CoModGroup, StringComparison.OrdinalIgnoreCase);
+}

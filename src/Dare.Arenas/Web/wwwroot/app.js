@@ -78,8 +78,8 @@ async function mePage(arena) {
     return o;
   }));
   $("curmap").textContent = body.map || "(none)";
-  $("curlvz").textContent = body.levelFiles.length ? `${body.levelFiles.join(", ")} (${body.levelFiles.length}/${body.limits.maxLevelFiles})` : "none";
   const owner = body.role === "owner";
+  renderLvz(body.levelFiles, body.limits.maxLevelFiles, owner);
   $("drop").hidden = !owner;
   $("uponly").hidden = owner;
   renderSettings(body.settings || []);
@@ -131,6 +131,31 @@ function applyFilter() {
     d.hidden = !any;
     d.open = q.length > 0 && any;
   }
+}
+
+// Graphics list; owners get a remove button per file (same rules as ?rmlvz).
+function renderLvz(files, max, owner) {
+  const span = $("curlvz");
+  if (!files.length) { span.replaceChildren("none"); return; }
+  const parts = [];
+  files.forEach((f, i) => {
+    if (i) parts.push(", ");
+    parts.push(el("span", { class: "name", text: f }));
+    if (owner) {
+      const b = el("button", { type: "button", class: "small", title: `Remove ${f}`, text: "remove" });
+      b.addEventListener("click", () => removeLvz(f));
+      parts.push(" ", b);
+    }
+  });
+  parts.push(` (${files.length}/${max})`);
+  span.replaceChildren(...parts);
+}
+
+async function removeLvz(name) {
+  if (!confirm(`Remove ${name} from this arena? The file is deleted.`)) return;
+  const { body } = await post(API + "/rmlvz", JSON.stringify({ arena: current.arena, name }), "application/json");
+  msg($("upmsg"), body.message, body.ok);
+  if (body.ok) mePage(current.arena);
 }
 
 async function upload(file) {

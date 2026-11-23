@@ -32,6 +32,9 @@ public class ArenaNameTests
     [InlineData("2v2pub")]
     [InlineData("3v3pub")]
     [InlineData("4v4pub")]
+    [InlineData("general")]
+    [InlineData("General")]
+    [InlineData("grouppasswords")]
     [InlineData("")]
     public void Invalid_names_are_rejected_with_an_error(string input)
     {

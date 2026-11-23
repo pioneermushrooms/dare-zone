@@ -8,6 +8,9 @@ namespace Dare.Arenas;
 
 // Staff overrides (?arenaadmin, smod and up via cmd_arenaadmin), the daily idle-archive check, and
 // keeping players out of suspended/archived arenas. Every decision appends a public event (store).
+// Archiving closes an arena at once but moves its folder to arenas/_archive/ only at the next
+// start (ProcessPendingArchiveMoves): the server's ConfigManager never forgets a loaded file, so a
+// folder moved while the server runs makes it log "failed to reload" every few seconds.
 public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 {
     internal const string ArchiveDir = "_archive";
@@ -40,7 +43,10 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Staff overrides for player-owned arenas; each is public in ?arenalog.
             suspend: closes the arena to players (reason required). revive: reopens a suspended or
             archived arena (an archived folder is moved back from arenas/_archive/). transfer: gives
-            the arena to another player. archive: closes it and moves its folder to arenas/_archive/.
+            the arena to another player (a name claimed with ?passwd). archive: closes it; its folder
+            moves to arenas/_archive/ at the next server restart. To take an arena from its owner,
+            transfer or suspend it here: removing the owner's group with ?rmgroup does not last (it
+            is granted again on their next entry).
             """)]
     private void Command_arenaadmin(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
@@ -119,16 +125,27 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             return;
         }
 
-        Log(LogLevel.Info, $"{staff.Name} archived [{name}].");
-        var (moved, folder) = CloseArchived(name, $"Arena '{name}' was archived by staff.");
-        Reply(staff, folder is null
-            ? $"{result.Message} Its folder could not be moved; see the log."
-            : $"{result.Message} Folder moved to arenas/{ArchiveDir}/{folder}/.{(moved > 0 ? $" {moved} player(s) moved out." : "")}");
+        Log(LogLevel.Info, $"{staff.Name} archived [{name}]; folder moves to arenas/{ArchiveDir}/ at the next start.");
+        var moved = SendPlayersOut(name, $"Arena '{name}' was archived by staff.");
+        Reply(staff, $"{result.Message} Its folder moves to arenas/{ArchiveDir}/ at the next server restart.{(moved > 0 ? $" {moved} player(s) moved out." : "")}");
     }
 
     private void AdminRevive(Player staff, string name, ArenaStatus wasStatus)
     {
-        var result = Store.Revive(name, staff.Name!);
+        // The folder must be there (or come back from the archive) before the arena is Active again.
+        string? restored = null;
+        var result = Store.Revive(name, staff.Name!, () =>
+        {
+            if (ArenaConfigFile.OwnPath(ArenasDir, name) is not null) return null; // incl. archived, move still pending
+            if (ArenaFolderExists(name))
+                return $"arenas/{name}/ has no {ArenaConfigFile.FileName}; restore it by hand first.";
+            restored = RestoreFromArchive(name);
+            if (restored is null)
+                return $"arenas/{name}/ is missing and no archived copy was found in arenas/{ArchiveDir}/; restore it by hand first.";
+            if (ArenaConfigFile.OwnPath(ArenasDir, name) is null)
+                return $"the restored folder has no {ArenaConfigFile.FileName}; fix arenas/{name}/ by hand first.";
+            return null;
+        });
         if (!result.Ok)
         {
             Reply(staff, result.Message);
@@ -136,17 +153,9 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         }
 
         Log(LogLevel.Info, $"{staff.Name} revived [{name}] (was {wasStatus}).");
-        if (wasStatus == ArenaStatus.Archived && !ArenaFolderExists(name))
-        {
-            var restored = RestoreFromArchive(name);
-            Reply(staff, restored is null
-                ? $"{result.Message} BUT no archived folder for it was found in arenas/{ArchiveDir}/; restore or create arenas/{name}/ by hand."
-                : $"{result.Message} Folder arenas/{ArchiveDir}/{restored}/ moved back to arenas/{name}/.");
-        }
-        else
-        {
-            Reply(staff, result.Message);
-        }
+        Reply(staff, restored is null
+            ? result.Message
+            : $"{result.Message} Folder arenas/{ArchiveDir}/{restored}/ moved back to arenas/{name}/.");
 
         var owner = Store.Get(name)?.Owner;
         var online = owner is null ? null : _playerData.FindPlayer(owner);
@@ -157,7 +166,13 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
     private void AdminTransfer(Player staff, string name, string oldOwner, string newOwnerRaw)
     {
         var online = _playerData.FindPlayer(newOwnerRaw);
-        var newOwner = online?.Name ?? newOwnerRaw; // canonical spelling when online
+        // Only a claimed name (canonical spelling): otherwise whoever first types ?passwd on it owns the arena.
+        var newOwner = ResolveClaimedName(newOwnerRaw, online);
+        if (newOwner is null)
+        {
+            Reply(staff, $"{newOwnerRaw} has not claimed that name with a password (?passwd); transfer only to a claimed name or to a player who is online and logged in with their password.");
+            return;
+        }
 
         var result = Store.Transfer(name, staff.Name!, newOwner);
         Reply(staff, result.Message);
@@ -180,13 +195,14 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         if (_store is null) return false;
         try
         {
-            var archived = Store.ArchiveIdle(IdleBeforeArchive);
+            // Never archive an arena with players in it right now (its last-entered time can be old
+            // when someone has stayed inside since).
+            var occupied = PlayerCounts();
+            var archived = Store.ArchiveIdle(IdleBeforeArchive, name => occupied.GetValueOrDefault(name) > 0);
             foreach (var name in archived)
             {
-                var (_, folder) = CloseArchived(name, $"Arena '{name}' was archived after {(int)IdleBeforeArchive.TotalDays} days without visitors.");
-                Log(LogLevel.Info, folder is null
-                    ? $"Archived idle arena [{name}] (no entry for {(int)IdleBeforeArchive.TotalDays} days); its folder could not be moved."
-                    : $"Archived idle arena [{name}] (no entry for {(int)IdleBeforeArchive.TotalDays} days) to arenas/{ArchiveDir}/{folder}/.");
+                SendPlayersOut(name, $"Arena '{name}' was archived after {(int)IdleBeforeArchive.TotalDays} days without visitors.");
+                Log(LogLevel.Info, $"Archived idle arena [{name}] (no entry for {(int)IdleBeforeArchive.TotalDays} days); its folder moves to arenas/{ArchiveDir}/ at the next start.");
             }
         }
         catch (Exception ex)
@@ -199,13 +215,55 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
     // ---- folders --------------------------------------------------------------------------
 
     /// <summary>
-    /// The shared follow-up for an arena the store has just archived (staff command and daily check):
-    /// moves non-staff players out, refreshes grants, then moves the folder to the archive.
+    /// At module load (server start): moves the folders of arenas archived since the last start to
+    /// arenas/_archive/. Skips (and keeps pending) any arena that is running, e.g. on a module
+    /// reload; a failed move stays pending and is retried at the next start.
     /// </summary>
-    private (int Moved, string? Folder) CloseArchived(string name, string message)
+    private void ProcessPendingArchiveMoves()
     {
-        var moved = SendPlayersOut(name, message);
-        return (moved, MoveToArchive(name));
+        IReadOnlyList<string> pending;
+        try
+        {
+            pending = Store.PendingArchiveMoves();
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Could not read pending archive moves: {ex.Message}");
+            return;
+        }
+
+        foreach (var name in pending)
+        {
+            try
+            {
+                var owned = Store.Get(name);
+                if (owned is null || owned.Status != ArenaStatus.Archived)
+                {
+                    Store.ArchiveMoveDone(name); // revived or gone: nothing to move
+                    continue;
+                }
+                if (_arenaManager.FindArena(name) is not null)
+                {
+                    Log(LogLevel.Warn, $"Archive of [{name}]: the arena is running; its folder moves at the next start.");
+                    continue;
+                }
+                if (!ArenaFolderExists(name))
+                {
+                    Log(LogLevel.Warn, $"Archive of [{name}]: folder {Path.Combine(ArenasDir, name)} does not exist; nothing to move.");
+                    Store.ArchiveMoveDone(name);
+                    continue;
+                }
+
+                var folder = MoveToArchive(name);
+                if (folder is null) continue; // logged; retried next start
+                Store.ArchiveMoveDone(name);
+                Log(LogLevel.Info, $"Archived arena [{name}]: folder moved to arenas/{ArchiveDir}/{folder}/.");
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Error, $"Pending archive move of [{name}] failed: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -235,6 +293,36 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Log(LogLevel.Error, $"Could not move [{name}] to arenas/{ArchiveDir}/: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// The name to give a role to (co-mod, new owner): the online player's name when they are
+    /// logged in with their password, else the spelling stored in passwd.conf when the name is
+    /// claimed there; null when the name is not claimed.
+    /// </summary>
+    internal string? ResolveClaimedName(string typed, Player? online)
+    {
+        var onlineAuthenticated = online is not null && online.Name is not null && online.Flags.Authenticated
+                                  && string.Equals(online.Name, typed.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? online.Name
+            : null;
+        var value = _passwdConf is null ? null : _configManager.GetStr(_passwdConf, "users", typed.Trim());
+        string? text = null;
+        if (onlineAuthenticated is null && ClaimedName.IsClaim(value))
+        {
+            foreach (var path in new[] { Path.Combine("conf", PasswdFile), PasswdFile })
+            {
+                try
+                {
+                    if (File.Exists(path)) { text = File.ReadAllText(path); break; }
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Warn, $"Could not read {path} for name spelling: {ex.Message}");
+                }
+            }
+        }
+        return ClaimedName.Resolve(typed, onlineAuthenticated, value, text);
     }
 
     /// <summary>Moves the latest <c>arenas/_archive/&lt;name&gt;[-n]/</c> back to <c>arenas/&lt;name&gt;/</c>.</summary>

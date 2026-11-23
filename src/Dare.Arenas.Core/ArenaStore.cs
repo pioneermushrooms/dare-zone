@@ -7,7 +7,9 @@ namespace Dare.Arenas.Core;
 /// SQLite-backed store for arena requests, ownership and lifecycle. Arena names are expected
 /// to be already normalized (lower-case) by the caller; player names keep their original
 /// casing and compare case-insensitively. Every mutation runs in one BEGIN IMMEDIATE
-/// transaction and appends exactly one event (ArchiveIdle: one per archived arena).
+/// transaction and appends exactly one event (ArchiveIdle: one per archived arena;
+/// ArchiveMoveDone is bookkeeping and appends none). Archiving records a pending folder move
+/// (table pending_archive_moves) that the module carries out at its next start.
 /// </summary>
 public sealed class ArenaStore : IDisposable
 {
@@ -62,6 +64,10 @@ public sealed class ArenaStore : IDisposable
               kind TEXT NOT NULL,
               detail TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS pending_archive_moves (
+              arena TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+              at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS ix_requests_player ON requests(player, status);
             CREATE INDEX IF NOT EXISTS ix_requests_arena ON requests(arena, status);
             CREATE INDEX IF NOT EXISTS ix_events_arena ON events(arena, id);
@@ -94,16 +100,29 @@ public sealed class ArenaStore : IDisposable
         return Ok($"Request for '{arena}' submitted.");
     });
 
-    public Result Approve(string arena, string staff, Func<string, bool> folderExists) => Tx(() =>
+    public Result Approve(string arena, string staff, Func<string, bool> folderExists) =>
+        Approve(arena, staff, folderExists, () => null);
+
+    /// <summary>
+    /// Approves the pending request for <paramref name="arena"/>. <paramref name="createFolder"/> runs
+    /// inside the transaction after every check passed; when it returns an error the approval is
+    /// rolled back (the request stays pending), so there is never an Active arena without a folder.
+    /// </summary>
+    public Result Approve(string arena, string staff, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
     {
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
+        if (Same(req.Player, staff))
+            return Fail("You can't decide your own request; another staff member must.");
         if (folderExists(arena))
             return Fail($"A folder named '{arena}' already exists on the server; cannot approve.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", req.Player)) > 0)
             return Fail($"{req.Player} already owns an arena.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
+        var folderError = createFolder();
+        if (folderError is not null)
+            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was approved and the request is still pending.");
         var now = Now();
         Run("UPDATE requests SET status='Approved', decided_by=$s WHERE id=$id", ("$s", staff), ("$id", req.Id));
         Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
@@ -117,6 +136,8 @@ public sealed class ArenaStore : IDisposable
         if (string.IsNullOrWhiteSpace(reason)) return Fail("A reason is required to decline a request.");
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
+        if (Same(req.Player, staff))
+            return Fail("You can't decide your own request; another staff member must.");
         var now = Now();
         Run("UPDATE requests SET status='Declined', decided_by=$s, reason=$r WHERE id=$id",
             ("$s", staff), ("$r", reason), ("$id", req.Id));
@@ -160,11 +181,22 @@ public sealed class ArenaStore : IDisposable
         return Ok($"Suspended '{arena}'.");
     });
 
-    public Result Revive(string arena, string staff) => Tx(() =>
+    public Result Revive(string arena, string staff) => Revive(arena, staff, () => null);
+
+    /// <summary>
+    /// Suspended or Archived → Active. <paramref name="ensureFolder"/> runs inside the transaction
+    /// and must make sure <c>arenas/&lt;arena&gt;/</c> exists (restoring it from the archive if needed);
+    /// when it returns an error nothing changes. A pending archive folder move is cancelled.
+    /// </summary>
+    public Result Revive(string arena, string staff, Func<string?> ensureFolder) => Tx(() =>
     {
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (a.Status == ArenaStatus.Active) return Fail($"Arena '{arena}' is already active.");
+        var folderError = ensureFolder();
+        if (folderError is not null)
+            return Fail($"Can't revive '{arena}': {folderError}");
+        Run("DELETE FROM pending_archive_moves WHERE arena=$a", ("$a", arena));
         var now = Now();
         Run("UPDATE arenas SET status='Active', last_entered=$t WHERE name=$a", ("$t", now), ("$a", arena));
         AddEvent(now, arena, staff, "revive", $"was {a.Status}");
@@ -190,12 +222,21 @@ public sealed class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (a.Status == ArenaStatus.Archived) return Fail($"Arena '{arena}' is already archived.");
+        var now = Now();
         Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", arena));
-        AddEvent(Now(), arena, staff, "archive", $"by staff (was {a.Status})");
+        AddPendingMove(arena, now);
+        AddEvent(now, arena, staff, "archive", $"by staff (was {a.Status})");
         return Ok($"Archived '{arena}'.");
     });
 
-    public IReadOnlyList<string> ArchiveIdle(TimeSpan idle)
+    public IReadOnlyList<string> ArchiveIdle(TimeSpan idle) => ArchiveIdle(idle, _ => false);
+
+    /// <summary>
+    /// Archives every Active arena nobody entered for <paramref name="idle"/>, except those
+    /// <paramref name="skip"/> returns true for (e.g. arenas with players in them right now).
+    /// Each gets a pending folder move. Returns the archived names.
+    /// </summary>
+    public IReadOnlyList<string> ArchiveIdle(TimeSpan idle, Func<string, bool> skip)
     {
         var archived = new List<string>();
         Tx(() =>
@@ -210,7 +251,9 @@ public sealed class ArenaStore : IDisposable
                 while (r.Read()) names.Add(r.GetString(0));
             foreach (var n in names)
             {
+                if (skip(n)) continue;
                 Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", n));
+                AddPendingMove(n, now);
                 AddEvent(now, n, "system", "archive", $"idle more than {(int)idle.TotalDays} days");
                 archived.Add(n);
             }
@@ -222,6 +265,13 @@ public sealed class ArenaStore : IDisposable
     public void MarkEntered(string arena) => Tx(() =>
     {
         Run("UPDATE arenas SET last_entered=$t WHERE name=$a AND status='Active'", ("$t", Now()), ("$a", arena));
+        return Ok("");
+    });
+
+    /// <summary>Forgets a pending archive folder move (done, or no longer needed).</summary>
+    public void ArchiveMoveDone(string arena) => Tx(() =>
+    {
+        Run("DELETE FROM pending_archive_moves WHERE arena=$a", ("$a", arena));
         return Ok("");
     });
 
@@ -312,6 +362,33 @@ public sealed class ArenaStore : IDisposable
         }
     }
 
+    /// <summary>Arenas archived since the last start whose folder still has to move to the archive, by name.</summary>
+    public IReadOnlyList<string> PendingArchiveMoves()
+    {
+        lock (_gate)
+        {
+            using var cmd = Cmd("SELECT arena FROM pending_archive_moves ORDER BY arena");
+            using var r = cmd.ExecuteReader();
+            var list = new List<string>();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+    }
+
+    /// <summary>Pending requests, the longest-waiting first (at most <paramref name="max"/>).</summary>
+    public IReadOnlyList<ArenaRequest> PendingRequestsOldestFirst(int max)
+    {
+        lock (_gate)
+        {
+            using var cmd = Cmd("SELECT id, arena, player, pitch, status, decided_by, reason, at FROM requests "
+                                + "WHERE status='Pending' ORDER BY id ASC LIMIT $m", ("$m", max));
+            using var r = cmd.ExecuteReader();
+            var list = new List<ArenaRequest>();
+            while (r.Read()) list.Add(ReadRequest(r));
+            return list;
+        }
+    }
+
     public IReadOnlyList<ArenaEvent> Events(string? arena, int max)
     {
         lock (_gate)
@@ -391,6 +468,9 @@ public sealed class ArenaStore : IDisposable
             while (r.Read()) comods.Add(r.GetString(0));
         return new OwnedArena(name, owner, Enum.Parse<ArenaStatus>(status), Parse(created), Parse(last), comods);
     }
+
+    private void AddPendingMove(string arena, string at) =>
+        Run("INSERT OR REPLACE INTO pending_archive_moves(arena, at) VALUES($a,$at)", ("$a", arena), ("$at", at));
 
     private void AddEvent(string at, string arena, string actor, string kind, string detail) =>
         Run("INSERT INTO events(at, arena, actor, kind, detail) VALUES($at,$a,$ac,$k,$d)",

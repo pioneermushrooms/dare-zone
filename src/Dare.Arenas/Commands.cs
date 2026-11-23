@@ -30,6 +30,7 @@ public sealed partial class ArenaOwnership
         Add("comod", Command_comod);
         Add("arenamap", Command_arenamap); // not "putmap": the core AdminCommand owns ?putmap (see Uploads.cs)
         Add("putlvz", Command_putlvz);
+        Add("rmlvz", Command_rmlvz);
         Add("weblogin", Command_weblogin);
 
         // staff (mod and up)
@@ -128,16 +129,16 @@ public sealed partial class ArenaOwnership
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = null,
-        Description = "Lists pending arena requests and the most recent decisions.")]
+        Description = "Lists pending arena requests (longest-waiting first) and the most recent decisions.")]
     private void Command_arenarequests(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        var pending = Store.Requests(pendingOnly: true, PendingListMax);
+        var pending = Store.PendingRequestsOldestFirst(PendingListMax);
         if (pending.Count == 0)
             Reply(player, "No pending arena requests.");
         else
         {
-            Reply(player, $"Pending arena requests ({pending.Count}):");
-            foreach (var r in pending.Reverse())
+            Reply(player, $"Pending arena requests, longest-waiting first ({pending.Count}):");
+            foreach (var r in pending)
                 Reply(player, $"  {r.Arena} - {r.Player} ({When(r.At)}): {r.Pitch}");
         }
 
@@ -226,7 +227,8 @@ public sealed partial class ArenaOwnership
         }
 
         var name = raw.ToLowerInvariant();
-        var result = Store.Approve(name, player.Name, ArenaFolderExists);
+        // The folder is created inside the approval: if that fails, nothing is approved.
+        var result = Store.Approve(name, player.Name, ArenaFolderExists, () => TryCreateArenaFolder(name));
         if (!result.Ok)
         {
             Reply(player, result.Message);
@@ -234,27 +236,57 @@ public sealed partial class ArenaOwnership
         }
 
         Log(LogLevel.Info, $"{player.Name} approved arena '{name}'.");
-        try
+        Reply(player, $"{result.Message} Folder arenas/{name}/ created from the template.");
+
+        // Someone may already be in an arena of that name; it opened a shared fallback config
+        // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players
+        // re-enter (which also grants the owner). If it can't be recycled, staff must do it.
+        var (recycled, notRecycled) = RecycleRunning(name);
+        if (recycled.Count > 0)
+            Reply(player, $"Recycled {string.Join(", ", recycled)} so it loads its new settings.");
+        if (notRecycled.Count > 0)
         {
-            CreateArenaFolder(name);
-            Log(LogLevel.Info, $"Created folder {Path.Combine(ArenasDir, name)} from template.");
-            Reply(player, $"{result.Message} Folder arenas/{name}/ created from the template.");
-        }
-        catch (Exception ex)
-        {
-            Log(LogLevel.Error, $"Arena '{name}' is APPROVED in the store but creating its folder failed: {ex.Message}");
-            Reply(player, $"{result.Message} BUT creating arenas/{name}/ failed: {ex.Message}. "
-                          + "The approval is recorded; create the folder by hand (copy arenas/_template).");
+            Reply(player, $"Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings; the owner's powers start on their next entry.");
+            Log(LogLevel.Warn, $"Arena '{name}' approved while {string.Join(", ", notRecycled)} was running and could not be recycled.");
         }
 
         var owner = Store.Get(name)?.Owner;
         var requester = owner is null ? null : _playerData.FindPlayer(owner);
         if (requester is not null)
-        {
             Reply(requester, $"Your arena request '{name}' was approved by {player.Name}! Type ?go {name} to enter it, then ?myarena.");
-            if (requester.Arena is not null && string.Equals(requester.Arena.BaseName, name, StringComparison.OrdinalIgnoreCase))
-                ApplyGrant(requester, requester.Arena);
+    }
+
+    /// <summary>Recycles every running arena whose base name is <paramref name="name"/>.</summary>
+    private (List<string> Recycled, List<string> NotRecycled) RecycleRunning(string name)
+    {
+        var running = new List<Arena>();
+        _arenaManager.Lock();
+        try
+        {
+            foreach (var a in _arenaManager.Arenas)
+                if (string.Equals(a.BaseName, name, StringComparison.OrdinalIgnoreCase))
+                    running.Add(a);
         }
+        finally
+        {
+            _arenaManager.Unlock();
+        }
+
+        var recycled = new List<string>();
+        var notRecycled = new List<string>();
+        foreach (var a in running)
+        {
+            if (_arenaManager.RecycleArena(a))
+            {
+                recycled.Add(a.Name);
+                Log(LogLevel.Info, $"Recycled [{a.Name}] after approving '{name}' so it loads arenas/{name}/{ArenaConfigFile.FileName}.");
+            }
+            else
+            {
+                notRecycled.Add(a.Name);
+            }
+        }
+        return (recycled, notRecycled);
     }
 
     [CommandHelp(
@@ -348,7 +380,7 @@ public sealed partial class ArenaOwnership
             """)]
     private void Command_arenaset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        if (!TryArenaRole(player, ownerOnly: false, out var arena, out var arenaName, out _)) return;
+        if (!TryArenaRole(player, ownerOnly: false, out _, out var arenaName, out _)) return;
 
         var (setting, value) = SplitFirst(parameters);
         if (setting.Length == 0 || value.Length == 0)
@@ -356,13 +388,9 @@ public sealed partial class ArenaOwnership
             Reply(player, "Usage: ?arenaset <Section:Key> <value>   e.g. ?arenaset Warbird:BulletSpeed 3000");
             return;
         }
-        if (arena.Cfg is null)
-        {
-            Reply(player, "This arena's settings are not loaded; try again in a moment.");
-            return;
-        }
 
-        Reply(player, ApplySetting(arena.Cfg, arenaName, player.Name!, setting, value).Message);
+        var actor = player.Name!;
+        WithOwnConfig(player, arenaName, ownerOnly: false, cfg => ApplySetting(cfg, arenaName, actor, setting, value));
     }
 
     [CommandHelp(
@@ -371,7 +399,7 @@ public sealed partial class ArenaOwnership
         Description = "Shows the current value of one of your arena's settings (owner or co-mod, in your arena).")]
     private void Command_arenaget(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        if (!TryArenaRole(player, ownerOnly: false, out var arena, out _, out _)) return;
+        if (!TryArenaRole(player, ownerOnly: false, out _, out var arenaName, out _)) return;
 
         var (setting, _) = SplitFirst(parameters);
         if (setting.Length == 0)
@@ -379,13 +407,9 @@ public sealed partial class ArenaOwnership
             Reply(player, "Usage: ?arenaget <Section:Key>   e.g. ?arenaget Warbird:BulletSpeed");
             return;
         }
-        if (arena.Cfg is null)
-        {
-            Reply(player, "This arena's settings are not loaded; try again in a moment.");
-            return;
-        }
 
-        Reply(player, ReadSetting(arena.Cfg, setting).Message);
+        // the arena's own file, as the web page shows it (and as ?arenaset writes it)
+        WithOwnConfig(player, arenaName, ownerOnly: false, cfg => ReadSetting(cfg, setting));
     }
 
     [CommandHelp(
@@ -420,7 +444,21 @@ public sealed partial class ArenaOwnership
         }
 
         var online = _playerData.FindPlayer(name);
-        if (online?.Name is not null) name = online.Name; // canonical spelling
+        if (action == "add")
+        {
+            // Only a claimed name: otherwise whoever first types ?passwd on it would get the role.
+            var claimed = ResolveClaimedName(name, online);
+            if (claimed is null)
+            {
+                Reply(player, $"{name} has not claimed that name with a password (?passwd), so it can't be a co-mod yet. They must set a password and log in with it first.");
+                return;
+            }
+            name = claimed;
+        }
+        else if (online?.Name is not null)
+        {
+            name = online.Name; // canonical spelling
+        }
 
         var result = action == "add"
             ? Store.AddCoMod(arenaName, player.Name!, name)
@@ -461,11 +499,34 @@ public sealed partial class ArenaOwnership
         Args = "<client file.lvz>",
         Description = """
             Uploads a graphics (.lvz) file from your Continuum folder to your arena (owner only, in
-            your arena; 5 MB max, up to 10 files). It is added to General:LevelFiles. Other
-            clients: use the web page (?weblogin).
+            your arena; 5 MB max, up to 10 files). It is added to General:LevelFiles; a file with
+            the same name replaces the old one. Remove one with ?rmlvz. Other clients: use the
+            web page (?weblogin).
             """)]
     private void Command_putlvz(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target) =>
         StartUpload(player, UploadKind.Lvz, parameters);
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<file.lvz>",
+        Description = """
+            Removes a graphics (.lvz) file from your arena (owner only, in your arena): it is taken
+            out of General:LevelFiles and deleted. To replace a file, upload one with the same name.
+            """)]
+    private void Command_rmlvz(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (!TryArenaRole(player, ownerOnly: true, out _, out var arenaName, out _)) return;
+
+        var fileName = parameters.Trim().ToString();
+        if (fileName.Length == 0)
+        {
+            Reply(player, "Usage: ?rmlvz <file.lvz>   (see ?arenaget General:LevelFiles)");
+            return;
+        }
+
+        var actor = player.Name!;
+        WithOwnConfig(player, arenaName, ownerOnly: true, cfg => RemoveLvz(cfg, arenaName, actor, fileName));
+    }
 
     private void StartUpload(Player player, UploadKind kind, ReadOnlySpan<char> parameters)
     {
