@@ -326,10 +326,11 @@ internal sealed class WebServer : IDisposable
             }
             catch (TimeoutException)
             {
-                // The body did not arrive in time: drop the connection (that also ends the pending read).
-                _m.Log(LogLevel.Info, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath}: request body too slow; connection dropped.");
-                try { ctx.Response.Abort(); } catch { }
-                return;
+                // The body did not arrive in time: answer 408 and close the connection (closing it
+                // also ends the abandoned read).
+                _m.Log(LogLevel.Info, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath}: request body too slow; connection closed.");
+                try { ctx.Response.KeepAlive = false; } catch { }
+                reply = JsonReply(408, new { ok = false, message = "The request took too long to arrive." });
             }
             catch (Exception ex)
             {

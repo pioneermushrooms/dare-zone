@@ -9,6 +9,9 @@ namespace Dare.Arenas;
 public sealed partial class ArenaOwnership
 {
     internal const int MaxLevelFiles = 10;
+
+    // The server reads the graphics list and files when an arena starts (MapData/MapNewsDownload).
+    private const string GraphicsTakeEffect = "It takes effect after ?recyclearena or when the arena next starts.";
     private const long MaxTransferBytes = 5 * 1024 * 1024; // the larger of the two upload limits
 
     /// <summary>
@@ -73,13 +76,12 @@ public sealed partial class ArenaOwnership
         if (existingEntry is not null)
         {
             Log(LogLevel.Info, $"{actor} replaced graphics '{storedName}' ({content.Length} bytes) in [{arenaName}]; LevelFiles unchanged.");
-            return new Result(true, $"Graphics {storedName} replaced ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files. Players get it on their next entry.");
+            return new Result(true, $"Graphics {storedName} replaced ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files. {GraphicsTakeEffect}");
         }
 
         WriteArenaSetting(cfg, arenaName, "General", "LevelFiles", updatedLevelFiles, $"{actor} uploaded {storedName} with Dare.Arenas");
         Log(LogLevel.Info, $"{actor} uploaded graphics '{storedName}' ({content.Length} bytes) to [{arenaName}]; LevelFiles = {updatedLevelFiles}.");
-        return new Result(true, $"Graphics {storedName} saved ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files."
-                                + LiveNote(arenaName, ("General", "LevelFiles", updatedLevelFiles)));
+        return new Result(true, $"Graphics {storedName} saved ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files. {GraphicsTakeEffect}");
     }
 
     /// <summary>
@@ -109,8 +111,7 @@ public sealed partial class ArenaOwnership
                 Log(LogLevel.Warn, $"{actor}: could not delete '{path}' after removing it from LevelFiles: {ex.Message}");
             }
         }
-        return new Result(true, $"Graphics {removed} removed; {LevelFiles.Parse(updated).Count}/{MaxLevelFiles} files."
-                                + LiveNote(arenaName, ("General", "LevelFiles", updated)));
+        return new Result(true, $"Graphics {removed} removed; {LevelFiles.Parse(updated).Count}/{MaxLevelFiles} files. {GraphicsTakeEffect}");
     }
 
     /// <summary>

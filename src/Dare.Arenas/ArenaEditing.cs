@@ -120,16 +120,14 @@ public sealed partial class ArenaOwnership
 
     /// <summary>
     /// After an edit of the arena's own file: "" when the running arena (if any) already sees the
-    /// written values, else a note that it runs on shared settings until <c>?recyclearena</c>.
+    /// written value, else a note that it runs on shared settings until <c>?recyclearena</c>.
     /// </summary>
-    internal string LiveNote(string arenaName, params (string Section, string Key, string Value)[] written)
+    private string LiveNote(string arenaName, string section, string key, string value)
     {
         var running = _arenaManager.FindArena(arenaName);
-        if (running?.Cfg is null) return "";
-        foreach (var (section, key, value) in written)
-            if (!ArenaConfigFile.IsLive(_configManager.GetStr(running.Cfg, section, key), value))
-                return " The running arena isn't using its own settings file yet, so this takes effect after ?recyclearena.";
-        return "";
+        if (running?.Cfg is null || ArenaConfigFile.IsLive(_configManager.GetStr(running.Cfg, section, key), value))
+            return "";
+        return " The running arena isn't using its own settings file yet, so this takes effect after ?recyclearena.";
     }
 
     /// <summary>
@@ -159,7 +157,7 @@ public sealed partial class ArenaOwnership
         var old = _configManager.GetStr(cfg, section, key);
         WriteArenaSetting(cfg, arenaName, section, key, value, $"{actor} with Dare.Arenas");
         Log(LogLevel.Info, $"{actor} set {section}:{key} in [{arenaName}]: '{old}' -> '{value}'.");
-        return new Result(true, $"{section}:{key}: {old ?? "(unset)"} -> {value}{LiveNote(arenaName, (section, key, value))}");
+        return new Result(true, $"{section}:{key}: {old ?? "(unset)"} -> {value}{LiveNote(arenaName, section, key, value)}");
     }
 
     /// <summary>Reads one setting an owner may see (the editable ones plus General:Map/LevelFiles).</summary>
