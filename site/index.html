@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubSpace Foundation</title>
+<meta name="description" content="An open home for SubSpace: every zone, every client, and tools for anyone to build their own arena.">
+<style>
+  :root { --bg:#05070d; --panel:#131922; --line:#2a3442; --text:#c6d6e6; --dim:#7d8ea3; --accent:#22d3ee; --hot:#ff8a1f; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
+         background: radial-gradient(1200px 600px at 50% -10%, #0e2233 0%, transparent 60%), var(--bg); }
+  .stars { position:fixed; inset:0; pointer-events:none; background-image:
+    radial-gradient(1px 1px at 12% 22%, #fff8 50%, transparent 51%), radial-gradient(1px 1px at 72% 12%, #fff6 50%, transparent 51%),
+    radial-gradient(1px 1px at 33% 78%, #fff7 50%, transparent 51%), radial-gradient(1px 1px at 88% 64%, #fff5 50%, transparent 51%),
+    radial-gradient(1px 1px at 52% 42%, #fff6 50%, transparent 51%), radial-gradient(1px 1px at 6% 90%, #fff5 50%, transparent 51%); }
+  main { position:relative; width:100%; max-width:720px; background:linear-gradient(#161d27, #0f141b); border:1px solid var(--line);
+         box-shadow: inset 0 1px 0 #3a4552, 0 0 0 1px #0a0c10, 0 30px 80px #000a; border-radius:6px; padding:32px 28px; }
+  main::before { content:""; position:absolute; left:16px; right:16px; top:8px; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:.6; }
+  h1 { margin:0; font-size:clamp(28px, 7vw, 46px); letter-spacing:4px; color:var(--hot); text-shadow:0 0 18px #ff8a1f66; }
+  .sub { color:var(--accent); letter-spacing:3px; font-size:13px; margin:4px 0 24px; }
+  p { margin:0 0 16px; }
+  ul { margin:0 0 20px; padding-left:20px; }
+  li { margin:4px 0; }
+  .zone { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; background:#0a0e14; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin:20px 0; }
+  .zone b { color:#fff; }
+  code { color:var(--hot); }
+  footer { margin-top:24px; color:var(--dim); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<main>
+  <h1>SUBSPACE FOUNDATION</h1>
+  <div class="sub">EVERY ZONE · EVERY CLIENT · BUILT BY PLAYERS</div>
+  <p>SubSpace has always belonged to the people who play it: your own zone, your own arenas, your own settings, maps and skins.</p>
+  <p>We're building an open home for that:</p>
+  <ul>
+    <li>Every zone listed side by side, playable from any client</li>
+    <li>Request your own arena; run it with your own settings, map and graphics</li>
+    <li>Browser tools to edit ships, maps and tiles, and publish straight to your arena</li>
+    <li>Old arenas preserved, not deleted</li>
+  </ul>
+  <div class="zone">
+    <span>Play now: zone <b>Foundation</b></span>
+    <span>Continuum or oss-client · <code>5.161.238.245:5000</code></span>
+  </div>
+  <footer>Under construction.</footer>
+</main>
+</body>
+</html>

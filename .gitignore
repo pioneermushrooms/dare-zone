@@ -1,0 +1,6 @@
+spikes/
+.superpowers/
+bin/
+obj/
+*.user
+.DS_Store
