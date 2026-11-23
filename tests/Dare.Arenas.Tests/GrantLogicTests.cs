@@ -97,4 +97,37 @@ public sealed class GrantLogicTests : IDisposable
         Assert.Equal("arenamod", GrantLogic.GroupToApply("comod", "arenaowner"));
         Assert.Equal("arenaowner", GrantLogic.GroupToApply("owner", "arenamod"));
     }
+
+    [Theory]
+    [InlineData("arenamod")]
+    [InlineData("arenaowner")]
+    [InlineData("ArenaMod")]
+    public void module_group_without_a_role_is_revoked(string current)
+    {
+        Assert.True(GrantLogic.ShouldRevoke(null, current));
+    }
+
+    [Theory]
+    [InlineData(null, "default")]
+    [InlineData(null, "mod")]
+    [InlineData(null, "sysop")]
+    [InlineData(null, null)]
+    [InlineData("comod", "arenamod")]
+    [InlineData("owner", "arenaowner")]
+    [InlineData("comod", "arenaowner")]
+    public void other_groups_or_live_roles_are_not_revoked(string? role, string? current)
+    {
+        Assert.False(GrantLogic.ShouldRevoke(role, current));
+    }
+
+    [Fact]
+    public void removed_comod_is_revoked_on_next_entry()
+    {
+        Assert.True(_store.Request("Asker", "testland", "pitch").Ok);
+        Assert.True(_store.Approve("testland", "Tester", _ => false).Ok);
+        Assert.True(_store.AddCoMod("testland", "Asker", "Pal").Ok);
+        Assert.False(GrantLogic.ShouldRevoke(_store.RoleIn("testland", "Pal"), "arenamod"));
+        Assert.True(_store.RemoveCoMod("testland", "Asker", "Pal").Ok);
+        Assert.True(GrantLogic.ShouldRevoke(_store.RoleIn("testland", "Pal"), "arenamod"));
+    }
 }

@@ -6,7 +6,7 @@ using SS.Core.ComponentInterfaces;
 namespace Dare.Arenas;
 
 // In-game commands. Each command needs the capability cmd_<name> in the player's group
-// (see deploy/). Grouped by audience; later tasks add owner and staff-override sections.
+// (see deploy/). Grouped by audience; Task 7 adds the staff-override section.
 public sealed partial class ArenaOwnership
 {
     internal const int MaxPitchLength = 120;
@@ -23,6 +23,14 @@ public sealed partial class ArenaOwnership
         Add("arenarequests", Command_arenarequests);
         Add("arenalog", Command_arenalog);
         Add("myarena", Command_myarena);
+
+        // arena owners and co-mods (in their own arena; caps via arenaowner/arenamod)
+        Add("arenaset", Command_arenaset);
+        Add("arenaget", Command_arenaget);
+        Add("comod", Command_comod);
+        Add("arenamap", Command_arenamap); // not "putmap": the core AdminCommand owns ?putmap (see Uploads.cs)
+        Add("putlvz", Command_putlvz);
+        Add("weblogin", Command_weblogin);
 
         // staff (mod and up)
         Add("approvearena", Command_approvearena);
@@ -263,4 +271,248 @@ public sealed partial class ArenaOwnership
         if (requester is not null)
             Reply(requester, $"Your arena request '{name}' was declined by {player.Name}: {reason}");
     }
+
+    // ---- arena owners and co-mods -----------------------------------------------------
+
+    internal const string WebLoginUrl = "https://subspacefoundation.com/arena/login?t=";
+    private static readonly TimeSpan WebLoginInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>Single-use web sign-in tokens; the web server (Task 7) redeems them.</summary>
+    internal readonly WebAuth WebAuth = new(() => DateTimeOffset.UtcNow);
+
+    // ?weblogin throttle: last link time per player (lowercased name); one link per 30 s.
+    private readonly Dictionary<string, DateTimeOffset> _lastWebLogin = new();
+
+    /// <summary>
+    /// The gate for every owner/co-mod command: an authenticated name, standing in a player-owned
+    /// arena where the store gives this player a role (owner only, if <paramref name="ownerOnly"/>).
+    /// Replies with the reason on failure. <paramref name="arenaName"/> is the store's name.
+    /// </summary>
+    private bool TryArenaRole(Player player, bool ownerOnly, out Arena arena, out string arenaName, out string role)
+    {
+        arena = null!;
+        arenaName = "";
+        role = "";
+        if (player.Name is null) return false;
+
+        if (!player.Flags.Authenticated)
+        {
+            Reply(player, "Your name is not authenticated, so arena owner commands are not available. Log in with your password.");
+            return false;
+        }
+
+        var current = player.Arena;
+        var owned = current is null ? null : Store.Get(current.BaseName.ToLowerInvariant());
+        if (current is null || owned is null)
+        {
+            Reply(player, "Use this in your own arena (see ?myarena).");
+            return false;
+        }
+
+        var r = Store.RoleIn(owned.Name, player.Name);
+        if (r is null || (ownerOnly && r != "owner"))
+        {
+            Reply(player, ownerOnly ? "Only this arena's owner can do that." : "Only this arena's owner or co-mods can do that.");
+            return false;
+        }
+
+        arena = current;
+        arenaName = owned.Name;
+        role = r;
+        return true;
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<Section:Key> <value>",
+        Description = """
+            Changes one setting of your arena (owner or co-mod, in your arena), e.g.
+            ?arenaset Warbird:BulletSpeed 3000. Only arena settings the server documents can be
+            changed; Modules, General:Map and General:LevelFiles cannot. At most 20 changes per
+            minute per arena.
+            """)]
+    private void Command_arenaset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (!TryArenaRole(player, ownerOnly: false, out var arena, out var arenaName, out _)) return;
+
+        var (setting, value) = SplitFirst(parameters);
+        if (setting.Length == 0 || value.Length == 0)
+        {
+            Reply(player, "Usage: ?arenaset <Section:Key> <value>   e.g. ?arenaset Warbird:BulletSpeed 3000");
+            return;
+        }
+        if (arena.Cfg is null)
+        {
+            Reply(player, "This arena's settings are not loaded; try again in a moment.");
+            return;
+        }
+
+        Reply(player, ApplySetting(arena.Cfg, arenaName, player.Name!, setting, value).Message);
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<Section:Key>",
+        Description = "Shows the current value of one of your arena's settings (owner or co-mod, in your arena).")]
+    private void Command_arenaget(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (!TryArenaRole(player, ownerOnly: false, out var arena, out _, out _)) return;
+
+        var (setting, _) = SplitFirst(parameters);
+        if (setting.Length == 0)
+        {
+            Reply(player, "Usage: ?arenaget <Section:Key>   e.g. ?arenaget Warbird:BulletSpeed");
+            return;
+        }
+        if (arena.Cfg is null)
+        {
+            Reply(player, "This arena's settings are not loaded; try again in a moment.");
+            return;
+        }
+
+        Reply(player, ReadSetting(arena.Cfg, setting).Message);
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "[add|remove <player>]",
+        Description = """
+            Lists, adds or removes co-mods of your arena (owner only, in your arena; up to 5).
+            Co-mods get moderator powers in this arena only. Changes are public (?arenalog).
+            """)]
+    private void Command_comod(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (!TryArenaRole(player, ownerOnly: true, out var arena, out var arenaName, out _)) return;
+
+        var (action, name) = SplitFirst(parameters);
+        action = action.ToLowerInvariant();
+        if (action.Length == 0)
+        {
+            var coMods = Store.Get(arenaName)?.CoMods ?? Array.Empty<string>();
+            Reply(player, $"Co-mods of {arenaName} ({coMods.Count}/{ArenaStore.MaxCoMods}): {(coMods.Count == 0 ? "none" : string.Join(", ", coMods))}");
+            Reply(player, "Usage: ?comod add <player> / ?comod remove <player>");
+            return;
+        }
+        if ((action != "add" && action != "remove") || name.Length == 0)
+        {
+            Reply(player, "Usage: ?comod add <player> / ?comod remove <player>");
+            return;
+        }
+        if (name.Length > 24 || name.Any(char.IsControl))
+        {
+            Reply(player, "That is not a valid player name.");
+            return;
+        }
+
+        var online = _playerData.FindPlayer(name);
+        if (online?.Name is not null) name = online.Name; // canonical spelling
+
+        var result = action == "add"
+            ? Store.AddCoMod(arenaName, player.Name!, name)
+            : Store.RemoveCoMod(arenaName, player.Name!, name);
+        Reply(player, result.Message);
+        if (!result.Ok) return;
+
+        Log(LogLevel.Info, $"{player.Name} {(action == "add" ? "added" : "removed")} co-mod {name} in [{arenaName}].");
+        if (online is null) return;
+
+        var inArena = online.Arena is not null && string.Equals(online.Arena.BaseName, arenaName, StringComparison.OrdinalIgnoreCase);
+        if (action == "add")
+        {
+            Reply(online, $"{player.Name} made you a co-mod of arena '{arenaName}'.");
+            if (inArena) ApplyGrant(online, online.Arena!);
+        }
+        else
+        {
+            Reply(online, $"{player.Name} removed you as a co-mod of arena '{arenaName}'.");
+            if (inArena && string.Equals(_groupManager.GetGroup(online), GrantLogic.CoModGroup, StringComparison.OrdinalIgnoreCase))
+                Revoke(online, online.Arena!, $"co-mod removed by {player.Name}");
+        }
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<client file.lvl>",
+        Description = """
+            Uploads a map from your Continuum folder to your arena (owner only, in your arena).
+            It is stored as <arena>.lvl (2 MB max) and becomes General:Map. Other clients: use
+            the web page (?weblogin).
+            """)]
+    private void Command_arenamap(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target) =>
+        StartUpload(player, UploadKind.Map, parameters);
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<client file.lvz>",
+        Description = """
+            Uploads a graphics (.lvz) file from your Continuum folder to your arena (owner only, in
+            your arena; 5 MB max, up to 10 files). It is added to General:LevelFiles. Other
+            clients: use the web page (?weblogin).
+            """)]
+    private void Command_putlvz(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target) =>
+        StartUpload(player, UploadKind.Lvz, parameters);
+
+    private void StartUpload(Player player, UploadKind kind, ReadOnlySpan<char> parameters)
+    {
+        if (!TryArenaRole(player, ownerOnly: true, out _, out var arenaName, out _)) return;
+
+        var usage = kind == UploadKind.Map ? "Usage: ?arenamap <file.lvl>" : "Usage: ?putlvz <file.lvz>";
+        if (!player.IsStandard)
+        {
+            Reply(player, "Your client can't send files; use the web page instead (?weblogin).");
+            return;
+        }
+
+        var clientPath = parameters.Trim().ToString();
+        if (clientPath.Length == 0)
+        {
+            Reply(player, usage);
+            return;
+        }
+
+        // The client path may include the client's own folders; the server only uses the last part.
+        var cut = clientPath.LastIndexOfAny(new[] { '/', '\\' });
+        var fileName = clientPath[(cut + 1)..];
+        var ext = kind == UploadKind.Map ? ".lvl" : ".lvz";
+        if (!fileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+        {
+            Reply(player, $"{usage}  (the file must end in {ext})");
+            return;
+        }
+        if (kind == UploadKind.Lvz && !LevelFiles.IsSafeFileName(fileName))
+        {
+            Reply(player, $"Graphics file names may use only letters, digits, '.', '_' and '-' (up to {LevelFiles.MaxFileNameLength} characters).");
+            return;
+        }
+
+        Reply(player, $"Requesting {fileName} from your client...");
+        RequestUpload(player, arenaName, kind, clientPath, fileName);
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = null,
+        Description = "Sends you a one-time sign-in link for your arena's web page (owner or co-mod, in your arena). Valid 10 minutes, one use.")]
+    private void Command_weblogin(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (!TryArenaRole(player, ownerOnly: false, out _, out var arenaName, out _)) return;
+
+        var key = player.Name!.ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var stale in _lastWebLogin.Where(p => now - p.Value >= WebLoginInterval).Select(p => p.Key).ToList())
+            _lastWebLogin.Remove(stale);
+        if (_lastWebLogin.TryGetValue(key, out var last))
+        {
+            var wait = (int)Math.Ceiling((WebLoginInterval - (now - last)).TotalSeconds);
+            Reply(player, $"A sign-in link was just sent; wait {wait} s before asking for another.");
+            return;
+        }
+        _lastWebLogin[key] = now;
+
+        var token = WebAuth.IssueLoginToken(player.Name!);
+        _chat.SendMessage(player, $"Sign in to your arena's web page: {WebLoginUrl}{token}");
+        _chat.SendMessage(player, "The link is valid 10 minutes, one use. Don't share it.");
+        Log(LogLevel.Info, $"Issued a web sign-in link to {player.Name} ({arenaName}).");
+    }
 }
+

@@ -10,6 +10,8 @@ cmd_quickfix
 cmd_arenaset
 cmd_arenaget
 cmd_comod
-cmd_putmap
+; map upload is ?arenamap, NOT ?putmap: never grant cmd_putmap to owners. The core AdminCommand
+; module registers ?putmap too; it writes maps/uploads/ with no size limit and would run as well.
+cmd_arenamap
 cmd_putlvz
 cmd_weblogin

@@ -36,4 +36,17 @@ public static class GrantLogic
         if (target == CoModGroup && string.Equals(current, "mod", StringComparison.OrdinalIgnoreCase)) return null;
         return target;
     }
+
+    /// <summary>
+    /// True when a player holds one of this module's groups (<c>arenaowner</c>/<c>arenamod</c>) but no
+    /// longer has a role in the arena (co-mod removed, ownership transferred, arena suspended), so the
+    /// stale arena-scoped grant should be removed. Other groups are never touched.
+    /// </summary>
+    public static bool ShouldRevoke(string? role, string? currentGroup)
+    {
+        if (role is not null || currentGroup is null) return false;
+        return string.Equals(currentGroup, OwnerGroup, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(currentGroup, CoModGroup, StringComparison.OrdinalIgnoreCase);
+    }
 }
+

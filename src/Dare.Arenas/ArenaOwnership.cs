@@ -27,6 +27,7 @@ public sealed partial class ArenaOwnership : IModule
     private readonly IConfigHelp _configHelp;
     private readonly ILogManager _logManager;
     private readonly IMainloopTimer _mainloopTimer;
+    private readonly IFileTransfer _fileTransfer;
 
     private ArenaStore? _store;
 
@@ -40,7 +41,8 @@ public sealed partial class ArenaOwnership : IModule
         IConfigManager configManager,
         IConfigHelp configHelp,
         ILogManager logManager,
-        IMainloopTimer mainloopTimer)
+        IMainloopTimer mainloopTimer,
+        IFileTransfer fileTransfer)
     {
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -52,6 +54,7 @@ public sealed partial class ArenaOwnership : IModule
         _configHelp = configHelp ?? throw new ArgumentNullException(nameof(configHelp));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
     }
 
     private ArenaStore Store => _store ?? throw new InvalidOperationException("Dare.Arenas store is not open.");
@@ -114,6 +117,14 @@ public sealed partial class ArenaOwnership : IModule
         if (player.Name is null || !ReferenceEquals(player.Arena, arena))
             return;
 
+        // A module group with no role behind it (co-mod removed, transferred, suspended) is stale.
+        var currentGroup = _groupManager.GetGroup(player);
+        if (GrantLogic.ShouldRevoke(Store.RoleIn(arena.BaseName, player.Name), currentGroup))
+        {
+            Revoke(player, arena, $"no longer has a role (was '{currentGroup}')");
+            return;
+        }
+
         // Same rule as the server's CapabilityManager: name-based groups only for players who
         // proved the name (password/biller). Otherwise anyone could log in as the owner.
         if (!player.Flags.Authenticated)
@@ -132,6 +143,17 @@ public sealed partial class ArenaOwnership : IModule
         _groupManager.SetPermGroup(player, group, false, ModuleName);
         Log(LogLevel.Info, $"Granted '{group}' to {player.Name} in [{arena.BaseName}] (role {role}, was '{current}').");
         _chat.SendMessage(player, $"You are {(role == "owner" ? "the owner" : "a co-mod")} of this arena. Type ?myarena for details.");
+    }
+
+    /// <summary>
+    /// Sets the player back to <c>default</c> in this arena's staff.conf section. Deliberately not
+    /// <see cref="IGroupManager.RemoveGroup"/>: that writes <c>[(global)]</c> when the group came from
+    /// there, and this module never edits the global section.
+    /// </summary>
+    private void Revoke(Player player, Arena arena, string why)
+    {
+        _groupManager.SetPermGroup(player, "default", false, $"{ModuleName}: {why}");
+        Log(LogLevel.Info, $"Revoked arena group of {player.Name} in [{arena.BaseName}]: {why}.");
     }
 
     // ---- helpers ------------------------------------------------------------------
