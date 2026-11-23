@@ -19,7 +19,9 @@
 #   cat $B/conf/groupdef.conf > /opt/subspace/zone/conf/groupdef.conf
 #   cp -a $B/conf/groupdef.dir/. /opt/subspace/zone/conf/groupdef.dir/
 #   cat $B/conf/staff.conf > /opt/subspace/zone/conf/staff.conf
-#   cat $B/conf/passwd.conf > /opt/subspace/zone/conf/passwd.conf   # loses passwords set since
+#   passwd.conf: NEVER restore it wholesale - players claim their names there with ?passwd, so an
+#     old copy deletes every password set since. Copy back single lines from $B/conf/passwd.conf.
+#   data/dare-arenas.db: a consistent copy is in $B/data/ (restore only with subspace stopped).
 #   if [ -d $B/zone-bin-modules/Dare.Arenas ]; then          # previous plugin build, if any
 #     mv /opt/subspace/zone/bin/modules/Dare.Arenas $B/failed-Dare.Arenas
 #     cp -a $B/zone-bin-modules/Dare.Arenas /opt/subspace/zone/bin/modules/

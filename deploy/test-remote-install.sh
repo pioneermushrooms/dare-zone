@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test harness for deploy/remote-install.sh (runs on macOS/Linux, no root, no server): fake zone + stubbed systemctl/journalctl/caddy/ss/curl.
 #   deploy/test-remote-install.sh <scenario>
-# scenarios: redeploy-fail first-fail public-8088 rollback-fails caddy-fail err-trap players sysop-bad sysop-ok
+# scenarios: redeploy-fail first-fail public-8088 rollback-fails caddy-fail err-trap players sysop-bad sysop-ok store-backup store-backup-nocli
 # Needs a Release build in out/modules/Dare.Arenas (deploy.sh or dotnet build -c Release).
 set -uo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -104,5 +104,17 @@ case $SC in
     bash "$RI" "$S" --no-restart --sysop 'Dare Dev' 2>&1 | grep -E 'sysop|ERROR'; echo "exit ${PIPESTATUS[0]}"
     bash "$RI" "$S" --no-restart --sysop 'dare dev' 2>&1 | grep -E 'sysop|ERROR'
     sed -n '/^\[(global)\]/,/^\[/p' $H/zone/conf/staff.conf | grep -v '^;' ;;
+  store-backup|store-backup-nocli)
+    sqlite3 "$H/zone/data/dare-arenas.db" "CREATE TABLE arenas(name TEXT); INSERT INTO arenas VALUES('skyrace');"
+    if [ "$SC" = store-backup-nocli ]; then
+      # hide the sqlite3 CLI: a PATH without /usr/bin's sqlite3, but with python3 and core tools
+      mkdir -p "$H/nocli"; for t in /usr/bin/* /bin/* /usr/sbin/* /sbin/*; do [ "$(basename "$t")" = sqlite3 ] || ln -sf "$t" "$H/nocli/" 2>/dev/null; done
+      [ -x "$(command -v python3)" ] && ln -sf "$(command -v python3)" "$H/nocli/python3"
+      PATH="$H/stubs:$H/nocli" bash "$RI" "$S" --no-restart 2>&1 | grep -E 'store backup|ERROR|done'
+    else
+      bash "$RI" "$S" --no-restart 2>&1 | grep -E 'store backup|ERROR'
+    fi
+    echo "### backed-up rows: $(sqlite3 $H/root/backup-arena-ownership-*/data/dare-arenas.db 'SELECT name FROM arenas' 2>&1)"
+    printf '### restore text warns about passwd.conf: '; grep -c 'NEVER restore it wholesale' "$S/deploy/remote-install.sh" ;;
 esac
 echo "### staging folders left: $(ls $H/stage | tr '\n' ' ')"

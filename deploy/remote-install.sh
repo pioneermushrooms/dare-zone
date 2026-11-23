@@ -12,7 +12,8 @@
 #     SQLitePCLRaw files the plugin uses in bin/ (the plugin ships no copy); a --sysop name must be
 #     a plain player name; unless --no-restart, nobody may be online (override: --force)
 #  1. backs up every file it may change to /root/backup-arena-ownership-<utc timestamp>/
-#     (incl. the current bin/modules/Dare.Arenas, if any)
+#     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
+#     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
 #  2. copies site/*.html to /var/www/foundation
 #  3. adds deploy/Caddyfile.snippet to the subspacefoundation.com block of /etc/caddy/Caddyfile
 #     (once), validates and reloads Caddy; a config that does not validate is not installed
@@ -25,6 +26,8 @@
 #     back: re-deploy -> the previous bin/modules/Dare.Arenas from the backup; first install -> the
 #     module line is taken out of Modules.config; then restarts and checks the zone is healthy.
 #  Any error after step 4 starts prints the backup folder and the restore commands.
+#  NEVER restore passwd.conf wholesale: players claim their names there with ?passwd, so an old
+#  copy deletes every password set since (and frees those names for anyone). Copy single lines.
 #
 # Never deletes arenas, maps, data or staff entries. Keeps the 3 newest staging folders
 # (dare-arenas-deploy-*) beside <stageDir> and moves nothing else.
@@ -95,6 +98,17 @@ wait_healthy() {
   return 1
 }
 
+# backup_db <src> <dest>: an online-safe copy of a SQLite database (the zone may be running)
+backup_db() {
+  if command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 "$1" ".backup '$2'"
+  else
+    python3 -c 'import sqlite3, sys
+s = sqlite3.connect(sys.argv[1]); d = sqlite3.connect(sys.argv[2])
+s.backup(d); d.close(); s.close()' "$1" "$2"
+  fi
+}
+
 restore_commands() {
   cat >&2 <<EOF
   Backup: $BACKUP
@@ -103,7 +117,10 @@ restore_commands() {
     cat $BACKUP/conf/groupdef.conf > $ZONE/conf/groupdef.conf
     cp -a $BACKUP/conf/groupdef.dir/. $ZONE/conf/groupdef.dir/
     cat $BACKUP/conf/staff.conf > $ZONE/conf/staff.conf
-    cat $BACKUP/conf/passwd.conf > $ZONE/conf/passwd.conf      # only if it was changed by hand
+    # passwd.conf: NEVER restore it wholesale (it would delete passwords players set since);
+    #   copy back only the lines you changed by hand from $BACKUP/conf/passwd.conf
+    # data/dare-arenas.db (only if the store itself is broken; stop subspace first):
+    #   cp $BACKUP/data/dare-arenas.db $ZONE/data/dare-arenas.db
     [ -d $BACKUP/zone-bin-modules/Dare.Arenas ] && { mv $ZONE/bin/modules/Dare.Arenas $BACKUP/failed-Dare.Arenas-\$(date +%s); cp -a $BACKUP/zone-bin-modules/Dare.Arenas $ZONE/bin/modules/; }
     cat $BACKUP/Caddyfile > $CADDYFILE && caddy validate --config $CADDYFILE --adapter caddyfile && systemctl reload caddy
     cp -a $BACKUP/site/. $SITE/
@@ -162,6 +179,11 @@ done
 [ -f "$STAGE/plugin/Dare.Arenas.dll" ] || die "$STAGE/plugin has no Dare.Arenas.dll"
 if compgen -G "$STAGE/plugin/*[sS][qQ][lL][iI][tT][eE]*" >/dev/null; then die "plugin folder carries its own sqlite files; it must use the server's"; fi
 [ -f "$STAGE/site/index.html" ] && [ -f "$STAGE/site/arena-owners.html" ] || die "$STAGE/site is incomplete"
+if [ -f "$ZONE/data/dare-arenas.db" ]; then
+  if command -v sqlite3 >/dev/null 2>&1; then echo "store backup: sqlite3"
+  elif python3 -c 'import sqlite3' 2>/dev/null; then echo "store backup: python3 sqlite3 (no sqlite3 CLI)"
+  else die "neither sqlite3 nor python3's sqlite3 module is available to back up data/dare-arenas.db"; fi
+fi
 if [ "$SYSOP_SET" = 1 ]; then
   # a plain player name: 1-23 printable characters, no conf syntax ([ ] = ; : #), no edge spaces
   # (glob, not regex: a bracket expression starting with ']' is not portable across regex engines)
@@ -188,6 +210,10 @@ cp -a "$CADDYFILE" "$BACKUP/Caddyfile"
 if [ -d "$SITE" ]; then cp -a "$SITE" "$BACKUP/site"; fi
 if [ -d "$ZONE/bin/modules/Dare.Arenas" ]; then cp -a "$ZONE/bin/modules/Dare.Arenas" "$BACKUP/zone-bin-modules/"; fi
 if [ -d "$ZONE/arenas/_template" ]; then cp -a "$ZONE/arenas/_template" "$BACKUP/zone-arenas/"; fi
+if [ -f "$ZONE/data/dare-arenas.db" ]; then
+  mkdir -p "$BACKUP/data"
+  backup_db "$ZONE/data/dare-arenas.db" "$BACKUP/data/dare-arenas.db" || die "backing up data/dare-arenas.db failed"
+fi
 echo "$BACKUP" > "$BACKUP_ROOT/backup-arena-ownership-latest"
 find "$BACKUP" | sed 's/^/  /'
 
