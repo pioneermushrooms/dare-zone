@@ -20,9 +20,16 @@ public sealed class SettingsPolicy
     public bool IsEditable(string section, string key) =>
         !IsDenied(section, key) && _editable.Contains((section.ToLowerInvariant(), key.ToLowerInvariant()));
 
+    // General keys never editable by owners:
+    //   Map, LevelFiles  - changed only through uploads;
+    //   ScoreGroup       - names a score group shared with other arenas (cross-arena scores/resets);
+    //   NeedCap          - names a zone-wide capability.
+    private static readonly HashSet<string> DeniedGeneralKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Map", "LevelFiles", "ScoreGroup", "NeedCap",
+    };
+
     private static bool IsDenied(string section, string key) =>
         section.Equals("Modules", StringComparison.OrdinalIgnoreCase)
-        || (section.Equals("General", StringComparison.OrdinalIgnoreCase)
-            && (key.Equals("Map", StringComparison.OrdinalIgnoreCase)
-                || key.Equals("LevelFiles", StringComparison.OrdinalIgnoreCase)));
+        || (section.Equals("General", StringComparison.OrdinalIgnoreCase) && DeniedGeneralKeys.Contains(key));
 }

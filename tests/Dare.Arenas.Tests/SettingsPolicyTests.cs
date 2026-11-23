@@ -11,6 +11,9 @@ public class SettingsPolicyTests
         ("General", "Map"),
         ("General", "LevelFiles"),
         ("General", "MaxPlaying"),
+        ("General", "ScoreGroup"),
+        ("General", "NeedCap"),
+        ("Misc", "GreetMessage"),
     });
 
     [Fact]
@@ -33,4 +36,19 @@ public class SettingsPolicyTests
 
     [Fact]
     public void Undocumented_key_is_denied() => Assert.False(Make().IsEditable("Kill", "Nope"));
+
+    // Keys whose value names something outside the arena (score group shared with other
+    // arenas; a zone-wide capability name) are never owner-editable, even when documented.
+    [Fact]
+    public void General_scoregroup_is_denied() => Assert.False(Make().IsEditable("General", "ScoreGroup"));
+
+    [Fact]
+    public void General_scoregroup_is_denied_case_insensitively() => Assert.False(Make().IsEditable("general", "SCOREGROUP"));
+
+    [Fact]
+    public void General_needcap_is_denied() => Assert.False(Make().IsEditable("General", "NeedCap"));
+
+    [Fact]
+    public void Arena_local_text_setting_stays_editable() => Assert.True(Make().IsEditable("Misc", "GreetMessage"));
 }
+
