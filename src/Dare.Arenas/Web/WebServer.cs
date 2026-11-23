@@ -17,6 +17,10 @@ namespace Dare.Arenas;
 public sealed partial class ArenaOwnership
 {
     internal const string ConfigSection = "DareArenas";
+    // Loopback only (never "+" or "*": the managed HttpListener would then bind every interface).
+    // HttpListener matches prefixes on the Host header, so a request with Host: subspacefoundation.com
+    // gets 404 here. Caddy must therefore rewrite Host to the upstream (header_up Host
+    // {upstream_hostport}); see deploy/Caddyfile.snippet.
     internal const string DefaultWebListen = "http://127.0.0.1:8088/";
     private const int PublicListMax = 30;
 
@@ -74,7 +78,8 @@ public sealed partial class ArenaOwnership
 
     // ---- handlers (mainloop) ------------------------------------------------------------------
 
-    internal object PublicData()
+    /// <summary>Players per arena base name. Mainloop (player data).</summary>
+    internal Dictionary<string, int> PlayerCounts()
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         _playerData.Lock();
@@ -88,7 +93,12 @@ public sealed partial class ArenaOwnership
         {
             _playerData.Unlock();
         }
+        return counts;
+    }
 
+    /// <summary>The public feed. Store reads only (thread-safe), so it runs on the web worker.</summary>
+    internal object PublicData(IReadOnlyDictionary<string, int> counts)
+    {
         var requests = Store.Requests(pendingOnly: false, 100);
         return new
         {
@@ -272,6 +282,7 @@ internal sealed class WebServer : IDisposable
 
     private async Task AcceptLoop()
     {
+        var failures = 0;
         while (!_stopped)
         {
             HttpListenerContext ctx;
@@ -285,11 +296,17 @@ internal sealed class WebServer : IDisposable
             }
             catch (Exception ex)
             {
-                _m.Log(LogLevel.Warn, $"Web accept failed: {ex.Message}");
-                await Task.Delay(100).ConfigureAwait(false);
+                // Back off on a persistent error (100 ms doubling to 30 s) and log only when the
+                // delay grows, so a broken listener can't flood the log.
+                failures++;
+                var delay = Math.Min(100 * (1 << Math.Min(failures - 1, 9)), 30_000);
+                if (failures <= 10 || delay < 30_000 || failures % 100 == 0)
+                    _m.Log(LogLevel.Warn, $"Web accept failed ({failures} in a row; retrying in {delay} ms): {ex.Message}");
+                await Task.Delay(delay).ConfigureAwait(false);
                 continue;
             }
 
+            failures = 0;
             _ = Task.Run(() => HandleAsync(ctx));
         }
     }
@@ -338,7 +355,7 @@ internal sealed class WebServer : IDisposable
             case "/style.css": return Get(method, () => Static("style.css"));
             case "/login": return method == "GET" ? Login(req) : MethodNotAllowed();
             case "/api/public":
-                return method == "GET" ? JsonReply(200, await OnMain(() => _m.PublicData()).ConfigureAwait(false)) : MethodNotAllowed();
+                return method == "GET" ? await PublicAsync().ConfigureAwait(false) : MethodNotAllowed();
             case "/api/me": return method == "GET" ? await MeAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/settings": return method == "POST" ? await SettingsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -346,6 +363,38 @@ internal sealed class WebServer : IDisposable
             default: return Text(404, "Not found.");
         }
     }
+
+    // ---- public feed cache: unauthenticated, so at most one rebuild per PublicCacheTtl ----------
+
+    private static readonly TimeSpan PublicCacheTtl = TimeSpan.FromSeconds(5);
+    private readonly SemaphoreSlim _publicBuild = new(1, 1);
+    private volatile Tuple<DateTimeOffset, byte[]>? _publicCache;
+
+    private async Task<Reply> PublicAsync()
+    {
+        var cached = _publicCache;
+        if (cached is not null && DateTimeOffset.UtcNow - cached.Item1 < PublicCacheTtl)
+            return JsonBytes(200, cached.Item2);
+
+        await _publicBuild.WaitAsync().ConfigureAwait(false); // single flight
+        try
+        {
+            cached = _publicCache;
+            if (cached is not null && DateTimeOffset.UtcNow - cached.Item1 < PublicCacheTtl)
+                return JsonBytes(200, cached.Item2);
+
+            var counts = await OnMain(() => _m.PlayerCounts()).ConfigureAwait(false); // the only mainloop part
+            var body = JsonSerializer.SerializeToUtf8Bytes(_m.PublicData(counts), Json);
+            _publicCache = Tuple.Create(DateTimeOffset.UtcNow, body);
+            return JsonBytes(200, body);
+        }
+        finally
+        {
+            _publicBuild.Release();
+        }
+    }
+
+    private static Reply JsonBytes(int status, byte[] body) => new(status, "application/json; charset=utf-8", body);
 
     private Reply Get(string method, Func<Reply> f) => method is "GET" or "HEAD" ? f() : MethodNotAllowed();
 

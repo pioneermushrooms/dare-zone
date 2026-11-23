@@ -1,0 +1,12 @@
+# Dare.Arenas web pages: paste inside the subspacefoundation.com { ... } site block.
+#
+# - handle_path strips /arena; the plugin serves both /x and /arena/x and always links to /arena/...
+# - header_up Host is REQUIRED: the plugin's HttpListener is bound to 127.0.0.1:8088 and matches
+#   prefixes on the Host header, so the client's "Host: subspacefoundation.com" would get 404.
+# - /arena (no slash) is not matched by /arena/*; redirect it so relative links resolve.
+redir /arena /arena/ 308
+handle_path /arena/* {
+	reverse_proxy 127.0.0.1:8088 {
+		header_up Host {upstream_hostport}
+	}
+}

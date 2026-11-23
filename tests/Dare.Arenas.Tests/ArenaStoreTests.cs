@@ -317,9 +317,17 @@ public sealed class ArenaStoreTests : IDisposable
         var s = Owned("zeta", "a");
         Assert.True(s.Request("b", "alpha", "x").Ok);
         Assert.True(s.Approve("alpha", "staff", NoFolder).Ok);
+        s.AddCoMod("zeta", "a", "m1");
+        s.AddCoMod("zeta", "a", "m2");
+        s.AddCoMod("alpha", "b", "x");
         s.Suspend("zeta", "staff", "r");
         var all = s.Arenas();
         Assert.Equal(new[] { "alpha", "zeta" }, all.Select(a => a.Name));
         Assert.Equal(ArenaStatus.Suspended, all[1].Status);
+        Assert.Equal(new[] { "x" }, all[0].CoMods);
+        Assert.Equal(new[] { "m1", "m2" }, all[1].CoMods);
+        var z = s.Get("zeta")!;
+        Assert.Equal((z.Owner, z.Created, z.LastEntered), (all[1].Owner, all[1].Created, all[1].LastEntered));
+        Assert.Equal("b", all[0].Owner);
     }
 }

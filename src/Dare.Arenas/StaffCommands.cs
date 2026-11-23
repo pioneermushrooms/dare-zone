@@ -120,8 +120,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         }
 
         Log(LogLevel.Info, $"{staff.Name} archived [{name}].");
-        var moved = SendPlayersOut(name, $"Arena '{name}' was archived by staff.");
-        var folder = MoveToArchive(name);
+        var (moved, folder) = CloseArchived(name, $"Arena '{name}' was archived by staff.");
         Reply(staff, folder is null
             ? $"{result.Message} Its folder could not be moved; see the log."
             : $"{result.Message} Folder moved to arenas/{ArchiveDir}/{folder}/.{(moved > 0 ? $" {moved} player(s) moved out." : "")}");
@@ -184,7 +183,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             var archived = Store.ArchiveIdle(IdleBeforeArchive);
             foreach (var name in archived)
             {
-                var folder = MoveToArchive(name);
+                var (_, folder) = CloseArchived(name, $"Arena '{name}' was archived after {(int)IdleBeforeArchive.TotalDays} days without visitors.");
                 Log(LogLevel.Info, folder is null
                     ? $"Archived idle arena [{name}] (no entry for {(int)IdleBeforeArchive.TotalDays} days); its folder could not be moved."
                     : $"Archived idle arena [{name}] (no entry for {(int)IdleBeforeArchive.TotalDays} days) to arenas/{ArchiveDir}/{folder}/.");
@@ -198,6 +197,16 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
     }
 
     // ---- folders --------------------------------------------------------------------------
+
+    /// <summary>
+    /// The shared follow-up for an arena the store has just archived (staff command and daily check):
+    /// moves non-staff players out, refreshes grants, then moves the folder to the archive.
+    /// </summary>
+    private (int Moved, string? Folder) CloseArchived(string name, string message)
+    {
+        var moved = SendPlayersOut(name, message);
+        return (moved, MoveToArchive(name));
+    }
 
     /// <summary>
     /// Moves <c>arenas/&lt;name&gt;/</c> to <c>arenas/_archive/&lt;name&gt;[-n]/</c>, never overwriting an

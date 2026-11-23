@@ -269,16 +269,31 @@ public sealed class ArenaStore : IDisposable
         }
     }
 
-    /// <summary>Every player-owned arena (any status), by name.</summary>
+    /// <summary>Every player-owned arena (any status), by name. Two queries, not one per arena.</summary>
     public IReadOnlyList<OwnedArena> Arenas()
     {
         lock (_gate)
         {
-            var names = new List<string>();
-            using (var cmd = Cmd("SELECT name FROM arenas ORDER BY name"))
+            var comods = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            using (var cmd = Cmd("SELECT arena, player FROM comods ORDER BY rowid"))
             using (var r = cmd.ExecuteReader())
-                while (r.Read()) names.Add(r.GetString(0));
-            return names.Select(n => Load(n)!).ToList();
+                while (r.Read())
+                {
+                    if (!comods.TryGetValue(r.GetString(0), out var l)) comods[r.GetString(0)] = l = new List<string>();
+                    l.Add(r.GetString(1));
+                }
+
+            var list = new List<OwnedArena>();
+            using (var cmd = Cmd("SELECT name, owner, status, created, last_entered FROM arenas ORDER BY name"))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    var name = r.GetString(0);
+                    list.Add(new OwnedArena(name, r.GetString(1), Enum.Parse<ArenaStatus>(r.GetString(2)),
+                        Parse(r.GetString(3)), Parse(r.GetString(4)),
+                        comods.TryGetValue(name, out var c) ? c : new List<string>()));
+                }
+            return list;
         }
     }
 
