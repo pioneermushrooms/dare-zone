@@ -1,0 +1,125 @@
+# Owning an arena on Foundation
+
+On the Foundation zone (`5.161.238.245:5000`, Continuum or oss-client) any player can ask for an
+arena of their own. If staff say yes, the arena is yours: you choose its settings, its map and
+its graphics, and you can pick up to five co-mods to help run it. Everything is public: who asked
+for what, who decided, and why.
+
+## First: you need a password on your name
+
+Arena requests and arena powers only work for a **logged-in, password-protected name**. Anyone
+could type your name, so the zone only trusts a name once it has been checked against a password.
+
+How Foundation checks names today: the zone keeps its own password list (there is no billing
+server). You can enter with any new name and any password, but then the zone treats you as **not
+logged in**: you can play, but you cannot request or run an arena. The zone also only lets a
+logged-in name set a password, so the first password has to be saved by staff:
+
+1. Log in with the name and the password you want to keep.
+2. Ask a sysop (in the same arena) to run `?set_local_password` on you. It saves the password you
+   logged in with.
+3. From then on, always log in with that password. To change it, type `?passwd <new password>`.
+
+If you see "Your name is not authenticated" or "Only players logged in with a registered
+(password-protected) name …", this is the step you are missing.
+
+## Asking for an arena
+
+Type, in any arena:
+
+    ?requestarena <name> <what the arena is for>
+
+for example `?requestarena skyrace Fast racing laps for warbirds`.
+
+- The name is 3 to 15 characters of lowercase letters and digits. It must start with a letter
+  and must not end in a digit. Names already in use (and `public`, `2v2pub`, `3v3pub`, `4v4pub`,
+  `duel`) are taken. Don't use `-` or a 16th character: the zone turns other characters into
+  `x` and cuts names at 15 when you travel with `?go`, so such an arena can't be entered.
+- The description is up to 120 characters. Everyone can read it.
+- You can have one request waiting and own one arena at a time.
+
+Staff (moderators and up) approve or decline it. A decline always comes with a reason. You can
+follow it with `?arenarequests`. Once approved, go to your arena with `?go <name>`.
+
+## What owners and co-mods can do
+
+In **your own arena** (the powers do not work anywhere else):
+
+- **Owner:** change settings, upload the map and graphics, pick co-mods, use Continuum's settings
+  editor (`?quickfix`), and the moderator tools below.
+- **Co-mods** (up to 5): change settings and use the moderator tools. They cannot upload files
+  or change who the co-mods are.
+- **Moderator tools** (both): arena messages (`?a`), the game timer, locking or recycling the
+  arena, flags and balls, setting players' ships and teams, prizes, spectating, and chat masks.
+  Kicks, bans and zone-wide messages stay with zone staff.
+
+## Commands
+
+For everyone:
+
+| Command | What it does |
+| --- | --- |
+| `?requestarena <name> <pitch>` | Ask for an arena of your own (needs a password, see above). |
+| `?arenarequests` | Lists waiting requests and the latest decisions. |
+| `?arenalog [name]` | The last 10 public events (requests, decisions, co-mod changes, …), for all arenas or one. |
+| `?myarena` | Shows the arena you own: status, co-mods, when someone last entered it. |
+| `?weblogin` | Sends you a one-time link to the arena web page (valid 10 minutes, works once). |
+
+Owners and co-mods, in their own arena:
+
+| Command | What it does |
+| --- | --- |
+| `?arenaset <Section:Key> <value>` | Change one setting, e.g. `?arenaset Warbird:BulletSpeed 3000`. |
+| `?arenaget <Section:Key>` | Show the current value of one setting. |
+
+Owners only, in their own arena:
+
+| Command | What it does |
+| --- | --- |
+| `?comod` | Lists your co-mods. |
+| `?comod add <player>` / `?comod remove <player>` | Adds or removes a co-mod (public in `?arenalog`). |
+| `?arenamap <file.lvl>` | Uploads a map from your Continuum folder; it becomes the arena's map. |
+| `?putlvz <file.lvz>` | Uploads a graphics file from your Continuum folder and adds it to the arena. |
+| `?quickfix` | Continuum's built-in settings editor for your arena. |
+
+Staff:
+
+| Command | What it does |
+| --- | --- |
+| `?approvearena <name>` | Approves a request: creates the arena and makes the asker its owner (moderators and up). |
+| `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). |
+| `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
+| `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
+| `?arenaadmin transfer <name> <player>` | Gives the arena to another player. |
+| `?arenaadmin archive <name>` | Closes the arena and stores its folder away (nothing is deleted). |
+
+Uploads with `?arenamap`/`?putlvz` need Continuum (it sends the file). With any other client, use
+the web page.
+
+## The web page
+
+Type `?weblogin` in game. You get a link like
+`https://subspacefoundation.com/arena/login?t=…`. Open it within 10 minutes; it works once and
+signs you in for 24 hours. No password is ever typed on the web.
+
+- **Everyone** can see the public page, <https://subspacefoundation.com/arena/>: every
+  player-owned arena with its owner, co-mods and players online, waiting requests, decisions and
+  the public log.
+- **Without an arena**, the signed-in page lets you send a request (same rules as
+  `?requestarena`).
+- **Owners and co-mods** see their arena's settings, grouped by section, with a description,
+  default and range for each, and can change them.
+- **Owners** can also upload the map (`.lvl`) and graphics (`.lvz`) by drag-and-drop.
+
+## Limits
+
+- One arena per player, and one waiting request per player.
+- Up to 5 co-mods per arena.
+- Map: one `.lvl` per arena, at most 2 MB.
+- Graphics: `.lvz` files of at most 5 MB each, at most 10 per arena.
+- Settings: at most 20 changes per minute per arena (in game and web together). `Modules`
+  settings can't be changed, and the map and graphics lists change only through uploads.
+- An arena nobody enters for **30 days** is archived: it closes and its files are stored away,
+  not deleted. Staff can bring it back with `?arenaadmin revive`.
+- Every decision (request, approval, decline, transfer, suspend, revive, archive, co-mod change)
+  is public in `?arenalog` and on the web page.
