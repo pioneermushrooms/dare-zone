@@ -99,6 +99,7 @@ public sealed partial class ArenaOwnership
                 players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
             }),
             events = Store.Events(null, PublicListMax).Select(e => new { e.At, e.Arena, e.Actor, e.Kind, e.Detail }),
+            publicPlayers = PublicCounts.PublicPlayers(counts),
         };
     }
 
