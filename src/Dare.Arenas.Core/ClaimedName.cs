@@ -30,6 +30,44 @@ public static class ClaimedName
         if (wanted.Length == 0 || string.IsNullOrEmpty(passwdText)) return null;
 
         string? found = null;
+        foreach (var (key, value) in Entries(passwdText))
+        {
+            if (!key.Equals(wanted, StringComparison.OrdinalIgnoreCase)) continue;
+            found = IsClaim(value) ? key : null;
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// Every claimed name in passwd.conf's <c>[Users]</c> section (and <c>users:Name = …</c> lines)
+    /// with its password hash, in file order. A name defined twice keeps its last definition (as
+    /// in the server's conf reader); names whose last value is <c>any</c>/<c>lock</c> are left out.
+    /// </summary>
+    public static IReadOnlyList<(string Name, string Hash)> Users(string passwdText)
+    {
+        var last = new Dictionary<string, (int Order, string Name, string Value)>(StringComparer.OrdinalIgnoreCase);
+        var order = 0;
+        foreach (var (key, value) in Entries(passwdText ?? ""))
+            last[key] = (last.TryGetValue(key, out var prev) ? prev.Order : order++, key, value);
+        return last.Values.Where(e => IsClaim(e.Value)).OrderBy(e => e.Order).Select(e => (e.Name, e.Value)).ToList();
+    }
+
+    /// <summary>
+    /// Every entry of <c>[Users]</c> including <c>any</c> and <c>lock</c> placeholders, with its raw
+    /// value, in file order (last definition of a name wins).
+    /// </summary>
+    public static IReadOnlyList<(string Name, string Value)> AllUsers(string passwdText)
+    {
+        var last = new Dictionary<string, (int Order, string Name, string Value)>(StringComparer.OrdinalIgnoreCase);
+        var order = 0;
+        foreach (var (key, value) in Entries(passwdText ?? ""))
+            last[key] = (last.TryGetValue(key, out var prev) ? prev.Order : order++, key, value);
+        return last.Values.OrderBy(e => e.Order).Select(e => (e.Name, e.Value)).ToList();
+    }
+
+    /// <summary>The (key, value) lines of the <c>[Users]</c> section, in file order.</summary>
+    private static IEnumerable<(string Key, string Value)> Entries(string passwdText)
+    {
         var section = "";
         foreach (var raw in passwdText.Split('\n'))
         {
@@ -54,12 +92,9 @@ public static class ClaimedName
                 key = key[(colon + 1)..].Trim();
             }
 
-            if (!keySection.Equals(UsersSection, StringComparison.OrdinalIgnoreCase)
-                || !key.Equals(wanted, StringComparison.OrdinalIgnoreCase))
-                continue;
-            found = IsClaim(value) ? key : null;
+            if (keySection.Equals(UsersSection, StringComparison.OrdinalIgnoreCase) && key.Length > 0)
+                yield return (key, value);
         }
-        return found;
     }
 
     /// <summary>

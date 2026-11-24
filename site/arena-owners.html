@@ -37,15 +37,15 @@
   <h1>OWNING AN ARENA</h1>
   <p>On the Foundation zone (<code>5.161.238.245:5000</code>, Continuum or oss-client) any player can ask for an arena of their own. If staff say yes, the arena is yours: you choose its settings, its map and its graphics, and you can pick up to five co-mods to help run it. Everything is public: who asked for what, who decided, and why.</p>
 
-  <h2>First: you need a password on your name</h2>
-  <p>Arena requests and arena powers only work for a <b>logged-in, password-protected name</b>. Anyone could type your name, so the zone only trusts a name once it has been checked against a password.</p>
-  <p>How it works on Foundation: the zone keeps its own password list (there is no billing server). A name nobody has claimed yet can be used with any password, but the zone treats it as <b>not logged in</b>: you can play, but you cannot request or run an arena or use <code>?weblogin</code>. To claim your name:</p>
+  <h2>First: claim your name</h2>
+  <p>Foundation has its own accounts (there is no billing server). Every player needs one: the zone only lets in names that have been claimed, and arena requests and arena powers only work for a <b>logged-in name</b>. To claim yours:</p>
   <ol>
-    <li>Log in with your name.</li>
-    <li>Type <code>?passwd &lt;password&gt;</code> once. The name is now yours, with that password. It's first come, first served: a name someone else already claimed needs their password.</li>
-    <li>Log out and back in with that password, and always use it from then on. That makes you logged in, which you need to request or own an arena or to use <code>?weblogin</code>. You can change it later with <code>?passwd &lt;new password&gt;</code>.</li>
+    <li>Go to <a href="/account/signup">subspacefoundation.com/account/signup</a> and enter your name, a password (8 to 31 characters) and a recovery email. We email you a 6-digit code; enter it and the name is yours. It's first come, first served.</li>
+    <li>In game, log in with that same name and password. That makes you logged in, which you need to request or own an arena or to use <code>?weblogin</code>.</li>
+    <li>Forgot your password? Use <a href="/account/forgot">subspacefoundation.com/account/forgot</a>: we email a code to your recovery email and you choose a new password. You can also change your password and email while signed in on the site.</li>
   </ol>
-  <p>If you see "Your name is not authenticated" or "Only players logged in with a registered (password-protected) name …", this is the step you are missing.</p>
+  <p><b>If you played here before:</b> your old name and password still work in game. The first time you sign in on the <a href="/account/">site</a> with your old name and password, you will be asked to add a recovery email (we send a code to confirm it). Until you do, you can't recover the account if you forget the password.</p>
+  <p>If a login says "This name isn't claimed", this is the step you are missing. Passwords are changed on the site.</p>
 
   <h2>Asking for an arena</h2>
   <p>Type, in any arena:</p>
@@ -86,7 +86,7 @@
   <table>
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>?comod</code></td><td>Lists your co-mods.</td></tr>
-    <tr><td><code>?comod add &lt;player&gt;</code> / <code>?comod remove &lt;player&gt;</code></td><td>Adds or removes a co-mod (public in <code>?arenalog</code>). A new co-mod must have claimed their name with <code>?passwd</code> (or be online and logged in with it).</td></tr>
+    <tr><td><code>?comod add &lt;player&gt;</code> / <code>?comod remove &lt;player&gt;</code></td><td>Adds or removes a co-mod (public in <code>?arenalog</code>). A new co-mod must have an account (claimed at <a href="/account/signup">subspacefoundation.com/account/signup</a>).</td></tr>
     <tr><td><code>?arenamap &lt;file.lvl&gt;</code></td><td>Uploads a map from your Continuum folder; it becomes the arena's map.</td></tr>
     <tr><td><code>?putlvz &lt;file.lvz&gt;</code></td><td>Uploads a graphics file from your Continuum folder and adds it to the arena. Uploading a file with the same name as one already there replaces it.</td></tr>
     <tr><td><code>?rmlvz &lt;file.lvz&gt;</code></td><td>Removes a graphics file from the arena (and deletes it).</td></tr>
@@ -98,7 +98,7 @@
     <tr><td><code>?declinearena &lt;name&gt; &lt;reason&gt;</code></td><td>Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request.</td></tr>
     <tr><td><code>?arenaadmin suspend &lt;name&gt; &lt;reason&gt;</code></td><td>Closes an arena to players (super moderators and sysops).</td></tr>
     <tr><td><code>?arenaadmin revive &lt;name&gt;</code></td><td>Reopens a suspended or archived arena.</td></tr>
-    <tr><td><code>?arenaadmin transfer &lt;name&gt; &lt;player&gt;</code></td><td>Gives the arena to another player (a name claimed with <code>?passwd</code>).</td></tr>
+    <tr><td><code>?arenaadmin transfer &lt;name&gt; &lt;player&gt;</code></td><td>Gives the arena to another player (a name with a Foundation account).</td></tr>
     <tr><td><code>?arenaadmin archive &lt;name&gt;</code></td><td>Closes the arena at once; its folder is stored away at the next server restart (nothing is deleted).</td></tr>
   </table>
   <p>To take an arena or its powers away from an owner, use <code>?arenaadmin</code> (suspend, transfer or archive). Removing the owner's group with <code>?rmgroup</code> does not last: the module grants it again the next time they enter their arena.</p>

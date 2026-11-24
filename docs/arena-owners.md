@@ -10,20 +10,25 @@ for what, who decided, and why.
 Arena requests and arena powers only work for a **logged-in, password-protected name**. Anyone
 could type your name, so the zone only trusts a name once it has been checked against a password.
 
-How it works on Foundation: the zone keeps its own password list (there is no billing server).
-A name nobody has claimed yet can be used with any password, but the zone treats it as **not
-logged in**: you can play, but you cannot request or run an arena or use `?weblogin`. To claim
-your name:
+Foundation has its own accounts (there is no billing server). Every player needs one: the zone
+only lets in names that have been claimed, and arena requests and powers only work for a logged-in
+name. To claim yours:
 
-1. Log in with your name.
-2. Type `?passwd <password>` once. The name is now yours, with that password. It's first come,
-   first served: a name someone else already claimed needs their password.
-3. Log out and back in with that password, and always use it from then on. That makes you
-   logged in, which you need to request or own an arena or to use `?weblogin`. You can change
-   it later with `?passwd <new password>`.
+1. Go to https://subspacefoundation.com/account/signup and enter your name, a password (8 to 31
+   characters) and a recovery email. We email you a 6-digit code; enter it and the name is yours.
+   It's first come, first served.
+2. In game, log in with that same name and password. That makes you logged in, which you need to
+   request or own an arena or to use `?weblogin`.
+3. Forgot your password? Use https://subspacefoundation.com/account/forgot: we email a code to your
+   recovery email and you choose a new password. You can also change it, and your email, while signed
+   in on the site.
 
-If you see "Your name is not authenticated" or "Only players logged in with a registered
-(password-protected) name …", this is the step you are missing.
+**If you played here before:** your old name and password still work in game. The first time you
+sign in on the site (https://subspacefoundation.com/account/) with your old name and password, you
+will be asked to add a recovery email (we send a code to confirm it). Until you do, you can't
+recover the account if you forget the password.
+
+If a login says "This name isn't claimed", this is the step you are missing. Passwords are changed on the site.
 
 ## Asking for an arena
 
@@ -78,7 +83,7 @@ Owners only, in their own arena:
 | Command | What it does |
 | --- | --- |
 | `?comod` | Lists your co-mods. |
-| `?comod add <player>` / `?comod remove <player>` | Adds or removes a co-mod (public in `?arenalog`). A new co-mod must have claimed their name with `?passwd` (or be online and logged in with it). |
+| `?comod add <player>` / `?comod remove <player>` | Adds or removes a co-mod (public in `?arenalog`). A new co-mod must have an account (claimed at subspacefoundation.com/account/signup). |
 | `?arenamap <file.lvl>` | Uploads a map from your Continuum folder; it becomes the arena's map. |
 | `?putlvz <file.lvz>` | Uploads a graphics file from your Continuum folder and adds it to the arena. Uploading a file with the same name as one already there replaces it. |
 | `?rmlvz <file.lvz>` | Removes a graphics file from the arena (and deletes it). |
@@ -91,7 +96,7 @@ Staff:
 | `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request. |
 | `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
 | `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
-| `?arenaadmin transfer <name> <player>` | Gives the arena to another player (a name claimed with `?passwd`). |
+| `?arenaadmin transfer <name> <player>` | Gives the arena to another player (a name with a Foundation account). |
 | `?arenaadmin archive <name>` | Closes the arena at once; its folder is stored away at the next server restart (nothing is deleted). |
 
 To take an arena or its powers away from an owner, use `?arenaadmin` (suspend, transfer or

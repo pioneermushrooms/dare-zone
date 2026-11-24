@@ -60,6 +60,11 @@ let current = null;
 async function mePage(arena) {
   const { status, body } = await getJson(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""));
   if (status === 401) { $("signin").hidden = false; return; }
+  if (status === 403 && body && body.needsEmail) {
+    $("signin").hidden = false;
+    $("signinmsg").replaceChildren(el("a", { href: "/account/", text: "Add a recovery email" }), " to your account first.");
+    return;
+  }
   if (!body) return;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();
   if (!body.arena) { noRole(body); return; }

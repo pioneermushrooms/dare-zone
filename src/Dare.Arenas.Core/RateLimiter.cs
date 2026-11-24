@@ -1,18 +1,21 @@
 namespace Dare.Arenas.Core;
 
-/// <summary>Sliding 60-second window per key. Thread-safe.</summary>
+/// <summary>Sliding window per key (60 seconds unless given). Thread-safe.</summary>
 public sealed class RateLimiter
 {
-    private static readonly TimeSpan Window = TimeSpan.FromSeconds(60);
-
+    private readonly TimeSpan _window;
     private readonly int _perMinute;
     private readonly Func<DateTimeOffset> _clock;
     private readonly object _lock = new();
     private readonly Dictionary<string, Queue<DateTimeOffset>> _hits = new();
 
-    public RateLimiter(int perMinute, Func<DateTimeOffset> clock)
+    public RateLimiter(int perMinute, Func<DateTimeOffset> clock) : this(perMinute, TimeSpan.FromSeconds(60), clock) { }
+
+    /// <summary>At most <paramref name="limit"/> hits per key within any <paramref name="window"/>.</summary>
+    public RateLimiter(int limit, TimeSpan window, Func<DateTimeOffset> clock)
     {
-        _perMinute = perMinute;
+        _perMinute = limit;
+        _window = window;
         _clock = clock;
     }
 
@@ -21,7 +24,7 @@ public sealed class RateLimiter
         lock (_lock)
         {
             var now = _clock();
-            var cutoff = now - Window;
+            var cutoff = now - _window;
             foreach (var k in _hits.Where(p => p.Value.Count == 0 || p.Value.All(t => t <= cutoff))
                                    .Select(p => p.Key).ToList())
                 _hits.Remove(k);

@@ -10,3 +10,15 @@ handle_path /arena/* {
 		header_up Host {upstream_hostport}
 	}
 }
+
+# Foundation account pages (same listener). The /account prefix is KEPT (handle, not handle_path):
+# the plugin routes every path starting with /account to the account pages, everything else to the
+# arena pages. Caddy sets X-Forwarded-For to the client address; the plugin trusts it only on
+# loopback connections (per-IP send/sign-up limits). The session cookie dare_session is Path=/,
+# shared by /account and /arena.
+redir /account /account/ 308
+handle /account/* {
+	reverse_proxy 127.0.0.1:8088 {
+		header_up Host {upstream_hostport}
+	}
+}

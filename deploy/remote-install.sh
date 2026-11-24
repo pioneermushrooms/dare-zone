@@ -15,19 +15,22 @@
 #     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
 #     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
 #  2. copies site/*.html to /var/www/foundation
-#  3. adds deploy/Caddyfile.snippet to the subspacefoundation.com block of /etc/caddy/Caddyfile
-#     (once), validates and reloads Caddy; a config that does not validate is not installed
+#  3. adds deploy/Caddyfile.snippet (/arena/* and /account/*) to the subspacefoundation.com block of
+#     /etc/caddy/Caddyfile (each part once), validates and reloads Caddy; a config that does not validate is not installed
 #     (steps 2-3 come first so a failure there leaves the zone untouched)
-#  4. runs deploy/apply-local.sh on the zone: module line, groupdef sections and files, default
-#     caps, arenas/_template (existing files kept), the plugin folder bin/modules/Dare.Arenas;
+#  4. runs deploy/apply-local.sh on the zone: module line, AuthFile commented out and the
+#     FoundationAuth line in its place (before AuthBan; the plugin imports passwd.conf [Users] once
+#     on first load), cmd_passwd removed from groupdef.dir/default, groupdef sections and files,
+#     default caps, arenas/_template (existing files kept), the plugin folder bin/modules/Dare.Arenas;
 #     --sysop <name>: adds "<name> = sysop" to staff.conf [(global)] unless already listed there
 #  5. unless --no-restart: checks players online again, restarts subspace, and requires the module
 #     to load, 8088 to listen on loopback only and the local API to answer 200. Otherwise it rolls
-#     back: re-deploy -> the previous bin/modules/Dare.Arenas from the backup; first install -> the
-#     module line is taken out of Modules.config; then restarts and checks the zone is healthy.
+#     back: the previous bin/modules/Dare.Arenas from the backup (re-deploy), Modules.config and
+#     groupdef.dir/default from the backup (so AuthFile is the login module again: the zone must never
+#     run without one), the Caddyfile and the static site; then restarts and checks the zone is healthy.
 #  Any error after step 4 starts prints the backup folder and the restore commands.
-#  NEVER restore passwd.conf wholesale: players claim their names there with ?passwd, so an old
-#  copy deletes every password set since (and frees those names for anyone). Copy single lines.
+#  NEVER restore passwd.conf wholesale (existing rule; it is only the import source now, but an old
+#  copy would still undo password changes made while AuthFile was active). Copy single lines.
 #
 # Never deletes arenas, maps, data or staff entries. Keeps the 3 newest staging folders
 # (dare-arenas-deploy-*) beside <stageDir> and moves nothing else.
@@ -115,9 +118,10 @@ restore_commands() {
   Restore (on this server):
     cat $BACKUP/conf/Modules.config > $ZONE/conf/Modules.config
     cat $BACKUP/conf/groupdef.conf > $ZONE/conf/groupdef.conf
+    # (Modules.config and groupdef.dir/default also bring AuthFile and cmd_passwd back)
     cp -a $BACKUP/conf/groupdef.dir/. $ZONE/conf/groupdef.dir/
     cat $BACKUP/conf/staff.conf > $ZONE/conf/staff.conf
-    # passwd.conf: NEVER restore it wholesale (it would delete passwords players set since);
+    # passwd.conf: NEVER restore it wholesale;
     #   copy back only the lines you changed by hand from $BACKUP/conf/passwd.conf
     # data/dare-arenas.db (only if the store itself is broken; stop subspace first):
     #   cp $BACKUP/data/dare-arenas.db $ZONE/data/dare-arenas.db
@@ -148,12 +152,22 @@ rollback() {
     echo "restored the previous plugin folder from $BACKUP (failed build kept in $BACKUP/failed-Dare.Arenas)" >&2
     expect=1
   else
-    local tmp; tmp=$(mktemp)
-    grep -vF "$MODULE_TYPE" "$ZONE/conf/Modules.config" > "$tmp" || true
-    cat "$tmp" > "$ZONE/conf/Modules.config"; rm -f "$tmp"
-    echo "first install: removed the $MODULE_TYPE line from Modules.config (zone runs without the module)" >&2
     expect=0
   fi
+  # the login module: put Modules.config and groupdef.dir/default back as they were, so AuthFile
+  # (or whatever was active before this run) is the login module again and cmd_passwd works again
+  cat "$BACKUP/conf/Modules.config" > "$ZONE/conf/Modules.config"
+  cat "$BACKUP/conf/groupdef.dir/default" > "$ZONE/conf/groupdef.dir/default"
+  echo "restored Modules.config and groupdef.dir/default from $BACKUP (login module as before this run)" >&2
+  if [ "$expect" = 0 ]; then echo "first install: the zone runs without $MODULE_TYPE" >&2; fi
+  # caddy and the static site back to what they were (the /account route has no backend any more)
+  cat "$BACKUP/Caddyfile" > "$CADDYFILE"
+  if caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1 && systemctl reload caddy; then
+    echo "restored the Caddyfile and reloaded caddy" >&2
+  else
+    echo "!!!! could not validate/reload the restored Caddyfile - check $CADDYFILE by hand" >&2
+  fi
+  if [ -d "$BACKUP/site" ]; then cp -a "$BACKUP/site/." "$SITE/"; echo "restored the static site" >&2; fi
   since=$(date '+%Y-%m-%d %H:%M:%S')
   systemctl restart subspace
   if wait_healthy "$since" "$expect"; then
@@ -226,16 +240,23 @@ done
 
 # ---- 3. caddy -----------------------------------------------------------------------------
 step "caddy ($CADDYFILE)"
-if grep -qF 'handle_path /arena/*' "$CADDYFILE"; then
-  echo "Caddyfile already proxies /arena/*"
-else
+want_arena=1; want_account=1
+if grep -qF 'handle_path /arena/*' "$CADDYFILE"; then want_arena=0; echo "Caddyfile already proxies /arena/*"; fi
+if grep -qF 'handle /account/*' "$CADDYFILE"; then want_account=0; echo "Caddyfile already proxies /account/*"; fi
+if [ "$want_arena" = 1 ] || [ "$want_account" = 1 ]; then
   tmp=$(mktemp)
-  # insert the snippet (comments dropped) right after the "<SITE_HOST> {" line
-  awk -v snip="$STAGE/deploy/Caddyfile.snippet" -v host="$SITE_HOST" '
+  # insert the wanted parts of the snippet (comments dropped) right after the "<SITE_HOST> {" line;
+  # the snippet's arena part is everything before its "redir /account" line, the account part the rest
+  awk -v snip="$STAGE/deploy/Caddyfile.snippet" -v host="$SITE_HOST" -v wa="$want_arena" -v wc="$want_account" '
     { print }
     !done && NF == 2 && $1 == host && $2 == "{" {
       print "\t# Dare.Arenas web pages (dare-zone deploy/Caddyfile.snippet); header_up Host is required"
-      while ((getline l < snip) > 0) { if (l ~ /^[ \t]*#/ || l ~ /^[ \t]*$/) continue; print "\t" l }
+      part = "arena"
+      while ((getline l < snip) > 0) {
+        if (l ~ /^[ \t]*#/ || l ~ /^[ \t]*$/) continue
+        if (l ~ /^redir \/account /) part = "account"
+        if ((part == "arena" && wa == 1) || (part == "account" && wc == 1)) print "\t" l
+      }
       print ""
       done = 1
     }
@@ -244,7 +265,7 @@ else
   caddy validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1 \
     || { caddy validate --config "$tmp" --adapter caddyfile || true; rm -f "$tmp"; die "new Caddyfile does not validate; not installed"; }
   cat "$tmp" > "$CADDYFILE"; rm -f "$tmp"
-  echo "snippet added inside '$SITE_HOST {'"
+  echo "snippet added inside '$SITE_HOST {' (arena: $want_arena, account: $want_account)"
 fi
 caddy validate --config "$CADDYFILE" --adapter caddyfile 2>&1 | tail -1
 systemctl reload caddy

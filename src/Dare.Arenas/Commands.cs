@@ -450,7 +450,7 @@ public sealed partial class ArenaOwnership
             var claimed = ResolveClaimedName(name, online);
             if (claimed is null)
             {
-                Reply(player, $"{name} has not claimed that name with a password (?passwd), so it can't be a co-mod yet. They must set a password and log in with it first.");
+                Reply(player, $"{name} has not claimed that name, so it can't be a co-mod yet. They can claim it at subspacefoundation.com.");
                 return;
             }
             name = claimed;

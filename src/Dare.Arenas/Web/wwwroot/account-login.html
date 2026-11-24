@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<script src="/account/account.js" defer></script>
+</head>
+<body data-page="login">
+<header class="top">
+  <h1>FOUNDATION</h1>
+  <span class="sub">ACCOUNT</span>
+  <nav><a href="/arena/">Arenas</a></nav>
+</header>
+<main class="panel narrow">
+  <h2>Sign in</h2>
+  <form method="post" class="stack" id="form">
+    <label>Name <input name="name" maxlength="23" autocomplete="username" required></label>
+    <label>Password <input name="password" type="password" maxlength="31" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+  </form>
+  <p class="msg" id="msg"></p>
+  <p class="links"><a href="/account/forgot">Forgot password?</a> · <a href="/account/signup">Claim a name</a></p>
+</main>
+</body>
+</html>

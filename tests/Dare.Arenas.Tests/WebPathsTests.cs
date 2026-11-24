@@ -23,10 +23,10 @@ public sealed class WebPathsTests
     }
 
     [Fact]
-    public void session_cookie_is_httponly_secure_lax_24h_under_arena()
+    public void session_cookie_is_httponly_secure_lax_24h_site_wide()
     {
         var c = WebPaths.SessionCookie("abc", secure: true);
-        Assert.Equal("dare_arena_session=abc; Path=/arena; Max-Age=86400; HttpOnly; Secure; SameSite=Lax", c);
+        Assert.Equal("dare_session=abc; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax", c);
     }
 
     [Fact]
