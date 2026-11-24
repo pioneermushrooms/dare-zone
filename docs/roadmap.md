@@ -3,8 +3,7 @@
 Live today: zone **Foundation** (5.161.238.245:5000, SubspaceServer v4.0.0 + Dare.Arenas plugin),
 site **subspacefoundation.com** (Caddy), player-owned arenas (request → staff approve → owner
 tools in game + web), **Foundation accounts** (site sign-up with recovery email + emailed code via
-Resend, same name/password in game, no guests). Code: `~/dare-zone` (branches: `main`,
-`accounts` not yet merged). Client: `~/oss-src/oss-client` branch `dare` (Dare.app).
+Resend, same name/password in game, no guests). Code: `~/dare-zone` (`main`; `accounts` merged). Client: `~/oss-src/oss-client` branch `dare` (Dare.app).
 Process note: reviews only on login/permission/file-write code; cheaper model by default; one
 end-to-end check per milestone; fresh session per project.
 
@@ -38,13 +37,25 @@ end-to-end check per milestone; fresh session per project.
   arena's map, edit, Publish → existing upload API → `?recyclearena`.
 
 ## 5. Dare client (separate project, oss-client fork)
+- Netcode precision pass done 2026-11-23 (branch `netcode-precision` in `oss-core` and
+  `oss-client`, committed, not pushed or merged, not yet live-tested): see
+  `docs/netcode-review.md`. Next: rebuild Dare.app, play with 2+ players, read the
+  `tracking:` log lines.
 - Splash screen: full-size window, modern layout (keep skins support), zone list sorted by name or
   population — NOT by ping (it reshuffles).
-- In-game issues seen: laggy movement, sprites in wrong places → investigate interpolation /
-  prediction and packet handling (compare with Continuum on the same zone; record with
-  `--record` and replay).
+- In-game issues seen: laggy movement, sprites in wrong places → **code-first netcode review**,
+  not screen recording (watching playback burns credits and solo play can't reproduce real
+  multiplayer conditions). Read and check, against the protocol and the server's handling in
+  SubspaceServer v4:
+  - clock sync (time sync request/response, server-time offset, drift correction);
+  - position packet handling (timestamp → age of update, out-of-order/duplicate drops);
+  - remote ship extrapolation/interpolation (velocity × elapsed time, snapping vs smoothing);
+  - local prediction and correction when the server disagrees;
+  - weapon/projectile spawn timing relative to the shooter's timestamp.
+- Back the review with cheap numeric logging (ping, clock offset, correction distance per
+  update), not video. Use `--record`/replay only for a targeted repro once code review points
+  at a suspect.
 
 ## Housekeeping
-- Merge `accounts` into `main`.
 - Deferred minors: see `.superpowers` ledgers (copied to `~/oss-src/dare-previews/`).
 - Clean live test data (test arenas/requests) when Chris decides.
