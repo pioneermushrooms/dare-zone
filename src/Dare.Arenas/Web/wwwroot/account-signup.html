@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up · SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<script src="/account/account.js" defer></script>
+</head>
+<body data-page="signup">
+<header class="top">
+  <h1>FOUNDATION</h1>
+  <span class="sub">ACCOUNT</span>
+  <nav><a href="/arena/">Arenas</a></nav>
+</header>
+<main class="panel narrow">
+  <h2>Claim your name</h2>
+  <p class="dim">One name and password for the game and this site.</p>
+  <form class="stack" id="form">
+    <label>Name <input name="name" maxlength="20" autocomplete="username" required></label>
+    <label>Password <input name="password" type="password" minlength="8" maxlength="31" autocomplete="new-password" required>
+      <span class="hint">8–31 characters.</span></label>
+    <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required>
+      <span class="hint">Used only to recover your password.</span></label>
+    <button type="submit">Send code</button>
+  </form>
+  <p class="msg" id="msg"></p>
+  <p class="links">Have an account? <a href="/account/login">Sign in</a></p>
+</main>
+</body>
+</html>

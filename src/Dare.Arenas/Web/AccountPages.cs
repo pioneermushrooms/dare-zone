@@ -1,0 +1,381 @@
+using System.Diagnostics;
+using System.Net;
+using System.Text;
+using Dare.Arenas.Core;
+using SS.Core.ComponentInterfaces;
+
+namespace Dare.Arenas;
+
+// ---------------------------------------------------------------------------------------------
+// Foundation account pages (/account/...): sign-up with an emailed code, sign-in, recovery,
+// recovery-email change, password change. Everything here runs on the web worker threads: the
+// AccountStore, WebAuth, the rate limiters and the email sender are thread-safe, and nothing
+// touches server (mainloop) state.
+// ---------------------------------------------------------------------------------------------
+public sealed partial class ArenaOwnership
+{
+    internal const string SecretsPath = "conf/dare-secrets.conf";
+
+    private static readonly Func<DateTimeOffset> Clock = () => DateTimeOffset.UtcNow;
+
+    // Send limits (Global Constraints): code sends 1/min and 5/h per email, 10/h per IP;
+    // sign-up starts 3/h per IP. Keys: send:email:<email>, send:ip:<ip>, signup:ip:<ip>.
+    internal readonly RateLimiter SendPerEmailMinute = new(1, TimeSpan.FromMinutes(1), Clock);
+    internal readonly RateLimiter SendPerEmailHour = new(5, TimeSpan.FromHours(1), Clock);
+    internal readonly RateLimiter SendPerIp = new(10, TimeSpan.FromHours(1), Clock);
+    internal readonly RateLimiter SignupPerIp = new(3, TimeSpan.FromHours(1), Clock);
+
+    private IEmailSender? _email;
+
+    internal IEmailSender Email => _email ?? throw new InvalidOperationException("Email sender is not set up.");
+    internal AccountStore Accounts => _accounts ?? throw new InvalidOperationException("Account store is not open.");
+
+    /// <summary>
+    /// Resend when <c>conf/dare-secrets.conf</c> has <c>[Resend] ApiKey</c>, else the log-only sender
+    /// (local testing; warns that real email is off). Plain file read at load; warns when the file
+    /// is readable by everyone. Never logs the key.
+    /// </summary>
+    private void LoadEmailSender()
+    {
+        string? key = null, from = null;
+        try
+        {
+            if (File.Exists(SecretsPath))
+            {
+                if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(SecretsPath) & UnixFileMode.OtherRead) != 0)
+                    Log(LogLevel.Warn, $"{SecretsPath} is readable by everyone; chmod 600 it.");
+                var text = File.ReadAllText(SecretsPath);
+                key = SecretsFile.Get(text, "Resend", "ApiKey");
+                from = SecretsFile.Get(text, "Resend", "From");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Could not read {SecretsPath}: {ex.GetType().Name}.");
+        }
+
+        if (key is not null)
+        {
+            _email = new ResendEmailSender(key, from, Log);
+            Log(LogLevel.Info, "Account emails are sent with Resend.");
+        }
+        else
+        {
+            _email = new LogEmailSender(Log);
+            Log(LogLevel.Warn, $"Real email is OFF: no [Resend] ApiKey in {SecretsPath}. Account codes are written to this log instead (local testing only).");
+        }
+    }
+}
+
+internal sealed partial class WebServer
+{
+    internal const string AccountPrefix = "/account";
+
+    private const string TooMany = "Too many requests. Try again later.";
+    private const string WaitAMinute = "Please wait a minute before asking for another code.";
+    private const string CouldNotSend = "We couldn't send the code. Try again in a minute.";
+    private const string WrongLogin = "Wrong name or password.";
+    private const string LockedOut = "Too many wrong passwords. Try again in 10 minutes.";
+    private const string NeedEmail = "Add a recovery email first.";
+    private const string NotSignedIn = "Not signed in.";
+
+    // Sign-up, recovery and email-change answers take at least this long whether or not a code
+    // was sent, so response time doesn't tell whether a name/email exists.
+    private static readonly TimeSpan SendFloor = TimeSpan.FromMilliseconds(1200);
+
+    // A real PBKDF2 hash to verify against for unknown names, so they take as long as known ones.
+    private static readonly Lazy<(string Hash, string Salt, int Iter)> DummyCred = new(() => PasswordHasher.Hash("dummy-password-0"));
+
+    private static readonly Dictionary<string, string> AccountPages = new(StringComparer.Ordinal)
+    {
+        ["/account"] = "account.html",
+        ["/account/"] = "account.html",
+        ["/account/signup"] = "account-signup.html",
+        ["/account/verify"] = "account-verify.html",
+        ["/account/login"] = "account-login.html",
+        ["/account/forgot"] = "account-forgot.html",
+        ["/account/reset"] = "account-reset.html",
+        ["/account/account.js"] = "account.js",
+        ["/account/style.css"] = "style.css",
+    };
+
+    internal static readonly string[] AccountStaticFiles =
+        ["account.html", "account-signup.html", "account-verify.html", "account-login.html", "account-forgot.html", "account-reset.html", "account.js"];
+
+    private static bool IsAccountPath(string path) => path == AccountPrefix || path.StartsWith(AccountPrefix + "/", StringComparison.Ordinal);
+
+    private async Task<Reply> AccountRouteAsync(HttpListenerRequest req, string path)
+    {
+        var method = req.HttpMethod;
+        if (AccountPages.TryGetValue(path, out var file))
+            return Get(method, () => Static(file));
+
+        if (!path.StartsWith(AccountPrefix + "/api/", StringComparison.Ordinal))
+            return Text(404, "Not found.");
+        var api = path[(AccountPrefix.Length + 4)..];
+
+        if (api == "/me")
+            return method == "GET" ? AccountMe(req) : MethodNotAllowed();
+        if (method != "POST")
+            return MethodNotAllowed();
+        if (AccountPostCheck(req) is { } refused)
+            return refused;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+
+        return api switch
+        {
+            "/signup" => await SignupAsync(req, body).ConfigureAwait(false),
+            "/verify" => Verify(body),
+            "/login" => Login(body),
+            "/logout" => Logout(req),
+            "/forgot" => await ForgotAsync(req, body).ConfigureAwait(false),
+            "/reset" => Reset(body),
+            "/email" => await AddEmailAsync(req, body).ConfigureAwait(false),
+            "/email/verify" => VerifyEmail(req, body),
+            "/password" => ChangePassword(req, body),
+            _ => Text(404, "Not found."),
+        };
+    }
+
+    /// <summary>Every account POST: same-origin (Origin = the public site) and the anti-CSRF header. JSON is checked when the body is read.</summary>
+    private Reply? AccountPostCheck(HttpListenerRequest req)
+    {
+        var origin = req.Headers["Origin"];
+        if (!WebPaths.IsAllowedOrigin(origin, _m.WebBaseUrl))
+        {
+            _m.Log(LogLevel.Info, $"Web POST {req.Url?.AbsolutePath} refused: origin '{origin}' is not this site.");
+            return JsonReply(403, new { ok = false, message = "Request refused (not from this site)." });
+        }
+        if (req.Headers[CsrfHeader] != CsrfValue)
+            return JsonReply(403, new { ok = false, message = "Missing request header." });
+        return null;
+    }
+
+    private static string ClientIp(HttpListenerRequest req) => WebPaths.ClientIp(req.RemoteEndPoint?.Address, req.Headers["X-Forwarded-For"]);
+
+    /// <summary>The signed-in account (account sessions only; ?weblogin sessions don't count here).</summary>
+    private (string Session, Account Account)? CurrentAccount(HttpListenerRequest req)
+    {
+        var session = req.Cookies[WebPaths.SessionCookieName]?.Value;
+        if (string.IsNullOrEmpty(session)) return null;
+        if (_m.WebAuth.SessionFor(session) is not { AccountId: { } id }) return null;
+        var account = _m.Accounts.Get(id);
+        return account is null ? null : (session, account);
+    }
+
+    private static Reply NotSignedInReply() => JsonReply(401, new { ok = false, message = NotSignedIn });
+    private static Reply NeedEmailReply() => JsonReply(403, new { ok = false, message = NeedEmail, needsEmail = true });
+
+    private static Reply Ok(string message) => JsonReply(200, new { ok = true, message });
+
+    private static Reply Bad(string message, int status = 400) => JsonReply(status, new { ok = false, message });
+
+    /// <summary>Takes the send limits for one code email to <paramref name="email"/>; null when allowed.</summary>
+    private Reply? TakeSendLimits(string email, string ip)
+    {
+        if (!_m.SendPerEmailMinute.TryTake("send:email:" + email)) return Bad(WaitAMinute, 429);
+        if (!_m.SendPerEmailHour.TryTake("send:email:" + email)) return Bad(TooMany, 429);
+        if (!_m.SendPerIp.TryTake("send:ip:" + ip)) return Bad(TooMany, 429);
+        return null;
+    }
+
+    /// <summary>
+    /// Emails <paramref name="code"/> (nothing when it is empty: the name/email exists or is unknown,
+    /// and the answer is the same). A failed send cancels the code so it can't be used and holds nothing.
+    /// </summary>
+    private async Task<Reply> SendCodeAsync(CodePurpose purpose, string email, string code, string? name, long? accountId, Result started, Stopwatch timer)
+    {
+        Reply reply;
+        if (code.Length == 0)
+        {
+            _m.Log(LogLevel.Info, $"{purpose} code for {EmailMessages.Mask(email)} not sent (name/email taken or unknown).");
+            reply = JsonReply(200, new { ok = true, message = started.Message });
+        }
+        else
+        {
+            var (subject, text, html) = EmailMessages.Code(purpose, code, name);
+            bool sent;
+            try
+            {
+                sent = await _m.Email.SendAsync(email, subject, text, html, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _m.Log(LogLevel.Warn, $"Email to {EmailMessages.Mask(email)} failed: {ex.GetType().Name}.");
+                sent = false;
+            }
+
+            if (sent)
+            {
+                _m.Log(LogLevel.Info, $"Sent {purpose} code to {EmailMessages.Mask(email)}.");
+                reply = JsonReply(200, new { ok = true, message = started.Message });
+            }
+            else
+            {
+                _m.Accounts.CancelPending(purpose, email, accountId);
+                _m.Log(LogLevel.Warn, $"{purpose} code for {EmailMessages.Mask(email)} could not be sent; cancelled.");
+                reply = Bad(CouldNotSend, 503);
+            }
+        }
+
+        var left = SendFloor - timer.Elapsed;
+        if (left > TimeSpan.Zero) await Task.Delay(left).ConfigureAwait(false);
+        return reply;
+    }
+
+    private Reply Signed(Account account, string message)
+    {
+        var session = _m.WebAuth.IssueSession(account.Name, account.Id);
+        return new Reply(200, "application/json; charset=utf-8",
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message, name = account.Name, needsEmail = !account.EmailVerified }, Json),
+            [("Set-Cookie", WebPaths.SessionCookie(session, secure: true))]);
+    }
+
+    // ---- handlers -------------------------------------------------------------------------------
+
+    private async Task<Reply> SignupAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        var name = Str(body, "name") ?? "";
+        var password = Str(body, "password") ?? "";
+        var email = Str(body, "email") ?? "";
+        if (!AccountRules.TryName(name, out var n, out var err)) return Bad(err);
+        if (!AccountRules.TryPassword(password, out err)) return Bad(err);
+        if (!AccountRules.TryEmail(email, out var e, out err)) return Bad(err);
+
+        var ip = ClientIp(req);
+        if (!_m.SignupPerIp.TryTake("signup:ip:" + ip)) return Bad(TooMany, 429);
+        if (TakeSendLimits(e, ip) is { } limited) return limited;
+
+        var timer = Stopwatch.StartNew();
+        var started = _m.Accounts.StartSignup(name, password, e, out var code);
+        if (!started.Ok) return Bad(started.Message);
+        return await SendCodeAsync(CodePurpose.Signup, e, code, n, null, started, timer).ConfigureAwait(false);
+    }
+
+    private Reply Verify(System.Text.Json.JsonElement? body)
+    {
+        var email = Str(body, "email") ?? "";
+        var code = Str(body, "code") ?? "";
+        var r = _m.Accounts.VerifySignup(email, code, out var account);
+        if (!r.Ok || account is null) return Bad(r.Message);
+        _m.Log(LogLevel.Info, $"Account created on the web: '{account.Name}' ({EmailMessages.Mask(account.Email ?? "")}).");
+        return Signed(account, r.Message);
+    }
+
+    private Reply Login(System.Text.Json.JsonElement? body)
+    {
+        var name = (Str(body, "name") ?? "").Trim();
+        var password = Str(body, "password") ?? "";
+        if (name.Length == 0 || password.Length == 0) return Bad(WrongLogin);
+
+        var result = _m.Accounts.CheckLogin(name, password, out var account);
+        switch (result)
+        {
+            case LoginResult.Ok when account is not null:
+                _m.Log(LogLevel.Info, $"Web sign-in for account '{account.Name}'{(account.EmailVerified ? "" : " (no recovery email yet)")}.");
+                return Signed(account, account.EmailVerified ? "Signed in." : "Signed in. Add a recovery email to continue.");
+            case LoginResult.LockedOut:
+                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': locked out.");
+                return Bad(LockedOut, 403);
+            case LoginResult.UnknownName or LoginResult.Disabled:
+                // as slow as a real check, so the answer time doesn't tell which names exist
+                var d = DummyCred.Value;
+                PasswordHasher.Verify(password, d.Hash, d.Salt, d.Iter);
+                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': {result}.");
+                return Bad(WrongLogin);
+            default:
+                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': {result}.");
+                return Bad(WrongLogin);
+        }
+    }
+
+    private Reply Logout(HttpListenerRequest req)
+    {
+        var session = req.Cookies[WebPaths.SessionCookieName]?.Value;
+        if (!string.IsNullOrEmpty(session))
+        {
+            var who = _m.WebAuth.PlayerFor(session);
+            _m.WebAuth.Revoke(session);
+            if (who is not null) _m.Log(LogLevel.Info, $"Web sign-out for '{who}'.");
+        }
+        return new Reply(200, "application/json; charset=utf-8",
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message = "Signed out." }, Json),
+            [("Set-Cookie", WebPaths.ClearSessionCookie())]);
+    }
+
+    private async Task<Reply> ForgotAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        var email = Str(body, "email") ?? "";
+        if (!AccountRules.TryEmail(email, out var e, out var err)) return Bad(err);
+        if (TakeSendLimits(e, ClientIp(req)) is { } limited) return limited;
+
+        var timer = Stopwatch.StartNew();
+        var started = _m.Accounts.StartRecovery(e, out var code, out var name);
+        if (!started.Ok) return Bad(started.Message);
+        return await SendCodeAsync(CodePurpose.Recovery, e, code, name, null, started, timer).ConfigureAwait(false);
+    }
+
+    private Reply Reset(System.Text.Json.JsonElement? body)
+    {
+        var email = Str(body, "email") ?? "";
+        var r = _m.Accounts.CompleteRecovery(email, Str(body, "code") ?? "", Str(body, "password") ?? "");
+        if (!r.Ok) return Bad(r.Message);
+        if (_m.Accounts.FindByEmail(email) is { } account)
+        {
+            _m.WebAuth.RevokeAllFor(account.Name); // a reset signs out every web session of that name
+            _m.Log(LogLevel.Info, $"Password reset by email for '{account.Name}'.");
+        }
+        return Ok(r.Message);
+    }
+
+    private Reply AccountMe(HttpListenerRequest req)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var a = cur.Account;
+        return JsonReply(200, new
+        {
+            ok = true,
+            name = a.Name,
+            email = a.Email,
+            emailVerified = a.EmailVerified,
+            needsEmail = !a.EmailVerified,
+            isojName = a.IsojName,
+            created = a.Created,
+            lastLogin = a.LastLogin,
+        });
+    }
+
+    private async Task<Reply> AddEmailAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var email = Str(body, "email") ?? "";
+        if (!AccountRules.TryEmail(email, out var e, out var err)) return Bad(err);
+        if (TakeSendLimits(e, ClientIp(req)) is { } limited) return limited;
+
+        var timer = Stopwatch.StartNew();
+        var started = _m.Accounts.StartAddEmail(cur.Account.Id, e, out var code);
+        if (!started.Ok) return Bad(started.Message);
+        return await SendCodeAsync(CodePurpose.AddEmail, e, code, cur.Account.Name, cur.Account.Id, started, timer).ConfigureAwait(false);
+    }
+
+    private Reply VerifyEmail(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var r = _m.Accounts.VerifyAddEmail(cur.Account.Id, Str(body, "code") ?? "");
+        if (r.Ok) _m.Log(LogLevel.Info, $"Recovery email set for '{cur.Account.Name}'.");
+        return r.Ok ? Ok(r.Message) : Bad(r.Message);
+    }
+
+    private Reply ChangePassword(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        if (!cur.Account.EmailVerified) return NeedEmailReply();
+        var r = _m.Accounts.ChangePassword(cur.Account.Id, Str(body, "current") ?? "", Str(body, "next") ?? "");
+        if (!r.Ok) return Bad(r.Message);
+        _m.WebAuth.RevokeAllFor(cur.Account.Name, except: cur.Session); // other browsers are signed out
+        _m.Log(LogLevel.Info, $"Password changed on the web for '{cur.Account.Name}'.");
+        return Ok(r.Message);
+    }
+}

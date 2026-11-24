@@ -315,6 +315,30 @@ public sealed class AccountStore : IDisposable
         });
     }
 
+    // ---- cancelling ------------------------------------------------------
+
+    /// <summary>
+    /// Voids the unused code(s) for <paramref name="email"/> and <paramref name="purpose"/> (and, for
+    /// a sign-up, the pending sign-up itself), so a code whose email could not be sent can never be
+    /// used and holds nothing. For <see cref="CodePurpose.AddEmail"/> pass the account so only that
+    /// account's code goes. An invalid email or nothing pending is a no-op.
+    /// </summary>
+    public void CancelPending(CodePurpose purpose, string email, long? accountId = null)
+    {
+        if (!AccountRules.TryEmail(email, out var e, out _)) return;
+        var p = PurposeKey(purpose);
+        Tx(() =>
+        {
+            if (purpose == CodePurpose.AddEmail && accountId is { } id)
+                Run("DELETE FROM email_codes WHERE purpose = $p AND email = $e AND account_id = $id AND used = 0", ("$p", p), ("$e", e), ("$id", id));
+            else
+                Run("DELETE FROM email_codes WHERE purpose = $p AND email = $e AND used = 0", ("$p", p), ("$e", e));
+            if (purpose == CodePurpose.Signup)
+                Run("DELETE FROM pending_signups WHERE email = $e", ("$e", e));
+            return Ok("");
+        });
+    }
+
     // ---- legacy import ---------------------------------------------------
 
     /// <summary>
@@ -358,6 +382,13 @@ public sealed class AccountStore : IDisposable
     public Account? Get(long id)
     {
         lock (_gate) return LoadAccount("id = $id", ("$id", id));
+    }
+
+    /// <summary>The account whose recovery email is <paramref name="email"/> (normalized), or null.</summary>
+    public Account? FindByEmail(string email)
+    {
+        if (!AccountRules.TryEmail(email, out var e, out _)) return null;
+        lock (_gate) return LoadAccount("recovery_email = $e", ("$e", e));
     }
 
     // ---- internals -------------------------------------------------------

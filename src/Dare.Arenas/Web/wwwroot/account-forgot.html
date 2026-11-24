@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forgot password · SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<script src="/account/account.js" defer></script>
+</head>
+<body data-page="forgot">
+<header class="top">
+  <h1>FOUNDATION</h1>
+  <span class="sub">ACCOUNT</span>
+  <nav><a href="/arena/">Arenas</a></nav>
+</header>
+<main class="panel narrow">
+  <h2>Forgot password</h2>
+  <p class="dim">We email a code to your recovery email.</p>
+  <form class="stack" id="form">
+    <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
+    <button type="submit">Send code</button>
+  </form>
+  <p class="msg" id="msg"></p>
+  <p class="links"><a href="/account/login">Sign in</a></p>
+</main>
+</body>
+</html>

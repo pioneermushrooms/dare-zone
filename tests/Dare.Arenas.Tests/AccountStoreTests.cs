@@ -389,4 +389,71 @@ public sealed class AccountStoreTests : IDisposable
         Assert.True(arenas.Request("Big Chris", "myarena", "pitch").Ok);
         Assert.NotNull(s.Find("Big Chris"));
     }
+
+    // ---- cancelling a code whose email could not be sent ------------------
+
+    [Fact]
+    public void send_failure_creates_nothing()
+    {
+        var s = Open();
+        Assert.True(s.StartSignup("Big Chris", Pw, "chris@example.com", out var code).Ok);
+        Assert.NotEqual("", code);
+        s.CancelPending(CodePurpose.Signup, "Chris@Example.com "); // the send failed
+        Assert.False(s.VerifySignup("chris@example.com", code, out var none).Ok);
+        Assert.Null(none);
+        Assert.Null(s.Find("Big Chris"));
+        Assert.Equal("0", ScalarText("SELECT COUNT(*) FROM pending_signups"));
+        Assert.Equal("0", ScalarText("SELECT COUNT(*) FROM email_codes WHERE used = 0"));
+        // the name is not reserved: someone else can claim it
+        var other = SignUp(s, "Big Chris", "other@example.com");
+        Assert.Equal("Big Chris", other.Name);
+        // and the first email can still sign up later
+        SignUp(s, "Second Name", "chris@example.com");
+    }
+
+    [Fact]
+    public void cancelled_recovery_code_is_void()
+    {
+        var s = Open();
+        SignUp(s);
+        Assert.True(s.StartRecovery("chris@example.com", out var code, out _).Ok);
+        s.CancelPending(CodePurpose.Recovery, "chris@example.com");
+        Assert.False(s.CompleteRecovery("chris@example.com", code, "brandnewpw1").Ok);
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Big Chris", Pw, out _));
+    }
+
+    [Fact]
+    public void cancelled_add_email_code_is_void_and_only_that_accounts()
+    {
+        var s = Open();
+        s.ImportLegacy(new[] { ("OldTimer", PasswordHasher.LegacyHash("OldTimer", "oldpassword")),
+                               ("Another", PasswordHasher.LegacyHash("Another", "oldpassword")) });
+        var a = s.Find("OldTimer")!;
+        var b = s.Find("Another")!;
+        Assert.True(s.StartAddEmail(a.Id, "old@example.com", out var codeA).Ok);
+        Assert.True(s.StartAddEmail(b.Id, "b@example.com", out var codeB).Ok);
+        s.CancelPending(CodePurpose.AddEmail, "old@example.com", a.Id);
+        Assert.False(s.VerifyAddEmail(a.Id, codeA).Ok);
+        Assert.False(s.Get(a.Id)!.EmailVerified);
+        Assert.True(s.VerifyAddEmail(b.Id, codeB).Ok);
+    }
+
+    [Fact]
+    public void cancel_with_nothing_pending_is_harmless()
+    {
+        var s = Open();
+        s.CancelPending(CodePurpose.Signup, "nobody@example.com");
+        s.CancelPending(CodePurpose.Recovery, "not an email");
+        SignUp(s);
+    }
+
+    [Fact]
+    public void find_by_email_is_normalized_and_null_when_unknown()
+    {
+        var s = Open();
+        var a = SignUp(s);
+        Assert.Equal(a.Id, s.FindByEmail(" Chris@Example.COM ")!.Id);
+        Assert.Null(s.FindByEmail("nobody@example.com"));
+        Assert.Null(s.FindByEmail("not an email"));
+    }
 }

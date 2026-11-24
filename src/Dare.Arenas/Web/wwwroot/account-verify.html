@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enter code · SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<script src="/account/account.js" defer></script>
+</head>
+<body data-page="verify">
+<header class="top">
+  <h1>FOUNDATION</h1>
+  <span class="sub">ACCOUNT</span>
+  <nav><a href="/arena/">Arenas</a></nav>
+</header>
+<main class="panel narrow">
+  <h2>Enter your code</h2>
+  <p class="dim" id="sent">We emailed you a 6-digit code. It is valid for 10 minutes.</p>
+  <form class="stack" id="form">
+    <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
+    <label>Code <input name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
+    <button type="submit">Create account</button>
+  </form>
+  <p class="msg" id="msg"></p>
+  <p class="links"><a href="/account/signup">Start over</a></p>
+</main>
+</body>
+</html>

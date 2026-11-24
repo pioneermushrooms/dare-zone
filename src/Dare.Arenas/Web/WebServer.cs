@@ -36,6 +36,7 @@ public sealed partial class ArenaOwnership
         if (string.IsNullOrWhiteSpace(listen)) listen = DefaultWebListen;
         if (!listen.EndsWith('/')) listen += "/";
 
+        LoadEmailSender();
         try
         {
             _web = new WebServer(this, _mainloop, listen);
@@ -236,10 +237,11 @@ public sealed partial class ArenaOwnership
 /// <summary>
 /// The HttpListener for the arena pages. Accepts paths with or without the <c>/arena</c> prefix
 /// (Caddy's <c>handle_path /arena/*</c> strips it; local testing keeps it); public links and
-/// redirects always use <c>/arena/...</c>. Requests are handled on thread-pool threads; anything
+/// redirects always use <c>/arena/...</c>. The account pages arrive with their <c>/account</c>
+/// prefix kept (Caddy <c>handle /account/*</c>, no stripping) and are routed in AccountPages.cs. Requests are handled on thread-pool threads; anything
 /// touching server state is queued to the mainloop with <see cref="IMainloop.QueueMainWorkItem"/>.
 /// </summary>
-internal sealed class WebServer : IDisposable
+internal sealed partial class WebServer : IDisposable
 {
     private const int MaxJsonBytes = 4096;
     private const int MaxConcurrent = 16;
@@ -353,6 +355,9 @@ internal sealed class WebServer : IDisposable
         var path = WebPaths.Normalize(req.Url?.AbsolutePath);
         var method = req.HttpMethod;
 
+        if (IsAccountPath(path))
+            return await AccountRouteAsync(req, path).ConfigureAwait(false);
+
         switch (path)
         {
             case "/": return Get(method, () => Static("index.html"));
@@ -418,20 +423,31 @@ internal sealed class WebServer : IDisposable
             [("Set-Cookie", WebPaths.SessionCookie(session, secure: true)), ("Location", WebPaths.Prefix + "/me")]);
     }
 
-    private string? SessionPlayer(HttpListenerRequest req)
-    {
-        var session = req.Cookies[WebPaths.SessionCookieName]?.Value;
-        return string.IsNullOrEmpty(session) ? null : _m.WebAuth.PlayerFor(session);
-    }
-
-    /// <summary>401 without a session; 403 for writes without the anti-CSRF header.</summary>
+    /// <summary>
+    /// 401 without a session (a ?weblogin session or an account sign-in, both keyed by name); 403
+    /// for an account that has no verified recovery email yet; 403 for writes without the anti-CSRF
+    /// header or with an Origin that isn't this site.
+    /// </summary>
     private Reply? Gate(HttpListenerRequest req, bool write, out string player)
     {
-        player = SessionPlayer(req) ?? "";
-        if (player.Length == 0)
-            return JsonReply(401, new { ok = false, message = "Not signed in. Type ?weblogin in game for a sign-in link." });
+        player = "";
+        var cookie = req.Cookies[WebPaths.SessionCookieName]?.Value;
+        var session = string.IsNullOrEmpty(cookie) ? null : _m.WebAuth.SessionFor(cookie);
+        if (session is null)
+            return JsonReply(401, new { ok = false, message = "Not signed in. Sign in at /account/login, or type ?weblogin in game for a sign-in link." });
+        if (session.Value.AccountId is { } id)
+        {
+            var account = _m.Accounts.Get(id);
+            if (account is null)
+                return JsonReply(401, new { ok = false, message = "Not signed in." });
+            if (!account.EmailVerified)
+                return JsonReply(403, new { ok = false, message = "Add a recovery email first at /account/.", needsEmail = true });
+        }
         if (write && req.Headers[CsrfHeader] != CsrfValue)
             return JsonReply(403, new { ok = false, message = "Missing request header." });
+        if (write && req.Headers["Origin"] is { } origin && !WebPaths.IsAllowedOrigin(origin, _m.WebBaseUrl))
+            return JsonReply(403, new { ok = false, message = "Request refused (not from this site)." });
+        player = session.Value.Player;
         return null;
     }
 
@@ -732,7 +748,7 @@ internal sealed class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css" })
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");
