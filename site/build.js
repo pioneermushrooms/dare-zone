@@ -76,7 +76,16 @@ async function load() {
   if (status === 401 || status === 403) {
     $("create").hidden = true;
     $("mine").hidden = true;
-    if (status === 403 && body?.message) $("signin").querySelector("p").textContent = body.message;
+    if (status === 403 && body?.needsEmail) {
+      // signed in, but the account has no confirmed recovery email yet
+      $("signin").querySelector("h2").textContent = "One more step";
+      const p = $("signin").querySelector("p");
+      p.textContent = "Arena building needs a recovery email on your account, so you can't be locked out of your arena. ";
+      const link = Object.assign(document.createElement("a"), { href: "/account/", textContent: "Add it on your account page" });
+      p.append(link, ", then come back here.");
+    } else if (status === 403 && body?.message) {
+      $("signin").querySelector("p").textContent = body.message;
+    }
     return;
   }
   render(body?.draft ?? null);
