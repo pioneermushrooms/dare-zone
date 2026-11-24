@@ -54,7 +54,7 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/plugin" "$STAGE/site"
 cp -R "$REPO/deploy" "$STAGE/deploy"
 cp "$PLUGIN"/* "$STAGE/plugin/"
-cp "$REPO/site/index.html" "$REPO/site/arena-owners.html" "$STAGE/site/"
+cp "$REPO/site/"* "$STAGE/site/"
 
 TS=$(date -u +%Y%m%d-%H%M%S)
 REMOTE=/root/dare-arenas-deploy-$TS

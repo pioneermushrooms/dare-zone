@@ -2,56 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SubSpace Foundation</title>
-<meta name="description" content="An open home for SubSpace: every zone, every client, and tools for anyone to build their own arena.">
-<style>
-  :root { --bg:#05070d; --panel:#131922; --line:#2a3442; --text:#c6d6e6; --dim:#7d8ea3; --accent:#22d3ee; --hot:#ff8a1f; }
-  * { box-sizing:border-box; }
-  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
-         background: radial-gradient(1200px 600px at 50% -10%, #0e2233 0%, transparent 60%), var(--bg); }
-  .stars { position:fixed; inset:0; pointer-events:none; background-image:
-    radial-gradient(1px 1px at 12% 22%, #fff8 50%, transparent 51%), radial-gradient(1px 1px at 72% 12%, #fff6 50%, transparent 51%),
-    radial-gradient(1px 1px at 33% 78%, #fff7 50%, transparent 51%), radial-gradient(1px 1px at 88% 64%, #fff5 50%, transparent 51%),
-    radial-gradient(1px 1px at 52% 42%, #fff6 50%, transparent 51%), radial-gradient(1px 1px at 6% 90%, #fff5 50%, transparent 51%); }
-  main { position:relative; width:100%; max-width:720px; background:linear-gradient(#161d27, #0f141b); border:1px solid var(--line);
-         box-shadow: inset 0 1px 0 #3a4552, 0 0 0 1px #0a0c10, 0 30px 80px #000a; border-radius:6px; padding:32px 28px; }
-  main::before { content:""; position:absolute; left:16px; right:16px; top:8px; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:.6; }
-  h1 { margin:0; font-size:clamp(28px, 7vw, 46px); letter-spacing:4px; color:var(--hot); text-shadow:0 0 18px #ff8a1f66; }
-  .sub { color:var(--accent); letter-spacing:3px; font-size:13px; margin:4px 0 24px; }
-  p { margin:0 0 16px; }
-  ul { margin:0 0 20px; padding-left:20px; }
-  li { margin:4px 0; }
-  .zone { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; background:#0a0e14; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin:20px 0; }
-  .zone b { color:#fff; }
-  code { color:var(--hot); }
-  .claim { display:inline-block; margin:4px 0 20px; padding:12px 22px; background:var(--hot); color:#05070d; font-weight:bold; letter-spacing:2px; text-decoration:none; border-radius:4px; box-shadow:0 0 18px #ff8a1f66; }
-  .claim:hover { background:#ffa24d; }
-  a { color:var(--accent); }
-  footer { margin-top:24px; color:var(--dim); font-size:13px; }
-</style>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Play SubSpace in your browser and build your own arena in the shared Foundation zone.">
+<title>SubSpace Foundation — Play and build together</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="home.css">
+<script src="portal.js" defer></script>
 </head>
-<body>
-<div class="stars"></div>
+<body><header><nav aria-label="Main navigation"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="#play">Play</a><a href="#create">Create an arena</a><a href="arenas.html">Arena directory</a></div><a class="outline" href="pilot.html">Claim your name</a></nav></header>
 <main>
-  <h1>SUBSPACE FOUNDATION</h1>
-  <div class="sub">EVERY ZONE · EVERY CLIENT · BUILT BY PLAYERS</div>
-  <p>SubSpace has always belonged to the people who play it: your own zone, your own arenas, your own settings, maps and skins.</p>
-  <p>We're building an open home for that:</p>
-  <ul>
-    <li>Every zone listed side by side, playable from any client</li>
-    <li>Request your own arena; run it with your own settings, map and graphics</li>
-    <li>Browser tools to edit ships, maps and tiles, and publish straight to your arena</li>
-    <li>Old arenas preserved, not deleted</li>
-  </ul>
-  <div class="zone">
-    <span>Play now: zone <b>Foundation</b></span>
-    <span>Continuum or oss-client · <code>5.161.238.245:5000</code></span>
+<section class="wrap arrival" id="play">
+  <div class="arrival-copy">
+    <p class="eyebrow">MULTIPLAYER SPACE COMBAT</p>
+    <h1>A shared zone.<br><em>Room to innovate.</em></h1>
+    <p class="intro">Fly with other pilots in your browser. Find an arena you love, or create one with your own map, graphics, and rules.</p>
   </div>
-  <a class="claim" href="/account/signup">CLAIM YOUR NAME</a>
-  <p>Want your own arena? <a href="/arena-owners.html">How to request and run one</a> · <a href="/arena/">Player-owned arenas</a></p>
-  <footer>Under construction.</footer>
-</main>
-</body>
-</html>
+  <div class="portal">
+    <a class="portal-launch" href="/play/" aria-label="Enter SubSpace Foundation in your browser">
+      <picture><img src="jump.webp" alt="" width="1672" height="941" fetchpriority="high"></picture>
+      <span class="tunnel-motion" aria-hidden="true"><img src="jump.webp" alt="" width="1672" height="941"></span>
+      <span class="portal-action"><span class="play-icon" aria-hidden="true"></span><span><strong>Enter the zone</strong><small>Fly in your browser</small></span></span>
+    </a>
+    <div class="portal-footer">
+      <span><strong>First time flying?</strong> <a href="pilot.html">Claim a pilot name</a> and use it to sign in.</span>
+      <button class="motion-toggle" type="button" aria-pressed="false" hidden>Pause animation</button>
+    </div>
+  </div>
+</section>
+<section class="lab" id="create"><div class="wrap section"><div><p class="eyebrow">PLAYER-OWNED ARENAS</p><h2>Make a place people want to play.</h2><p>Give a racing circuit, a duel format, or a new team game a home inside Foundation. Set the rules, upload your map and graphics, and invite up to five co-mods to help run it.</p><a class="outline" href="arena-owners.html">Read the arena owner guide</a></div><div class="panel"><h3>From idea to arena</h3><ol><li><strong>Pitch it.</strong> Tell Foundation staff what you’d like to build from the arena dashboard.</li><li><strong>Follow the decision.</strong> Zone staff review requests. The directory shows the request and decision.</li><li><strong>Make it yours.</strong> Once approved, set the rules and upload your map and graphics from the arena dashboard.</li></ol></div></div></section>
+<section class="wrap section" id="future"><div><p class="eyebrow">WHAT’S NEXT</p><h2>Build and publish from your browser.</h2><p>Foundation’s next step is to make map, tile, and ship editing easier, with the arena dashboard as the starting point.</p></div><div class="panel"><h3>A client you can make your own</h3><p>Explore the minimum gameplay standard and a proposal for shareable color themes.</p><a class="outline" href="client-standard.html">Read the client standard</a></div></section>
+</main><footer><div class="wrap"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><span>Built with <a href="https://github.com/DangerMouseUK/oss-client">Open SubSpace</a> and <a href="https://github.com/gigamon-dev/SubspaceServer">SubspaceServer .NET</a>.</span></div></footer></body></html>
