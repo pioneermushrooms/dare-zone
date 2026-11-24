@@ -251,6 +251,15 @@ public sealed class FoundationAuth : IModule, IAuth
             case GameRefusal.BadPassword:
                 result.Code = AuthCode.BadPassword;
                 break;
+            case GameRefusal.LockedOut:
+                result.Code = AuthCode.LockedOut;
+                break;
+            case GameRefusal.Disabled:
+                result.Code = AuthCode.NoPermission2;
+                break;
+            case GameRefusal.Busy:
+                result.Code = AuthCode.ServerBusy;
+                break;
             case GameRefusal.CustomText:
                 result.Code = AuthCode.CustomText;
                 var span = (text ?? "").AsSpan();
