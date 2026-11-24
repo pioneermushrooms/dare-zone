@@ -12,15 +12,21 @@
 # which backs up every file it changes (/root/backup-arena-ownership-<timestamp>/), installs the
 # module, groups, template, site pages and Caddy route, and restarts the zone (see that script).
 #
+# Foundation accounts: the install swaps the AuthFile login module for FoundationAuth (the plugin
+# imports passwd.conf [Users] once on first load), removes cmd_passwd and adds the /account/* Caddy
+# route. After the first deploy, run deploy/set-resend-key.sh from your Mac so codes go out by email.
+#
 # Rollback: remote-install.sh rolls back by itself when the new build does not come up (previous
-# plugin folder on a re-deploy, module line removed on a first install). By hand, on the server,
+# plugin folder on a re-deploy; Modules.config and groupdef.dir/default from the backup, so AuthFile is
+# the login module again; Caddyfile and site too). By hand, on the server,
 # with B=$(cat /root/backup-arena-ownership-latest):
 #   cat $B/conf/Modules.config > /opt/subspace/zone/conf/Modules.config
 #   cat $B/conf/groupdef.conf > /opt/subspace/zone/conf/groupdef.conf
 #   cp -a $B/conf/groupdef.dir/. /opt/subspace/zone/conf/groupdef.dir/
 #   cat $B/conf/staff.conf > /opt/subspace/zone/conf/staff.conf
-#   passwd.conf: NEVER restore it wholesale - players claim their names there with ?passwd, so an
-#     old copy deletes every password set since. Copy back single lines from $B/conf/passwd.conf.
+#   passwd.conf: NEVER restore it wholesale (copy back single lines from $B/conf/passwd.conf).
+#     Restoring Modules.config + groupdef.dir/default (above) puts AuthFile and cmd_passwd back; passwords
+#     set on the site while FoundationAuth ran are not in passwd.conf and do not carry over.
 #   data/dare-arenas.db: a consistent copy is in $B/data/ (restore only with subspace stopped).
 #   if [ -d $B/zone-bin-modules/Dare.Arenas ]; then          # previous plugin build, if any
 #     mv /opt/subspace/zone/bin/modules/Dare.Arenas $B/failed-Dare.Arenas
@@ -66,6 +72,7 @@ echo
 echo "== public check"
 for u in https://subspacefoundation.com/ https://subspacefoundation.com/arena-owners.html \
          https://subspacefoundation.com/arena/ https://subspacefoundation.com/arena/api/public \
-         https://subspacefoundation.com/arena; do
+         https://subspacefoundation.com/arena https://subspacefoundation.com/account/signup \
+         https://subspacefoundation.com/account; do
   printf '%-50s %s\n' "$u" "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$u")"
 done

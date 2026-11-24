@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test harness for deploy/remote-install.sh (runs on macOS/Linux, no root, no server): fake zone + stubbed systemctl/journalctl/caddy/ss/curl.
 #   deploy/test-remote-install.sh <scenario>
-# scenarios: redeploy-fail first-fail public-8088 rollback-fails caddy-fail err-trap players sysop-bad sysop-ok store-backup store-backup-nocli
+# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players sysop-bad sysop-ok store-backup store-backup-nocli
 # Needs a Release build in out/modules/Dare.Arenas (deploy.sh or dotnet build -c Release).
 set -uo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -73,6 +73,32 @@ case $SC in
     bash "$RI" "$S" 2>&1 | grep -vE '^  ' ; echo "exit ${PIPESTATUS[0]}"
     echo "### module line in Modules.config: $(grep -c Dare.Arenas.ArenaOwnership $H/zone/conf/Modules.config)"
     echo "### zone state: $(cat $H/state); journal: $(cat $H/journal)" ;;
+  auth-install)
+    bash "$RI" "$S" >/dev/null 2>&1; echo "exit $?"
+    M=$H/zone/conf/Modules.config
+    echo "### live AuthFile lines: $(grep -cE '^[[:space:]]*<module[[:space:]]+type="SS.Core.Modules.AuthFile' $M)"
+    echo "### FoundationAuth line before AuthBan: $([ "$(grep -n 'Dare.Arenas.FoundationAuth' $M | head -1 | cut -d: -f1)" -lt "$(grep -n 'SS.Core.Modules.AuthBan' $M | head -1 | cut -d: -f1)" ] && echo yes || echo NO)"
+    echo "### cmd_passwd in default: $(grep -cx cmd_passwd $H/zone/conf/groupdef.dir/default)"
+    echo "### passwd.conf backed up: $(ls $H/root/backup-arena-ownership-*/conf/passwd.conf 2>/dev/null | wc -l | tr -d ' ')"
+    echo "### Caddyfile: arena $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account $(grep -c 'handle /account/\*' $H/Caddyfile), account redir $(grep -c 'redir /account ' $H/Caddyfile)"
+    echo "### re-run is idempotent:"; cp $H/Caddyfile $H/Caddyfile.1; cp $M $H/Modules.1
+    bash "$RI" "$S" >/dev/null 2>&1; echo "exit $?"
+    cmp $H/Caddyfile $H/Caddyfile.1 && cmp $M $H/Modules.1 && echo "unchanged" ;;
+  auth-rollback)
+    M=$H/zone/conf/Modules.config
+    cp $M $H/Modules.orig; cp $H/zone/conf/groupdef.dir/default $H/default.orig; cp $H/Caddyfile $H/Caddyfile.orig
+    touch "$S/plugin/BROKEN"
+    bash "$RI" "$S" 2>&1 | grep -vE '^  ' ; echo "exit ${PIPESTATUS[0]}"
+    echo "### live AuthFile lines: $(grep -cE '^[[:space:]]*<module[[:space:]]+type="SS.Core.Modules.AuthFile' $M)"
+    echo "### FoundationAuth lines: $(grep -c Dare.Arenas.FoundationAuth $M); ArenaOwnership lines: $(grep -c Dare.Arenas.ArenaOwnership $M); AuthBan lines: $(grep -c 'SS.Core.Modules.AuthBan' $M)"
+    cmp $M $H/Modules.orig && echo "### Modules.config identical to the original"
+    cmp $H/zone/conf/groupdef.dir/default $H/default.orig && echo "### groupdef.dir/default identical to the original (cmd_passwd back: $(grep -cx cmd_passwd $H/zone/conf/groupdef.dir/default))"
+    cmp $H/Caddyfile $H/Caddyfile.orig && echo "### Caddyfile identical to the original"
+    echo "### zone state: $(cat $H/state); journal: $(cat $H/journal)" ;;
+  caddy-account-only)
+    printf 'subspacefoundation.com {\n\troot * /var/www/foundation\n\thandle_path /arena/* {\n\t\treverse_proxy 127.0.0.1:8088\n\t}\n\tfile_server\n}\n' > "$H/Caddyfile"
+    bash "$RI" "$S" --no-restart 2>&1 | grep -E 'Caddyfile|snippet|ERROR'
+    echo "### arena blocks: $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account blocks: $(grep -c 'handle /account/\*' $H/Caddyfile)" ;;
   public-8088)
     bash "$RI" "$S" >/dev/null 2>&1; echo "good build" > "$H/zone/bin/modules/Dare.Arenas/MARK-previous"; touch "$H/public"
     bash "$RI" "$S" 2>&1 | grep -vE '^  /' | sed -n '/restart subspace/,$p'; echo "exit ${PIPESTATUS[0]}"
