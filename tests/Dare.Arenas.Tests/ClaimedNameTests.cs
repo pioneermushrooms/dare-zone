@@ -74,4 +74,18 @@ public class ClaimedNameTests
     {
         Assert.Null(ClaimedName.Resolve("someone", null, value, Passwd));
     }
+
+    [Fact]
+    public void users_lists_claimed_names_with_hashes_for_the_legacy_import()
+    {
+        var users = ClaimedName.Users(Passwd + "\n[Users]\ntester = again==\nAnyone = late==\nBig Chris = lock\n");
+        Assert.Equal(new[] { ("tester", "again=="), ("Anyone", "late=="), ("Late Comer", "zzz==") }, users);
+    }
+
+    [Fact]
+    public void users_of_an_empty_or_userless_file_is_empty()
+    {
+        Assert.Empty(ClaimedName.Users(""));
+        Assert.Empty(ClaimedName.Users("[General]\nAllowUnknown = yes\n[Users]\n; none yet\n"));
+    }
 }

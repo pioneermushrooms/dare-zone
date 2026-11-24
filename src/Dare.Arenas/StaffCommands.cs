@@ -43,7 +43,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Staff overrides for player-owned arenas; each is public in ?arenalog.
             suspend: closes the arena to players (reason required). revive: reopens a suspended or
             archived arena (an archived folder is moved back from arenas/_archive/). transfer: gives
-            the arena to another player (a name claimed with ?passwd). archive: closes it; its folder
+            the arena to another player (a claimed name: a Foundation account). archive: closes it; its folder
             moves to arenas/_archive/ at the next server restart. To take an arena from its owner,
             transfer or suspend it here: removing the owner's group with ?rmgroup does not last (it
             is granted again on their next entry).
@@ -170,7 +170,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         var newOwner = ResolveClaimedName(newOwnerRaw, online);
         if (newOwner is null)
         {
-            Reply(staff, $"{newOwnerRaw} has not claimed that name with a password (?passwd); transfer only to a claimed name or to a player who is online and logged in with their password.");
+            Reply(staff, $"{newOwnerRaw} has not claimed that name (accounts: subspacefoundation.com); transfer only to a claimed name or to a player who is online and logged in with their password.");
             return;
         }
 
@@ -297,8 +297,9 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 
     /// <summary>
     /// The name to give a role to (co-mod, new owner): the online player's name when they are
-    /// logged in with their password, else the spelling stored in passwd.conf when the name is
-    /// claimed there; null when the name is not claimed.
+    /// logged in with their password, else the account's name when it is a Foundation account,
+    /// else the spelling stored in passwd.conf when the name is claimed there; null when the name
+    /// is not claimed.
     /// </summary>
     internal string? ResolveClaimedName(string typed, Player? online)
     {
@@ -306,6 +307,17 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                                   && string.Equals(online.Name, typed.Trim(), StringComparison.OrdinalIgnoreCase)
             ? online.Name
             : null;
+        if (onlineAuthenticated is null && typed.Trim().Length > 0)
+        {
+            try
+            {
+                if (_accounts?.Find(typed.Trim()) is { } account) return account.Name;
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Warn, $"Account lookup for '{typed.Trim()}' failed: {ex.Message}");
+            }
+        }
         var value = _passwdConf is null ? null : _configManager.GetStr(_passwdConf, "users", typed.Trim());
         string? text = null;
         if (onlineAuthenticated is null && ClaimedName.IsClaim(value))

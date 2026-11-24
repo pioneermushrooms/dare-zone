@@ -34,6 +34,9 @@ public sealed partial class ArenaOwnership : IModule
     private readonly IMainloop _mainloop;
 
     private ArenaStore? _store;
+    // Foundation accounts (same db file, own connection). Game logins are answered by the
+    // FoundationAuth module; here the store only resolves claimed names for roles.
+    private AccountStore? _accounts;
 
     // staff.conf (for players' [(global)] groups) and passwd.conf (claimed names). Same documents
     // the CapabilityManager and AuthFile modules use, so values are current in memory.
@@ -79,6 +82,7 @@ public sealed partial class ArenaOwnership : IModule
             var dir = Path.GetDirectoryName(DbPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             _store = new ArenaStore(DbPath, () => DateTimeOffset.UtcNow);
+            _accounts = new AccountStore(DbPath, () => DateTimeOffset.UtcNow);
         }
         catch (Exception ex)
         {
@@ -102,6 +106,8 @@ public sealed partial class ArenaOwnership : IModule
             CloseConfs();
             _store.Dispose();
             _store = null;
+            _accounts?.Dispose();
+            _accounts = null;
             return false;
         }
 
@@ -126,6 +132,8 @@ public sealed partial class ArenaOwnership : IModule
         CloseConfs();
         _store?.Dispose();
         _store = null;
+        _accounts?.Dispose();
+        _accounts = null;
         return true;
     }
 

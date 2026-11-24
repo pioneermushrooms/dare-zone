@@ -15,6 +15,15 @@
       <Private>false</Private>
       <ExcludeAssets>all</ExcludeAssets>
     </ProjectReference>
+    <!-- login packet / string helpers for FoundationAuth; shipped by the server (no copy in the plugin folder) -->
+    <ProjectReference Include="../../vendor/SubspaceServer/src/Packets/Packets.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>all</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="../../vendor/SubspaceServer/src/Utilities/Utilities.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>all</ExcludeAssets>
+    </ProjectReference>
     <ProjectReference Include="../Dare.Arenas.Core/Dare.Arenas.Core.csproj" />
   </ItemGroup>
 

@@ -2,6 +2,7 @@
 # Applies the Dare.Arenas deploy files to a SubspaceServer zone directory. Safe to re-run.
 #
 #   deploy/apply-local.sh <zoneDir> [pluginDir]
+#   deploy/apply-local.sh --restore-authfile <zoneDir>   (undo the game-login switch below)
 #
 # - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff,arenaadmin} into <zone>/conf/groupdef.dir/
 #   (overwrites: module-owned files)
@@ -14,11 +15,19 @@
 # - appends default-caps.txt to groupdef.dir/default (missing lines only)
 # - copies arenas/_template/ into <zone>/arenas/_template/ (existing files are kept, so local edits survive)
 # - adds the Dare.Arenas <module> line to conf/Modules.config before </modules> (once)
+# - game logins from Foundation accounts: comments out the SS.Core.Modules.AuthFile line in
+#   conf/Modules.config and puts the Dare.Arenas.FoundationAuth line in its place (it must load
+#   before AuthBan, which wraps whichever IAuth is registered when it loads); removes cmd_passwd
+#   from groupdef.dir/default (players change passwords on the site). --restore-authfile undoes
+#   exactly this (AuthFile line back, FoundationAuth line out, cmd_passwd back).
 # - if pluginDir is given (e.g. out/modules/Dare.Arenas), replaces <zone>/bin/modules/Dare.Arenas with it
 set -euo pipefail
 
+RESTORE_AUTHFILE=0
+if [ "${1:-}" = "--restore-authfile" ]; then RESTORE_AUTHFILE=1; shift; fi
+
 if [ $# -lt 1 ]; then
-  echo "usage: $0 <zoneDir> [pluginDir]" >&2
+  echo "usage: $0 <zoneDir> [pluginDir]  |  $0 --restore-authfile <zoneDir>" >&2
   exit 2
 fi
 
@@ -27,12 +36,42 @@ ZONE=$(cd "$1" && pwd)
 CONF="$ZONE/conf"
 MODULE_LINE='	<module type="Dare.Arenas.ArenaOwnership" path="bin/modules/Dare.Arenas/Dare.Arenas.dll"/>'
 
+AUTH_TYPE='Dare.Arenas.FoundationAuth'
+AUTH_LINE='	<module type="Dare.Arenas.FoundationAuth" path="bin/modules/Dare.Arenas/Dare.Arenas.dll"/>'
+AUTHFILE_LINE='	<module type="SS.Core.Modules.AuthFile, SS.Core" />'
+AUTHFILE_OFF='	<!--<module type="SS.Core.Modules.AuthFile, SS.Core" />--><!-- Dare.Arenas: game logins come from FoundationAuth -->'
+# the live AuthFile module line (any spacing); the commented-out one this script writes
+AUTHFILE_RE='^[[:space:]]*<module[[:space:]]+type="SS\.Core\.Modules\.AuthFile,[[:space:]]*SS\.Core"[[:space:]]*/>[[:space:]]*$'
+AUTHFILE_OFF_RE='^[[:space:]]*<!--<module type="SS\.Core\.Modules\.AuthFile, SS\.Core" />--><!-- Dare\.Arenas: game logins come from FoundationAuth -->[[:space:]]*$'
+
 for f in "$CONF/groupdef.conf" "$CONF/groupdef.dir/default" "$CONF/groupdef.dir/mod" "$CONF/Modules.config"; do
   [ -f "$f" ] || { echo "missing $f - is $ZONE a zone directory?" >&2; exit 1; }
 done
 
 # ensure a file ends with a newline before appending to it
 ensure_nl() { [ -s "$1" ] && [ "$(tail -c1 "$1")" != "" ] && printf '\n' >> "$1" || true; }
+
+if [ "$RESTORE_AUTHFILE" = 1 ]; then
+  tmp=$(mktemp)
+  RE="$AUTHFILE_OFF_RE" awk -v live="$AUTHFILE_LINE" -v auth="$AUTH_TYPE" '
+    BEGIN { re = ENVIRON["RE"] }
+    $0 ~ re { print live; next }
+    index($0, "type=\"" auth "\"") { next }
+    { print }
+  ' "$CONF/Modules.config" > "$tmp"
+  if ! grep -Eq "$AUTHFILE_RE" "$tmp"; then
+    # no commented line to bring back: put AuthFile before AuthBan
+    awk -v live="$AUTHFILE_LINE" '/SS\.Core\.Modules\.AuthBan/ && !done { print live; done=1 } { print }' "$tmp" > "$tmp.2"
+    cat "$tmp.2" > "$tmp"; rm -f "$tmp.2"
+  fi
+  cat "$tmp" > "$CONF/Modules.config"; rm -f "$tmp"
+  echo "Modules.config: AuthFile restored, FoundationAuth line removed"
+  if ! grep -qxF 'cmd_passwd' "$CONF/groupdef.dir/default"; then
+    ensure_nl "$CONF/groupdef.dir/default"; printf 'cmd_passwd\n' >> "$CONF/groupdef.dir/default"
+    echo "groupdef.dir/default: cmd_passwd restored"
+  fi
+  exit 0
+fi
 
 append_missing() { # <capsFile> <target>
   local line
@@ -121,6 +160,44 @@ else
   grep -qF 'Dare.Arenas.ArenaOwnership' "$tmp" || { rm -f "$tmp"; echo "no </modules> in Modules.config" >&2; exit 1; }
   cat "$tmp" > "$CONF/Modules.config"; rm -f "$tmp"
   echo "Modules.config: Dare.Arenas module line added"
+fi
+
+# game logins: FoundationAuth replaces AuthFile, at AuthFile's place (before AuthBan)
+tmp=$(mktemp)
+RE="$AUTHFILE_RE" awk -v off="$AUTHFILE_OFF" -v line="$AUTH_LINE" -v auth="$AUTH_TYPE" '
+  BEGIN { has = 0; re = ENVIRON["RE"] }
+  { lines[NR] = $0; if (index($0, "type=\"" auth "\"")) has = 1 }
+  END {
+    for (i = 1; i <= NR; i++) {
+      if (lines[i] ~ re) { print off; if (!has) { print line; has = 1 }; continue }
+      if (!has && lines[i] ~ /SS\.Core\.Modules\.AuthBan/) { print line; has = 1 }
+      if (!has && lines[i] ~ /Dare\.Arenas\.ArenaOwnership/) { print line; has = 1 }
+      print lines[i]
+    }
+  }
+' "$CONF/Modules.config" > "$tmp"
+fa=$(grep -nF "type=\"$AUTH_TYPE\"" "$tmp" | head -1 | cut -d: -f1)
+ab=$(grep -nE '^[[:space:]]*<module[[:space:]]+type="SS\.Core\.Modules\.AuthBan' "$tmp" | head -1 | cut -d: -f1)
+[ -n "$fa" ] || { rm -f "$tmp"; echo "could not place the FoundationAuth line in Modules.config" >&2; exit 1; }
+if [ -n "$ab" ] && [ "$fa" -gt "$ab" ]; then
+  rm -f "$tmp"; echo "Modules.config: the FoundationAuth line must come before AuthBan - fix it by hand" >&2; exit 1
+fi
+if grep -Eq "$AUTHFILE_RE" "$tmp"; then
+  rm -f "$tmp"; echo "Modules.config still loads AuthFile - fix it by hand" >&2; exit 1
+fi
+if cmp -s "$tmp" "$CONF/Modules.config"; then
+  echo "Modules.config already uses FoundationAuth (AuthFile off)"
+else
+  cat "$tmp" > "$CONF/Modules.config"
+  echo "Modules.config: AuthFile commented out, FoundationAuth line in its place"
+fi
+rm -f "$tmp"
+
+if grep -qxF 'cmd_passwd' "$CONF/groupdef.dir/default"; then
+  tmp=$(mktemp)
+  grep -vxF 'cmd_passwd' "$CONF/groupdef.dir/default" > "$tmp" || true
+  cat "$tmp" > "$CONF/groupdef.dir/default"; rm -f "$tmp"
+  echo "groupdef.dir/default: cmd_passwd removed (passwords change on the site)"
 fi
 
 if [ $# -ge 2 ]; then
