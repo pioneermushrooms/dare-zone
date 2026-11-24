@@ -11,7 +11,7 @@ namespace Dare.Arenas.Core;
 /// ArchiveMoveDone is bookkeeping and appends none). Archiving records a pending folder move
 /// (table pending_archive_moves) that the module carries out at its next start.
 /// </summary>
-public sealed class ArenaStore : IDisposable
+public sealed partial class ArenaStore : IDisposable
 {
     public const int MaxCoMods = 5;
 
@@ -71,7 +71,23 @@ public sealed class ArenaStore : IDisposable
             CREATE INDEX IF NOT EXISTS ix_requests_player ON requests(player, status);
             CREATE INDEX IF NOT EXISTS ix_requests_arena ON requests(arena, status);
             CREATE INDEX IF NOT EXISTS ix_events_arena ON events(arena, id);
+            CREATE TABLE IF NOT EXISTS drafts (
+              name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+              owner TEXT NOT NULL COLLATE NOCASE,
+              status TEXT NOT NULL,
+              live INTEGER NOT NULL DEFAULT 0,
+              created TEXT NOT NULL,
+              last_touched TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_drafts_owner ON drafts(owner, status);
+            CREATE TABLE IF NOT EXISTS draft_invites (
+              name TEXT NOT NULL COLLATE NOCASE,
+              player TEXT NOT NULL COLLATE NOCASE,
+              PRIMARY KEY (name, player)
+            );
             """);
+        if (Scalar("SELECT COUNT(*) FROM pragma_table_info('requests') WHERE name = 'draft'") == 0)
+            Exec("ALTER TABLE requests ADD COLUMN draft INTEGER NULL;");
     }
 
     public void Dispose()
@@ -93,6 +109,10 @@ public sealed class ArenaStore : IDisposable
             return Fail($"Arena '{arena}' is already taken.");
         if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' already has a pending request.");
+        if (LoadDraftByOwner(player) is { } own)
+            return Fail($"You have a draft (#{own.Name}); request it with ?requestpublic.");
+        if (Scalar("SELECT COUNT(*) FROM drafts WHERE name = $a", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' is already taken.");
         var now = Now();
         Run("INSERT INTO requests(arena, player, pitch, status, at) VALUES($a,$p,$pitch,'Pending',$at)",
             ("$a", arena), ("$p", player), ("$pitch", pitch ?? ""), ("$at", now));
@@ -120,6 +140,10 @@ public sealed class ArenaStore : IDisposable
             return Fail($"{req.Player} already owns an arena.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
+        var fromDraft = IsDraftRequestId(req.Id);
+        var existingDraft = LoadDraft(arena);
+        if (!fromDraft && existingDraft is null && LoadDraftByOwner(req.Player) is { } other)
+            return Fail($"{req.Player} has a draft (#{other.Name}); approve that instead.");
         var folderError = createFolder();
         if (folderError is not null)
             return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was approved and the request is still pending.");
@@ -127,7 +151,17 @@ public sealed class ArenaStore : IDisposable
         Run("UPDATE requests SET status='Approved', decided_by=$s WHERE id=$id", ("$s", staff), ("$id", req.Id));
         Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
             ("$a", arena), ("$o", req.Player), ("$t", now));
-        AddEvent(now, arena, staff, "approve", $"owner: {req.Player}");
+        if (existingDraft is null)
+            Run("INSERT INTO drafts(name, owner, status, live, created, last_touched) VALUES($a,$o,'Published',1,$t,$t)",
+                ("$a", arena), ("$o", req.Player), ("$t", now));
+        else
+        {
+            Run("UPDATE drafts SET status='Published', live=1, last_touched=$t WHERE name=$a", ("$t", now), ("$a", arena));
+            // the draft's co-mods help run the live arena too
+            Run("INSERT OR IGNORE INTO comods(arena, player) SELECT $a, player FROM comods WHERE arena = $d",
+                ("$a", arena), ("$d", DraftRules.DraftOf(arena)));
+        }
+        AddEvent(now, arena, staff, "approve", $"owner: {req.Player}{(fromDraft ? " (from draft)" : "")}");
         return Ok($"Approved '{arena}' for {req.Player}.");
     });
 
@@ -141,13 +175,15 @@ public sealed class ArenaStore : IDisposable
         var now = Now();
         Run("UPDATE requests SET status='Declined', decided_by=$s, reason=$r WHERE id=$id",
             ("$s", staff), ("$r", reason), ("$id", req.Id));
+        if (IsDraftRequestId(req.Id))
+            Run("UPDATE drafts SET status='Active' WHERE name=$a AND status='Requested'", ("$a", arena));
         AddEvent(now, arena, staff, "decline", $"{req.Player}: {reason}");
         return Ok($"Declined '{arena}'.");
     });
 
     public Result AddCoMod(string arena, string owner, string player) => Tx(() =>
     {
-        var a = Load(arena);
+        var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (!Same(a.Owner, owner)) return Fail("Only the arena owner can add co-mods.");
         if (string.IsNullOrWhiteSpace(player)) return Fail("Player name is required.");
@@ -161,7 +197,7 @@ public sealed class ArenaStore : IDisposable
 
     public Result RemoveCoMod(string arena, string owner, string player) => Tx(() =>
     {
-        var a = Load(arena);
+        var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (!Same(a.Owner, owner)) return Fail("Only the arena owner can remove co-mods.");
         if (!a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is not a co-mod.");
@@ -210,8 +246,15 @@ public sealed class ArenaStore : IDisposable
         if (string.IsNullOrWhiteSpace(newOwner)) return Fail("New owner is required.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", newOwner)) > 0)
             return Fail($"{newOwner} already owns an arena.");
+        if (LoadDraftByOwner(newOwner) is { } theirs && !Same(theirs.Name, arena))
+            return Fail($"{newOwner} already has a draft (#{theirs.Name}).");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", newOwner));
         Run("UPDATE arenas SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
+        // the draft goes with the arena; the old owner's invites go with the old owner
+        var draft = DraftRules.DraftOf(arena);
+        Run("DELETE FROM comods WHERE arena=$d AND player=$p", ("$d", draft), ("$p", newOwner));
+        Run("UPDATE drafts SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
+        Run("DELETE FROM draft_invites WHERE name=$a", ("$a", arena));
         AddEvent(Now(), arena, staff, "transfer", $"{a.Owner} -> {newOwner}");
         return Ok($"Transferred '{arena}' to {newOwner}.");
     });
@@ -294,7 +337,7 @@ public sealed class ArenaStore : IDisposable
 
     public string? RoleIn(string arena, string player)
     {
-        var a = Get(arena);
+        var a = DraftRules.IsDraft(arena) ? DraftAsArena(arena) : Get(arena);
         if (a is null || a.Status != ArenaStatus.Active) return null;
         if (Same(a.Owner, player)) return "owner";
         return a.CoMods.Any(c => Same(c, player)) ? "comod" : null;
@@ -308,8 +351,13 @@ public sealed class ArenaStore : IDisposable
             using var cmd = Cmd("""
                 SELECT name, 'owner' AS role, 0 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
                 UNION ALL
-                SELECT a.name, 'comod', 1 FROM comods c JOIN arenas a ON a.name = c.arena
+                SELECT a.name, 'comod', 2 FROM comods c JOIN arenas a ON a.name = c.arena
                   WHERE c.player = $p AND a.status = 'Active'
+                UNION ALL
+                SELECT '#' || name, 'owner', 1 FROM drafts WHERE owner = $p AND status <> 'Archived'
+                UNION ALL
+                SELECT '#' || d.name, 'comod', 3 FROM comods c JOIN drafts d ON c.arena = '#' || d.name
+                  WHERE c.player = $p AND d.status <> 'Archived'
                 ORDER BY ord, name
                 """, ("$p", player));
             using var r = cmd.ExecuteReader();
