@@ -195,5 +195,6 @@ function wireOwner() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  if (document.body.dataset.page === "me") { wireOwner(); mePage(); } else { publicPage(); }
+  // /arena/me?arena=%23name (from the /build/ page) opens that arena, e.g. your draft
+  if (document.body.dataset.page === "me") { wireOwner(); mePage(new URLSearchParams(location.search).get("arena") || undefined); } else { publicPage(); }
 });

@@ -374,6 +374,15 @@ internal sealed partial class WebServer : IDisposable
             case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/rmlvz": return method == "POST" ? await RemoveLvzAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/request": return method == "POST" ? await RequestAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/drafts/mine": return method == "GET" ? await DraftsMineAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/drafts":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.CreateDraftFor(p, Str(b, "name") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/drafts/invite":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.InviteFor(p, Str(b, "player") ?? "", Str(b, "add") != "false")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/drafts/request":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.RequestPublicFor(p, Str(b, "pitch") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/drafts/publish":
+                return method == "POST" ? await DraftActionAsync(req, (p, _) => _m.PublishFor(p)).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
     }
@@ -614,6 +623,38 @@ internal sealed partial class WebServer : IDisposable
         {
             _m.CloseArenaConfig(cfg);
         }
+    }
+
+    /// <summary>The signed-in pilot's draft (or null), for the /build/ page.</summary>
+    private async Task<Reply> DraftsMineAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var d = _m.WebStore.DraftOwnedBy(player);
+        var live = d is { Live: true } ? _m.WebStore.Get(d.Name) : null;
+        return JsonReply(200, new
+        {
+            player,
+            draft = d is null ? null : new
+            {
+                name = d.Name,
+                status = d.Status.ToString(),
+                live = d.Live,
+                liveStatus = live?.Status.ToString(),
+                invited = d.Invited,
+                coMods = d.CoMods,
+                maxInvites = ArenaStore.MaxInvites,
+            },
+        });
+    }
+
+    /// <summary>A POST from the /build/ page: JSON body, signed-in pilot, run on the mainloop.</summary>
+    private async Task<Reply> DraftActionAsync(HttpListenerRequest req, Func<string, JsonElement?, Result> action)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var result = await OnMain(() => action(player, body)).ConfigureAwait(false);
+        return ResultReply(result);
     }
 
     private async Task<Reply> RequestAsync(HttpListenerRequest req)
