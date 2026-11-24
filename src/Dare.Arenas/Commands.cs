@@ -227,34 +227,42 @@ public sealed partial class ArenaOwnership
             return;
         }
 
-        var name = raw.ToLowerInvariant();
-        // The folder is created inside the approval: if that fails, nothing is approved.
-        var result = Store.Approve(name, player.Name, ArenaFolderExists, () => TryCreateArenaFolder(name));
-        if (!result.Ok)
-        {
-            Reply(player, result.Message);
-            return;
-        }
+        var result = ApproveArena(player.Name, raw);
+        Reply(player, result.Message);
+    }
 
-        Log(LogLevel.Info, $"{player.Name} approved arena '{name}'.");
-        Reply(player, $"{result.Message} Folder arenas/{name}/ created from the template.");
+    /// <summary>
+    /// The shared approve path for ?approvearena and the web staff view (caller checked
+    /// cmd_approvearena): approves, creates the folder inside the store transaction, recycles a
+    /// running arena of that name and tells the requester. One combined message. Mainloop.
+    /// </summary>
+    internal Result ApproveArena(string staff, string raw)
+    {
+        var name = raw.Trim().ToLowerInvariant();
+        // The folder is created inside the approval: if that fails, nothing is approved.
+        var result = Store.Approve(name, staff, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        if (!result.Ok) return result;
+
+        Log(LogLevel.Info, $"{staff} approved arena '{name}'.");
+        var message = $"{result.Message} Folder arenas/{name}/ created from the template.";
 
         // Someone may already be in an arena of that name; it opened a shared fallback config
         // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players
         // re-enter (which also grants the owner). If it can't be recycled, staff must do it.
         var (recycled, notRecycled) = RecycleRunning(name);
         if (recycled.Count > 0)
-            Reply(player, $"Recycled {string.Join(", ", recycled)} so it loads its new settings.");
+            message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
         if (notRecycled.Count > 0)
         {
-            Reply(player, $"Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings; the owner's powers start on their next entry.");
+            message += $" Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings; the owner's powers start on their next entry.";
             Log(LogLevel.Warn, $"Arena '{name}' approved while {string.Join(", ", notRecycled)} was running and could not be recycled.");
         }
 
         var owner = Store.Get(name)?.Owner;
         var requester = owner is null ? null : _playerData.FindPlayer(owner);
         if (requester is not null)
-            Reply(requester, $"Your arena request '{name}' was approved by {player.Name}! Type ?go {name} to enter it, then ?myarena.");
+            Reply(requester, $"Your arena request '{name}' was approved by {staff}! Type ?go {name} to enter it, then ?myarena.");
+        return new Result(true, message);
     }
 
     /// <summary>Recycles every running arena whose base name is <paramref name="name"/>.</summary>
@@ -305,18 +313,27 @@ public sealed partial class ArenaOwnership
             return;
         }
 
-        var name = raw.ToLowerInvariant();
+        Reply(player, DeclineArena(player.Name, raw, reason).Message);
+    }
+
+    /// <summary>The shared decline path for ?declinearena and the web staff view (caller checked cmd_declinearena). Mainloop.</summary>
+    internal Result DeclineArena(string staff, string raw, string reason)
+    {
+        reason = reason.Trim();
+        if (reason.Length == 0 || reason.Length > MaxPitchLength || reason.Any(char.IsControl))
+            return new Result(false, $"A reason is required: one line, up to {MaxPitchLength} characters.");
+        var name = raw.Trim().ToLowerInvariant();
         var requesterName = Store.Requests(pendingOnly: true, 1000)
             .FirstOrDefault(r => string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase))?.Player;
 
-        var result = Store.Decline(name, player.Name, reason);
-        Reply(player, result.Message);
-        if (!result.Ok) return;
+        var result = Store.Decline(name, staff, reason);
+        if (!result.Ok) return result;
 
-        Log(LogLevel.Info, $"{player.Name} declined arena '{name}': {reason}");
+        Log(LogLevel.Info, $"{staff} declined arena '{name}': {reason}");
         var requester = requesterName is null ? null : _playerData.FindPlayer(requesterName);
         if (requester is not null)
-            Reply(requester, $"Your arena request '{name}' was declined by {player.Name}: {reason}");
+            Reply(requester, $"Your arena request '{name}' was declined by {staff}: {reason}");
+        return result;
     }
 
     // ---- arena owners and co-mods -----------------------------------------------------
@@ -444,44 +461,61 @@ public sealed partial class ArenaOwnership
             return;
         }
 
+        Reply(player, ChangeCoMod(player.Name!, arenaName, action, name).Message);
+    }
+
+    /// <summary>
+    /// The shared co-mod path for ?comod add/remove and the web hub. The caller checked that
+    /// <paramref name="owner"/> is authenticated and owns <paramref name="arenaName"/> (the store
+    /// checks ownership again). A new co-mod must be a claimed name. Mainloop.
+    /// </summary>
+    internal Result ChangeCoMod(string owner, string arenaName, string action, string name)
+    {
+        name = name.Trim();
+        if ((action != "add" && action != "remove") || name.Length == 0)
+            return new Result(false, "Usage: ?comod add <player> / ?comod remove <player>");
+        if (name.Length > 24 || name.Any(char.IsControl))
+            return new Result(false, "That is not a valid player name.");
+
         var online = _playerData.FindPlayer(name);
         if (action == "add")
         {
-            // Only a claimed name: otherwise whoever first types ?passwd on it would get the role.
+            // Only a claimed name: otherwise whoever first claims it would get the role.
             var claimed = ResolveClaimedName(name, online);
             if (claimed is null)
-            {
-                Reply(player, $"{name} has not claimed that name, so it can't be a co-mod yet. They can claim it at subspacefoundation.com.");
-                return;
-            }
+                return new Result(false, $"{name} has not claimed that name, so it can't be a co-mod yet. They can claim it at subspacefoundation.com.");
             name = claimed;
         }
-        else if (online?.Name is not null)
+        else
         {
-            name = online.Name; // canonical spelling
+            if (online?.Name is not null) name = online.Name; // canonical spelling
+            else if (Store.Get(arenaName)?.CoMods.FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)) is { } stored)
+                name = stored;
         }
+        if (online is not null && !string.Equals(online.Name, name, StringComparison.OrdinalIgnoreCase))
+            online = null;
 
         var result = action == "add"
-            ? Store.AddCoMod(arenaName, player.Name!, name)
-            : Store.RemoveCoMod(arenaName, player.Name!, name);
-        Reply(player, result.Message);
-        if (!result.Ok) return;
+            ? Store.AddCoMod(arenaName, owner, name)
+            : Store.RemoveCoMod(arenaName, owner, name);
+        if (!result.Ok) return result;
 
-        Log(LogLevel.Info, $"{player.Name} {(action == "add" ? "added" : "removed")} co-mod {name} in [{arenaName}].");
-        if (online is null) return;
+        Log(LogLevel.Info, $"{owner} {(action == "add" ? "added" : "removed")} co-mod {name} in [{arenaName}].");
+        if (online is null) return result;
 
         var inArena = online.Arena is not null && string.Equals(online.Arena.BaseName, arenaName, StringComparison.OrdinalIgnoreCase);
         if (action == "add")
         {
-            Reply(online, $"{player.Name} made you a co-mod of arena '{arenaName}'.");
+            Reply(online, $"{owner} made you a co-mod of arena '{arenaName}'.");
             if (inArena) ApplyGrant(online, online.Arena!);
         }
         else
         {
-            Reply(online, $"{player.Name} removed you as a co-mod of arena '{arenaName}'.");
+            Reply(online, $"{owner} removed you as a co-mod of arena '{arenaName}'.");
             if (inArena && string.Equals(_groupManager.GetGroup(online), GrantLogic.CoModGroup, StringComparison.OrdinalIgnoreCase))
-                Revoke(online, online.Arena!, $"co-mod removed by {player.Name}");
+                Revoke(online, online.Arena!, $"co-mod removed by {owner}");
         }
+        return result;
     }
 
     [CommandHelp(

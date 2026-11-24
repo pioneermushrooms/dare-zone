@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff · SubSpace Foundation</title>
+<link rel="stylesheet" href="/arena/style.css">
+<script src="/arena/app.js" defer></script>
+</head>
+<body data-page="staff">
+<header class="top">
+  <a class="brand" href="/">FOUNDATION</a>
+  <nav><a href="/arena/">Arenas</a><a href="/arena/me">Your hub</a><a href="/account/">Account</a></nav>
+</header>
+
+<main class="panel narrow" id="denied" hidden>
+  <h2>Staff only</h2>
+  <p id="deniedmsg">This page is for zone staff.</p>
+  <div class="actions"><a class="btn" href="/account/login">Sign in</a></div>
+</main>
+
+<div class="hub" id="hub" hidden>
+  <nav class="side" aria-label="Staff">
+    <span class="who" id="who"></span>
+    <a href="#requests" data-view="requests">Requests <span id="pendingcount"></span></a>
+    <a href="#create" data-view="create" id="createnav">Create arena</a>
+    <a href="#arenas" data-view="arenas">Arenas</a>
+    <a href="#events" data-view="events">Events</a>
+  </nav>
+  <div class="content">
+    <section data-view="requests" hidden>
+      <p class="kicker">Requests</p>
+      <h2>Waiting, oldest first</h2>
+      <p class="msg" id="decmsg"></p>
+      <div id="requests"></div>
+    </section>
+    <section data-view="create" hidden>
+      <p class="kicker">Create arena</p>
+      <h2>Create one now</h2>
+      <p class="dim">No request needed. The owner must have a Foundation account; leave it empty to own it yourself. Public in the event log.</p>
+      <form class="stack" id="createform">
+        <label>Arena name <input type="text" id="crname" maxlength="15" required autocomplete="off">
+          <span class="hint">3–15 letters and digits; starts with a letter, doesn't end in a digit.</span></label>
+        <label>Owner <input type="text" id="crowner" maxlength="24" autocomplete="off"></label>
+        <button type="submit" class="hot">Create arena</button>
+      </form>
+      <p class="msg" id="crmsg"></p>
+      <p class="dim" id="createonly" hidden>Creating arenas needs super moderator or sysop.</p>
+    </section>
+    <section data-view="arenas" hidden>
+      <p class="kicker">Arenas</p>
+      <h2>Player-owned arenas</h2>
+      <p class="dim">Suspend, revive, transfer and archive stay in game: <b>?arenaadmin</b>.</p>
+      <div class="scrollx"><table class="plain"><thead><tr><th scope="col">Arena</th><th scope="col">Status</th><th scope="col">Owner</th><th scope="col">Co-mods</th><th scope="col">Playing</th><th scope="col">Last entered</th></tr></thead><tbody id="arenarows"></tbody></table></div>
+    </section>
+    <section data-view="events" hidden>
+      <p class="kicker">Events</p>
+      <h2>Public log</h2>
+      <ul class="list" id="events"></ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>

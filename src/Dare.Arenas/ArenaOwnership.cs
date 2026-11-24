@@ -117,6 +117,7 @@ public sealed partial class ArenaOwnership : IModule
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();
         RegisterStaff(broker);
+        LoadZoneList(broker);
         StartWeb();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
@@ -126,6 +127,7 @@ public sealed partial class ArenaOwnership : IModule
     bool IModule.Unload(IComponentBroker broker)
     {
         StopWeb(); // first: no new web work reaches the mainloop after this
+        UnloadZoneList(broker);
         UnregisterStaff(broker);
         UnregisterCommands();
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);

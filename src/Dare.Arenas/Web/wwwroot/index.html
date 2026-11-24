@@ -3,25 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dare arenas · SubSpace Foundation</title>
+<title>Arenas · SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="public">
 <header class="top">
-  <h1>DARE ARENAS</h1>
-  <span class="sub">PLAYER-OWNED · DECIDED IN PUBLIC</span>
-  <nav><a href="/arena/me">Your arena</a></nav>
+  <a class="brand" href="/">FOUNDATION</a>
+  <nav><a href="/arena/" aria-current="page">Arenas</a><a href="/#zones">Zones</a><a class="cta" href="/arena/me">Your hub</a></nav>
 </header>
 
-<section class="panel">
-  <p>Any logged-in player can request an arena: type <b>?requestarena &lt;name&gt; &lt;pitch&gt;</b> in game,
-  or sign in here with <b>?weblogin</b>. Staff decide in public; every decision is listed below.</p>
+<section class="wrap pagehead">
+  <p class="kicker">Player-owned arenas</p>
+  <div class="row spread">
+    <h2 class="big">Made by players. Decided in public.</h2>
+    <a class="btn hot" href="/arena/me#make">Make an arena</a>
+  </div>
 </section>
 
-<div class="grid">
+<div class="grid gap-top">
   <section class="panel"><h2>Arenas</h2><ul class="list" id="arenas"><li class="dim">Loading…</li></ul></section>
-  <section class="panel"><h2>Pending requests</h2><ul class="list" id="pending"><li class="dim">Loading…</li></ul></section>
+  <section class="panel"><h2>Waiting for staff</h2><ul class="list" id="pending"><li class="dim">Loading…</li></ul></section>
   <section class="panel"><h2>Decisions</h2><ul class="list" id="decisions"><li class="dim">Loading…</li></ul></section>
   <section class="panel"><h2>Event log</h2><ul class="list" id="events"><li class="dim">Loading…</li></ul></section>
 </div>
