@@ -100,41 +100,53 @@ public sealed class FoundationAuth : IModule, IAuth
     // ---- passwd.conf import -------------------------------------------------------
 
     /// <summary>
-    /// Imports passwd.conf <c>[Users]</c> as legacy accounts, once. Called only with a non-empty
-    /// list: an empty import would set the store's marker and block the real one later.
+    /// Imports passwd.conf <c>[Users]</c> as legacy accounts, once: real hashes become active
+    /// accounts, <c>lock</c> entries 'locked' and <c>any</c> entries 'reserved'; staff.conf names
+    /// (any section) with no passwd.conf hash become 'reserved', so nobody can sign up as staff.
+    /// Called only when there is something to import: an empty import would set the store's marker
+    /// and block the real one later.
     /// </summary>
     private void ImportLegacyUsers(AccountStore store)
     {
-        string? text = null;
-        string? path = null;
-        foreach (var candidate in new[] { Path.Combine("conf", ArenaOwnership.PasswdFile), ArenaOwnership.PasswdFile })
+        string? text = ReadConf(ArenaOwnership.PasswdFile, out var path);
+        string? staffText = ReadConf("staff.conf", out _);
+
+        var users = ClaimedName.AllUsers(text ?? "");
+        var staff = StaffConf.Names(staffText);
+        if (users.Count == 0 && staff.Count == 0) return;
+
+        try
+        {
+            var before = users.Select(u => u.Name).Concat(staff).Where(n => store.Find(n) is null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var count = store.ImportLegacy(users.Select(u => (u.Name, u.Value)), staff);
+            if (count == 0) return; // imported before (marker) or every name already has an account
+            var created = before.Select(n => store.Find(n)).Where(a => a is not null).Select(a => a!).ToList();
+            Log(LogLevel.Info, $"Imported {count} legacy account(s) from {path ?? ArenaOwnership.PasswdFile}: "
+                + string.Join(", ", created.Where(a => a.Status == "active").Select(a => a.Name)));
+            foreach (var a in created.Where(a => a.Status != "active"))
+                Log(LogLevel.Warn, $"Name '{a.Name}' is {a.Status}: it cannot be signed up or logged into until staff release it.");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Legacy import from {path} failed: {ex.Message}");
+        }
+    }
+
+    private string? ReadConf(string file, out string? path)
+    {
+        foreach (var candidate in new[] { Path.Combine("conf", file), file })
         {
             try
             {
-                if (File.Exists(candidate)) { text = File.ReadAllText(candidate); path = candidate; break; }
+                if (File.Exists(candidate)) { path = candidate; return File.ReadAllText(candidate); }
             }
             catch (Exception ex)
             {
                 Log(LogLevel.Warn, $"Could not read {candidate} for the legacy import: {ex.Message}");
             }
         }
-        if (text is null) return;
-
-        var users = ClaimedName.Users(text);
-        if (users.Count == 0) return;
-
-        try
-        {
-            var missing = users.Where(u => store.Find(u.Name) is null).Select(u => u.Name).ToList();
-            var count = store.ImportLegacy(users);
-            if (count == 0) return; // imported before (marker) or every name already has an account
-            var imported = missing.Where(n => store.Find(n) is not null).ToList();
-            Log(LogLevel.Info, $"Imported {count} legacy account(s) from {path}: {string.Join(", ", imported)}");
-        }
-        catch (Exception ex)
-        {
-            Log(LogLevel.Error, $"Legacy import from {path} failed: {ex.Message}");
-        }
+        path = null;
+        return null;
     }
 
     // ---- IAuth ------------------------------------------------------------------------

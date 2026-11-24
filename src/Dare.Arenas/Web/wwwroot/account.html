@@ -28,11 +28,11 @@
 <main class="panel narrow" id="emailbox" hidden>
   <h2 id="emailtitle">Recovery email</h2>
   <p class="dim" id="emailnote"></p>
-  <form class="stack" id="emailform">
+  <form method="post" class="stack" id="emailform">
     <label>New recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
     <button type="submit">Send code</button>
   </form>
-  <form class="stack" id="codeform" hidden>
+  <form method="post" class="stack" id="codeform" hidden>
     <label>Code <input name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
     <button type="submit">Confirm email</button>
   </form>
@@ -41,7 +41,7 @@
 
 <main class="panel narrow" id="pwbox" hidden>
   <h2>Change password</h2>
-  <form class="stack" id="pwform">
+  <form method="post" class="stack" id="pwform">
     <label>Current password <input name="current" type="password" maxlength="31" autocomplete="current-password" required></label>
     <label>New password <input name="next" type="password" minlength="8" maxlength="31" autocomplete="new-password" required>
       <span class="hint">8–31 characters. Use it in the game too.</span></label>

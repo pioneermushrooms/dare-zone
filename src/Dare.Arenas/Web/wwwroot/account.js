@@ -25,7 +25,7 @@ async function post(path, body) {
 }
 
 // Wires a form: disables the button while waiting, shows the answer, then calls done(body, values).
-function wire(form, out, path, done) {
+function wire(form, out, path, done, hint) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = form.querySelector("button[type=submit]");
@@ -34,10 +34,12 @@ function wire(form, out, path, done) {
     msg(out, "…", true);
     const { body } = await post(path, v);
     btn.disabled = false;
-    msg(out, body.message, body.ok);
+    msg(out, body.ok && hint ? body.message + " " + hint : body.message, body.ok);
     if (body.ok && done) done(body, v);
   });
 }
+
+const NOTHING = "If nothing arrives in a few minutes, try again.";
 
 const pages = {
   signup() {
@@ -48,7 +50,7 @@ const pages = {
   },
   verify() {
     $("form").email.value = store.get("acct_email");
-    if (store.get("acct_sent")) $("sent").textContent = store.get("acct_sent") + " It is valid for 10 minutes.";
+    if (store.get("acct_sent")) $("sent").textContent = store.get("acct_sent") + " It is valid for 10 minutes. " + NOTHING;
     wire($("form"), $("msg"), "/verify", () => { location.href = "/account/"; });
   },
   login() {
@@ -62,7 +64,7 @@ const pages = {
   },
   reset() {
     $("form").email.value = store.get("acct_email");
-    if (store.get("acct_sent")) $("sent").textContent = store.get("acct_sent") + " Enter it below.";
+    if (store.get("acct_sent")) $("sent").textContent = store.get("acct_sent") + " Enter it below. " + NOTHING;
     wire($("form"), $("msg"), "/reset", () => { $("form").reset(); });
   },
   async profile() {
@@ -84,7 +86,7 @@ const pages = {
       $("emailnote").textContent = "We email a code to the new address.";
       $("pwbox").hidden = false;
     }
-    wire($("emailform"), $("emailmsg"), "/email", () => { $("codeform").hidden = false; $("codeform").code.focus(); });
+    wire($("emailform"), $("emailmsg"), "/email", () => { $("codeform").hidden = false; $("codeform").code.focus(); }, NOTHING);
     wire($("codeform"), $("emailmsg"), "/email/verify", () => { setTimeout(() => location.reload(), 900); });
     wire($("pwform"), $("pwmsg"), "/password", () => { $("pwform").reset(); });
     $("signout").addEventListener("click", async () => {

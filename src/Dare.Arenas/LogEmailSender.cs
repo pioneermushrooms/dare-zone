@@ -1,3 +1,4 @@
+#if DEBUG
 using System.Text.RegularExpressions;
 using Dare.Arenas.Core;
 using SS.Core.ComponentInterfaces;
@@ -29,3 +30,4 @@ internal sealed class LogEmailSender : IEmailSender
         return Task.FromResult(true);
     }
 }
+#endif

@@ -22,6 +22,10 @@ public sealed class AccountStore : IDisposable
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(10);
     public const int MaxCodeAttempts = 5;
     public const int MaxBadLogins = 10;
+    private const int LegacyPasswordMax = 31;
+    /// <summary>Wrong code tries allowed per (purpose, email) in <see cref="CodeFailureWindow"/>, across replaced codes.</summary>
+    public const int MaxWrongCodesPerDay = 20;
+    public static readonly TimeSpan CodeFailureWindow = TimeSpan.FromHours(24);
 
     private const string LegacyImportMarker = "legacy_import";
     private const string BadCode = "That code is wrong or has expired. Request a new one.";
@@ -86,6 +90,13 @@ public sealed class AccountStore : IDisposable
               window_start TEXT NOT NULL,
               count INTEGER NOT NULL,
               locked_until TEXT NULL
+            );
+            CREATE TABLE IF NOT EXISTS code_failures (
+              purpose TEXT NOT NULL,
+              email TEXT NOT NULL COLLATE NOCASE,
+              window_start TEXT NOT NULL,
+              count INTEGER NOT NULL,
+              PRIMARY KEY (purpose, email)
             );
             CREATE TABLE IF NOT EXISTS account_meta (
               key TEXT NOT NULL PRIMARY KEY,
@@ -170,7 +181,18 @@ public sealed class AccountStore : IDisposable
     /// (10 wrong passwords per name within 10 minutes refuses that name for 10 minutes, even with
     /// the right password) and LastLogin.
     /// </summary>
-    public LoginResult CheckLogin(string name, string password, out Account? account)
+    public LoginResult CheckLogin(string name, string password, out Account? account) =>
+        CheckLoginCore(name, password, out account, game: true);
+
+    /// <summary>
+    /// Web sign-in check: same password rules, but it neither counts wrong passwords toward the
+    /// game lockout nor honours it (the web keeps its own per-name-and-IP lockout), so the web
+    /// can't lock players out of the game.
+    /// </summary>
+    public LoginResult CheckWebLogin(string name, string password, out Account? account) =>
+        CheckLoginCore(name, password, out account, game: false);
+
+    private LoginResult CheckLoginCore(string name, string password, out Account? account, bool game)
     {
         account = null;
         password ??= "";
@@ -180,20 +202,23 @@ public sealed class AccountStore : IDisposable
             cred = LoadCred("name = $n", ("$n", name ?? ""));
             if (cred is null) return LoginResult.UnknownName;
             if (cred.Status != "active") return LoginResult.Disabled;
-            if (IsLockedOut(cred.Name)) return LoginResult.LockedOut;
+            if (game && IsLockedOut(cred.Name)) return LoginResult.LockedOut;
         }
 
         var ok = VerifyCred(cred, password);
-        (string Hash, string Salt, int Iter)? rehash = ok && cred.Legacy is not null ? PasswordHasher.Hash(password) : null;
+        // The legacy hash and Continuum use at most 31 characters; keep exactly that, so web and game agree.
+        (string Hash, string Salt, int Iter)? rehash = ok && cred.Legacy is not null
+            ? PasswordHasher.Hash(password.Length > LegacyPasswordMax ? password[..LegacyPasswordMax] : password)
+            : null;
 
         var result = LoginResult.BadPassword;
         Tx(() =>
         {
-            if (IsLockedOut(cred.Name)) { result = LoginResult.LockedOut; return Ok(""); }
+            if (game && IsLockedOut(cred.Name)) { result = LoginResult.LockedOut; return Ok(""); }
             var now = _clock();
             if (!ok)
             {
-                CountFailure(cred.Name, now);
+                if (game) CountFailure(cred.Name, now);
                 return Ok("");
             }
             var current = LoadCred("id = $id", ("$id", cred.Id));
@@ -203,7 +228,7 @@ public sealed class AccountStore : IDisposable
                 Run("UPDATE accounts SET password_hash=$h, password_salt=$s, hash_iterations=$i, legacy_hash=NULL WHERE id=$id",
                     ("$h", h.Hash), ("$s", h.Salt), ("$i", h.Iter), ("$id", cred.Id));
             Run("UPDATE accounts SET last_login = $t WHERE id = $id", ("$t", Fmt(now)), ("$id", cred.Id));
-            Run("DELETE FROM login_failures WHERE name = $n", ("$n", cred.Name));
+            if (game) Run("DELETE FROM login_failures WHERE name = $n", ("$n", cred.Name));
             result = LoginResult.Ok;
             return Ok("");
         });
@@ -243,6 +268,9 @@ public sealed class AccountStore : IDisposable
     {
         if (!AccountRules.TryPassword(newPassword, out var err)) return Fail(err);
         if (!AccountRules.TryEmail(email, out var e, out _)) return Fail(BadCode);
+        // Check the code first (counting a wrong try, consuming nothing); only a valid code is worth a PBKDF2 run.
+        var early = Tx(() => UseCode(CodePurpose.Recovery, e, null, code, out _, consume: false) ?? Ok(""));
+        if (!early.Ok) return early;
         var (hash, salt, iter) = PasswordHasher.Hash(newPassword);
         return Tx(() =>
         {
@@ -342,12 +370,17 @@ public sealed class AccountStore : IDisposable
     // ---- legacy import ---------------------------------------------------
 
     /// <summary>
-    /// One-time import of passwd.conf [Users] entries (name → legacy hash). Skips names that already
-    /// exist and the "lock"/"any" placeholders. Records a marker: later calls import nothing (0).
+    /// One-time import of passwd.conf [Users] entries (name → legacy hash) plus the names in
+    /// staff.conf. A real hash becomes an active legacy account; <c>lock</c> becomes a 'locked'
+    /// account and <c>any</c> a 'reserved' one (no password, can't log in or be signed up); a staff
+    /// name with no account yet becomes 'reserved', so nobody can sign up as staff. Names that
+    /// already exist are skipped. Returns how many accounts were created. Records a marker: later
+    /// calls import nothing (0).
     /// </summary>
-    public int ImportLegacy(IEnumerable<(string Name, string Hash)> users)
+    public int ImportLegacy(IEnumerable<(string Name, string Hash)> users, IEnumerable<string>? staffNames = null)
     {
         var list = users.ToList();
+        var staff = (staffNames ?? Array.Empty<string>()).ToList();
         var count = 0;
         Tx(() =>
         {
@@ -359,11 +392,22 @@ public sealed class AccountStore : IDisposable
                 var name = (rawName ?? "").Trim();
                 var hash = (rawHash ?? "").Trim();
                 if (name.Length == 0 || hash.Length == 0) continue;
-                if (hash.Equals("lock", StringComparison.OrdinalIgnoreCase) || hash.Equals("any", StringComparison.OrdinalIgnoreCase))
-                    continue;
                 if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", name)) > 0) continue;
-                Run("INSERT INTO accounts(name, hash_iterations, email_verified, created, status, legacy_hash) "
-                    + "VALUES($n,0,0,$c,'active',$l)", ("$n", name), ("$c", now), ("$l", hash));
+                if (hash.Equals("lock", StringComparison.OrdinalIgnoreCase))
+                    Run("INSERT INTO accounts(name, hash_iterations, email_verified, created, status) VALUES($n,0,0,$c,'locked')", ("$n", name), ("$c", now));
+                else if (hash.Equals("any", StringComparison.OrdinalIgnoreCase))
+                    Run("INSERT INTO accounts(name, hash_iterations, email_verified, created, status) VALUES($n,0,0,$c,'reserved')", ("$n", name), ("$c", now));
+                else
+                    Run("INSERT INTO accounts(name, hash_iterations, email_verified, created, status, legacy_hash) "
+                        + "VALUES($n,0,0,$c,'active',$l)", ("$n", name), ("$c", now), ("$l", hash));
+                count++;
+            }
+            foreach (var rawName in staff)
+            {
+                var name = (rawName ?? "").Trim();
+                if (name.Length == 0) continue;
+                if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", name)) > 0) continue;
+                Run("INSERT INTO accounts(name, hash_iterations, email_verified, created, status) VALUES($n,0,0,$c,'reserved')", ("$n", name), ("$c", now));
                 count++;
             }
             Run("INSERT INTO account_meta(key, value) VALUES($k,$v)", ("$k", LegacyImportMarker), ("$v", $"{now} {count}"));
@@ -414,12 +458,12 @@ public sealed class AccountStore : IDisposable
 
     private Account? LoadAccount(string where, params (string, object)[] ps)
     {
-        using var cmd = Cmd($"SELECT id, name, recovery_email, email_verified, created, last_login, isoj_name FROM accounts WHERE {where}", ps);
+        using var cmd = Cmd($"SELECT id, name, recovery_email, email_verified, created, last_login, isoj_name, status FROM accounts WHERE {where}", ps);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
         var last = Str(r, 5);
         return new Account(r.GetInt64(0), r.GetString(1), Str(r, 2), r.GetInt64(3) != 0, Parse(r.GetString(4)),
-            last is null ? null : Parse(last), Str(r, 6));
+            last is null ? null : Parse(last), Str(r, 6), r.GetString(7));
     }
 
     private bool IsLockedOut(string name)
@@ -483,7 +527,7 @@ public sealed class AccountStore : IDisposable
     /// Checks a code inside the current transaction. Returns null and marks it used on a match;
     /// otherwise counts the wrong try (voiding the code at <see cref="MaxCodeAttempts"/>) and returns the failure.
     /// </summary>
-    private Result? UseCode(CodePurpose purpose, string? email, long? accountId, string code, out string? codeEmail)
+    private Result? UseCode(CodePurpose purpose, string? email, long? accountId, string code, out string? codeEmail, bool consume = true)
     {
         codeEmail = null;
         var p = PurposeKey(purpose);
@@ -498,6 +542,7 @@ public sealed class AccountStore : IDisposable
             if (!r.Read()) return Fail(BadCode);
             id = r.GetInt64(0); hash = r.GetString(1); expires = r.GetString(2); attempts = r.GetInt64(3); e = r.GetString(4);
         }
+        if (CodeCapReached(p, e)) return Fail(BadCode); // too many wrong tries for this email today: nothing is accepted
         if (Parse(expires) <= _clock() || attempts >= MaxCodeAttempts)
         {
             Run("UPDATE email_codes SET used = 1 WHERE id = $id", ("$id", id));
@@ -509,11 +554,32 @@ public sealed class AccountStore : IDisposable
             attempts++;
             Run("UPDATE email_codes SET attempts = $a, used = $u WHERE id = $id",
                 ("$a", attempts), ("$u", attempts >= MaxCodeAttempts ? 1 : 0), ("$id", id));
+            CountCodeFailure(p, e);
             return Fail(BadCode);
         }
-        Run("UPDATE email_codes SET used = 1 WHERE id = $id", ("$id", id));
+        if (consume) Run("UPDATE email_codes SET used = 1 WHERE id = $id", ("$id", id));
         codeEmail = e;
         return null;
+    }
+
+    private bool CodeCapReached(string purpose, string email)
+    {
+        using var cmd = Cmd("SELECT window_start, count FROM code_failures WHERE purpose = $p AND email = $e", ("$p", purpose), ("$e", email));
+        using var r = cmd.ExecuteReader();
+        return r.Read() && Parse(r.GetString(0)) + CodeFailureWindow > _clock() && r.GetInt64(1) >= MaxWrongCodesPerDay;
+    }
+
+    private void CountCodeFailure(string purpose, string email)
+    {
+        var now = _clock();
+        string? start = null;
+        long count = 0;
+        using (var cmd = Cmd("SELECT window_start, count FROM code_failures WHERE purpose = $p AND email = $e", ("$p", purpose), ("$e", email)))
+        using (var r = cmd.ExecuteReader())
+            if (r.Read()) { start = r.GetString(0); count = r.GetInt64(1); }
+        if (start is null || Parse(start) + CodeFailureWindow <= now) { start = Fmt(now); count = 0; }
+        Run("INSERT OR REPLACE INTO code_failures(purpose, email, window_start, count) VALUES($p,$e,$w,$c)",
+            ("$p", purpose), ("$e", email), ("$w", start), ("$c", count + 1));
     }
 
     private static Result SentMessage(string email) => Ok($"If that's right, we sent a code to {email}.");

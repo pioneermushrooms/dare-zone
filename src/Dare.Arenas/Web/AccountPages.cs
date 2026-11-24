@@ -25,15 +25,23 @@ public sealed partial class ArenaOwnership
     internal readonly RateLimiter SendPerIp = new(10, TimeSpan.FromHours(1), Clock);
     internal readonly RateLimiter SignupPerIp = new(3, TimeSpan.FromHours(1), Clock);
 
+    // Web sign-in and reset: 20 attempts per 10 minutes per IP (each costs a PBKDF2 run), and a web-only
+    // lockout per (name, IP) that is separate from the game's lockout.
+    internal readonly RateLimiter LoginPerIp = new(20, TimeSpan.FromMinutes(10), Clock);
+    internal readonly RateLimiter ResetPerIp = new(20, TimeSpan.FromMinutes(10), Clock);
+    internal readonly WebLoginGuard WebLogins = new(Clock);
+
     private IEmailSender? _email;
 
     internal IEmailSender Email => _email ?? throw new InvalidOperationException("Email sender is not set up.");
     internal AccountStore Accounts => _accounts ?? throw new InvalidOperationException("Account store is not open.");
 
     /// <summary>
-    /// Resend when <c>conf/dare-secrets.conf</c> has <c>[Resend] ApiKey</c>, else the log-only sender
-    /// (local testing; warns that real email is off). Plain file read at load; warns when the file
-    /// is readable by everyone. Never logs the key.
+    /// Resend when <c>conf/dare-secrets.conf</c> has <c>[Resend] ApiKey</c>. Without a key: DEBUG
+    /// builds use the log-only sender (local testing); Release builds use a sender that always fails
+    /// (the pages show the generic answer, nothing is logged but the failure) and log an Error once,
+    /// so a codes-in-the-log leak is impossible. Plain file read at load; warns when the file is
+    /// readable by everyone. Never logs the key.
     /// </summary>
     private void LoadEmailSender()
     {
@@ -61,8 +69,13 @@ public sealed partial class ArenaOwnership
         }
         else
         {
+#if DEBUG
             _email = new LogEmailSender(Log);
-            Log(LogLevel.Warn, $"Real email is OFF: no [Resend] ApiKey in {SecretsPath}. Account codes are written to this log instead (local testing only).");
+            Log(LogLevel.Warn, $"Real email is OFF: no [Resend] ApiKey in {SecretsPath}. Account codes are written to this log instead (DEBUG build, local testing only).");
+#else
+            _email = new UnavailableEmailSender();
+            Log(LogLevel.Error, $"No [Resend] ApiKey in {SecretsPath}: account emails cannot be sent, so sign-up, recovery and email changes will not work until the key is set (set-resend-key.sh).");
+#endif
         }
     }
 }
@@ -73,7 +86,7 @@ internal sealed partial class WebServer
 
     private const string TooMany = "Too many requests. Try again later.";
     private const string WaitAMinute = "Please wait a minute before asking for another code.";
-    private const string CouldNotSend = "We couldn't send the code. Try again in a minute.";
+    private const string Busy = "Server busy, try again.";
     private const string WrongLogin = "Wrong name or password.";
     private const string LockedOut = "Too many wrong passwords. Try again in 10 minutes.";
     private const string NeedEmail = "Add a recovery email first.";
@@ -124,14 +137,29 @@ internal sealed partial class WebServer
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
         if (body is null) return error!;
 
+        // Password hashing is capped globally; a web request that can't get a slot in 5 s gives up.
+        using var limit = PasswordHasher.WaitLimit(TimeSpan.FromSeconds(5));
+        try
+        {
+            return await AccountApiAsync(req, api, body).ConfigureAwait(false);
+        }
+        catch (PasswordHasher.BusyException)
+        {
+            _m.Log(LogLevel.Warn, $"Account request {api} gave up: all password-hash slots busy.");
+            return Bad(Busy, 503);
+        }
+    }
+
+    private async Task<Reply> AccountApiAsync(HttpListenerRequest req, string api, System.Text.Json.JsonElement? body)
+    {
         return api switch
         {
             "/signup" => await SignupAsync(req, body).ConfigureAwait(false),
             "/verify" => Verify(body),
-            "/login" => Login(body),
+            "/login" => Login(req, body),
             "/logout" => Logout(req),
             "/forgot" => await ForgotAsync(req, body).ConfigureAwait(false),
-            "/reset" => Reset(body),
+            "/reset" => Reset(req, body),
             "/email" => await AddEmailAsync(req, body).ConfigureAwait(false),
             "/email/verify" => VerifyEmail(req, body),
             "/password" => ChangePassword(req, body),
@@ -183,7 +211,8 @@ internal sealed partial class WebServer
 
     /// <summary>
     /// Emails <paramref name="code"/> (nothing when it is empty: the name/email exists or is unknown,
-    /// and the answer is the same). A failed send cancels the code so it can't be used and holds nothing.
+    /// and the answer is the same). A failed send cancels the code so it can't be used and holds nothing,
+    /// and is answered exactly like a success (the failure is only logged).
     /// </summary>
     private async Task<Reply> SendCodeAsync(CodePurpose purpose, string email, string code, string? name, long? accountId, Result started, Stopwatch timer)
     {
@@ -214,9 +243,10 @@ internal sealed partial class WebServer
             }
             else
             {
+                // Same answer as a success: a distinguishing status would tell registered from unregistered.
                 _m.Accounts.CancelPending(purpose, email, accountId);
                 _m.Log(LogLevel.Warn, $"{purpose} code for {EmailMessages.Mask(email)} could not be sent; cancelled.");
-                reply = Bad(CouldNotSend, 503);
+                reply = JsonReply(200, new { ok = true, message = started.Message });
             }
         }
 
@@ -264,29 +294,39 @@ internal sealed partial class WebServer
         return Signed(account, r.Message);
     }
 
-    private Reply Login(System.Text.Json.JsonElement? body)
+    private Reply Login(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         var name = (Str(body, "name") ?? "").Trim();
         var password = Str(body, "password") ?? "";
+        var ip = ClientIp(req);
+        if (!_m.LoginPerIp.TryTake("login:ip:" + ip)) return Bad(TooMany, 429);
         if (name.Length == 0 || password.Length == 0) return Bad(WrongLogin);
+        var shown = AccountRules.TryName(name, out var valid, out _) ? $"'{valid}'" : "(invalid name)";
 
-        var result = _m.Accounts.CheckLogin(name, password, out var account);
+        // The web has its own lockout per (name, IP); it never touches the game's lockout.
+        if (_m.WebLogins.IsLocked(name, ip))
+        {
+            _m.Log(LogLevel.Info, $"Web sign-in refused for {shown}: web lockout.");
+            return Bad(LockedOut, 403);
+        }
+
+        var result = _m.Accounts.CheckWebLogin(name, password, out var account);
         switch (result)
         {
             case LoginResult.Ok when account is not null:
+                _m.WebLogins.Success(name, ip);
                 _m.Log(LogLevel.Info, $"Web sign-in for account '{account.Name}'{(account.EmailVerified ? "" : " (no recovery email yet)")}.");
                 return Signed(account, account.EmailVerified ? "Signed in." : "Signed in. Add a recovery email to continue.");
-            case LoginResult.LockedOut:
-                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': locked out.");
-                return Bad(LockedOut, 403);
             case LoginResult.UnknownName or LoginResult.Disabled:
                 // as slow as a real check, so the answer time doesn't tell which names exist
                 var d = DummyCred.Value;
                 PasswordHasher.Verify(password, d.Hash, d.Salt, d.Iter);
-                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': {result}.");
+                _m.WebLogins.Failure(name, ip);
+                _m.Log(LogLevel.Info, $"Web sign-in refused for {shown}: {result}.");
                 return Bad(WrongLogin);
             default:
-                _m.Log(LogLevel.Info, $"Web sign-in refused for '{name}': {result}.");
+                _m.WebLogins.Failure(name, ip);
+                _m.Log(LogLevel.Info, $"Web sign-in refused for {shown}: {result}.");
                 return Bad(WrongLogin);
         }
     }
@@ -317,8 +357,9 @@ internal sealed partial class WebServer
         return await SendCodeAsync(CodePurpose.Recovery, e, code, name, null, started, timer).ConfigureAwait(false);
     }
 
-    private Reply Reset(System.Text.Json.JsonElement? body)
+    private Reply Reset(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
+        if (!_m.ResetPerIp.TryTake("reset:ip:" + ClientIp(req))) return Bad(TooMany, 429);
         var email = Str(body, "email") ?? "";
         var r = _m.Accounts.CompleteRecovery(email, Str(body, "code") ?? "", Str(body, "password") ?? "");
         if (!r.Ok) return Bad(r.Message);

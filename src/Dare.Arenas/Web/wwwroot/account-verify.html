@@ -16,7 +16,7 @@
 <main class="panel narrow">
   <h2>Enter your code</h2>
   <p class="dim" id="sent">We emailed you a 6-digit code. It is valid for 10 minutes.</p>
-  <form class="stack" id="form">
+  <form method="post" class="stack" id="form">
     <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
     <label>Code <input name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
     <button type="submit">Create account</button>

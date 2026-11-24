@@ -280,9 +280,9 @@ public sealed class AccountStoreTests : IDisposable
             ("Locked One", "lock"),
             ("Anyone", "any"),
         });
-        Assert.Equal(1, n);
-        Assert.Null(s.Find("Locked One"));
-        Assert.Null(s.Find("Anyone"));
+        Assert.Equal(3, n);
+        Assert.Equal("locked", s.Find("Locked One")!.Status);
+        Assert.Equal("reserved", s.Find("Anyone")!.Status);
         var a = s.Find("oldtimer")!;
         Assert.Null(a.Email);
         Assert.False(a.EmailVerified);
@@ -455,5 +455,194 @@ public sealed class AccountStoreTests : IDisposable
         Assert.Equal(a.Id, s.FindByEmail(" Chris@Example.COM ")!.Id);
         Assert.Null(s.FindByEmail("nobody@example.com"));
         Assert.Null(s.FindByEmail("not an email"));
+    }
+
+    // ---- final fix wave ----------------------------------------------------
+
+    // I2(b): reset verifies the code BEFORE hashing the new password
+    [Fact]
+    public void reset_with_a_wrong_code_does_not_run_pbkdf2()
+    {
+        var s = Open();
+        SignUp(s);
+        Assert.True(s.StartRecovery("chris@example.com", out var code, out _).Ok);
+        var before = PasswordHasher.ThreadHashCalls;
+        Assert.False(s.CompleteRecovery("chris@example.com", WrongCode(code), "newpassword1").Ok);
+        Assert.False(s.CompleteRecovery("nobody@example.com", "123456", "newpassword1").Ok);
+        Assert.Equal(before, PasswordHasher.ThreadHashCalls);
+        Assert.True(s.CompleteRecovery("chris@example.com", code, "newpassword1").Ok);
+        Assert.Equal(before + 1, PasswordHasher.ThreadHashCalls);
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Big Chris", "newpassword1", out _));
+    }
+
+    // I2(d): web wrong passwords never count toward (or honour) the game lockout
+    [Fact]
+    public void web_login_failures_do_not_lock_the_game_login()
+    {
+        var s = Open();
+        SignUp(s);
+        for (var i = 0; i < 15; i++)
+            Assert.Equal(LoginResult.BadPassword, s.CheckWebLogin("Big Chris", "wrongpassword", out _));
+        Assert.Equal("0", ScalarText("SELECT COUNT(*) FROM login_failures"));
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Big Chris", Pw, out _));
+    }
+
+    [Fact]
+    public void web_login_works_while_the_game_name_is_locked()
+    {
+        var s = Open();
+        SignUp(s);
+        for (var i = 0; i < 10; i++) s.CheckLogin("Big Chris", "wrongpassword", out _);
+        Assert.Equal(LoginResult.LockedOut, s.CheckLogin("Big Chris", Pw, out _));
+        Assert.Equal(LoginResult.Ok, s.CheckWebLogin("Big Chris", Pw, out var a));
+        Assert.Equal("Big Chris", a!.Name);
+        Assert.Equal(LoginResult.LockedOut, s.CheckLogin("Big Chris", Pw, out _));
+    }
+
+    [Fact]
+    public void web_login_unknown_and_reserved_names()
+    {
+        var s = Open();
+        s.ImportLegacy(new[] { ("Locked One", "lock") });
+        Assert.Equal(LoginResult.UnknownName, s.CheckWebLogin("Nobody", "whatever1", out _));
+        Assert.Equal(LoginResult.Disabled, s.CheckWebLogin("Locked One", "whatever1", out _));
+    }
+
+    // I3: cumulative wrong-code cap per (email, purpose) per 24 h, across replaced codes
+    [Fact]
+    public void twenty_wrong_recovery_codes_in_a_day_block_even_the_right_code()
+    {
+        var s = Open();
+        SignUp(s);
+        for (var round = 0; round < 4; round++)
+        {
+            Assert.True(s.StartRecovery("chris@example.com", out var c, out _).Ok);
+            for (var t = 0; t < 5; t++)
+                Assert.False(s.CompleteRecovery("chris@example.com", WrongCode(c), "newpassword1").Ok);
+            _now = _now.AddMinutes(1);
+        }
+        Assert.True(s.StartRecovery("chris@example.com", out var right, out _).Ok);
+        Assert.NotEqual("", right);
+        var r = s.CompleteRecovery("chris@example.com", right, "newpassword1");
+        Assert.False(r.Ok);
+        Assert.Equal("That code is wrong or has expired. Request a new one.", r.Message); // same generic message
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Big Chris", Pw, out _)); // password untouched
+
+        _now = _now.AddHours(24).AddMinutes(1);
+        Assert.True(s.StartRecovery("chris@example.com", out var later, out _).Ok);
+        Assert.True(s.CompleteRecovery("chris@example.com", later, "newpassword1").Ok);
+    }
+
+    [Fact]
+    public void nineteen_wrong_codes_do_not_block()
+    {
+        var s = Open();
+        SignUp(s);
+        string c = "";
+        for (var round = 0; round < 4; round++)
+        {
+            Assert.True(s.StartRecovery("chris@example.com", out c, out _).Ok);
+            for (var t = 0; t < (round == 3 ? 4 : 5); t++)
+                Assert.False(s.CompleteRecovery("chris@example.com", WrongCode(c), "newpassword1").Ok);
+        }
+        Assert.True(s.CompleteRecovery("chris@example.com", c, "newpassword1").Ok);
+    }
+
+    [Fact]
+    public void the_cap_is_per_purpose_and_per_email()
+    {
+        var s = Open();
+        SignUp(s);
+        SignUp(s, "Other One", "other@example.com");
+        for (var round = 0; round < 4; round++)
+        {
+            Assert.True(s.StartRecovery("chris@example.com", out var c, out _).Ok);
+            for (var t = 0; t < 5; t++) s.CompleteRecovery("chris@example.com", WrongCode(c), "newpassword1");
+        }
+        Assert.True(s.StartRecovery("other@example.com", out var oc, out _).Ok);
+        Assert.True(s.CompleteRecovery("other@example.com", oc, "newpassword1").Ok);
+        // a sign-up code for the same (blocked) email is a different purpose
+        Assert.True(s.StartSignup("Third", Pw, "chris@example.com", out var sc).Ok);
+        Assert.Equal("", sc); // email taken: nothing sent
+    }
+
+    [Fact]
+    public void the_cap_also_covers_signup_and_add_email_codes()
+    {
+        var s = Open();
+        for (var round = 0; round < 4; round++)
+        {
+            Assert.True(s.StartSignup("Newbie", Pw, "new@example.com", out var c).Ok);
+            for (var t = 0; t < 5; t++) s.VerifySignup("new@example.com", WrongCode(c), out _);
+        }
+        Assert.True(s.StartSignup("Newbie", Pw, "new@example.com", out var right).Ok);
+        Assert.False(s.VerifySignup("new@example.com", right, out _).Ok);
+        Assert.Null(s.Find("Newbie"));
+    }
+
+    // I4: reserved / locked names
+    [Fact]
+    public void staff_names_without_a_hash_are_imported_as_reserved_and_cannot_be_signed_up()
+    {
+        var s = Open();
+        var n = s.ImportLegacy(
+            new[] { ("dare", PasswordHasher.LegacyHash("dare", "darepassword")) },
+            new[] { "dare", "Moddy", "helper" });
+        Assert.Equal(3, n);
+        Assert.Equal("active", s.Find("dare")!.Status);
+        Assert.Equal("reserved", s.Find("moddy")!.Status);
+        Assert.Equal("reserved", s.Find("Helper")!.Status);
+
+        Assert.True(s.StartSignup("Moddy", Pw, "moddy@example.com", out var code).Ok);
+        Assert.Equal("", code); // nothing sent
+        Assert.Equal(LoginResult.Disabled, s.CheckLogin("Moddy", Pw, out _));
+        Assert.Equal(LoginResult.Disabled, s.CheckWebLogin("Moddy", Pw, out _));
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("dare", "darepassword", out _));
+    }
+
+    [Fact]
+    public void lock_entries_import_as_locked_and_any_as_reserved_even_for_staff()
+    {
+        var s = Open();
+        var n = s.ImportLegacy(
+            new[] { ("Barred", "lock"), ("Open Door", "any"), ("Staffer", "any") },
+            new[] { "Staffer", "Barred" });
+        Assert.Equal(3, n);
+        Assert.Equal("locked", s.Find("Barred")!.Status);
+        Assert.Equal("reserved", s.Find("Open Door")!.Status);
+        Assert.Equal("reserved", s.Find("Staffer")!.Status);
+        foreach (var name in new[] { "Barred", "Open Door", "Staffer" })
+        {
+            Assert.Equal("", SignupCode(s, name));
+            Assert.Equal(LoginResult.Disabled, s.CheckLogin(name, "anything1", out _));
+        }
+    }
+
+    private static string SignupCode(AccountStore s, string name)
+    {
+        Assert.True(s.StartSignup(name, Pw, name.Replace(" ", "") + "@example.com", out var code).Ok);
+        return code;
+    }
+
+    [Fact]
+    public void staff_names_that_already_have_an_account_are_left_alone()
+    {
+        var s = Open();
+        SignUp(s, "Moddy", "moddy@example.com");
+        Assert.Equal(0, s.ImportLegacy(Array.Empty<(string, string)>(), new[] { "moddy" }));
+        Assert.Equal("active", s.Find("Moddy")!.Status);
+    }
+
+    // minor: legacy password longer than 31 characters
+    [Fact]
+    public void legacy_login_with_a_long_password_rehashes_the_first_31_characters()
+    {
+        var s = Open();
+        var longPw = "abcdefghijklmnopqrstuvwxyz0123456789"; // 36 chars
+        var first31 = longPw[..31];
+        s.ImportLegacy(new[] { ("OldTimer", PasswordHasher.LegacyHash("OldTimer", first31)) });
+        Assert.Equal(LoginResult.Ok, s.CheckWebLogin("OldTimer", longPw, out _));
+        // the game client sends at most 31 characters and must now get in
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("OldTimer", first31, out _));
     }
 }

@@ -52,6 +52,19 @@ public static class ClaimedName
         return last.Values.Where(e => IsClaim(e.Value)).OrderBy(e => e.Order).Select(e => (e.Name, e.Value)).ToList();
     }
 
+    /// <summary>
+    /// Every entry of <c>[Users]</c> including <c>any</c> and <c>lock</c> placeholders, with its raw
+    /// value, in file order (last definition of a name wins).
+    /// </summary>
+    public static IReadOnlyList<(string Name, string Value)> AllUsers(string passwdText)
+    {
+        var last = new Dictionary<string, (int Order, string Name, string Value)>(StringComparer.OrdinalIgnoreCase);
+        var order = 0;
+        foreach (var (key, value) in Entries(passwdText ?? ""))
+            last[key] = (last.TryGetValue(key, out var prev) ? prev.Order : order++, key, value);
+        return last.Values.OrderBy(e => e.Order).Select(e => (e.Name, e.Value)).ToList();
+    }
+
     /// <summary>The (key, value) lines of the <c>[Users]</c> section, in file order.</summary>
     private static IEnumerable<(string Key, string Value)> Entries(string passwdText)
     {
