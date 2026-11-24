@@ -99,7 +99,6 @@ function route() {
   if (!current) return;
   const want = location.hash.slice(1);
   const shown = showView(want, current.arena ? "overview" : "make");
-  if (shown === "map" && typeof window.openMapView === "function") window.openMapView(current);
 }
 
 function renderNoArena(body) {
@@ -144,7 +143,21 @@ function renderArena(body) {
   if (body.configMissing) msg($("setmsg"), "This arena's settings file is missing; ask staff.", false);
   // crew
   renderCrew(body.coMods, owner);
-  if (typeof window.drawThumb === "function") window.drawThumb(body);
+  const editor = "/arena/map?arena=" + encodeURIComponent(body.arena);
+  $("openeditor").href = editor; $("viewmap").href = editor;
+  drawThumb(body.arena);
+}
+
+// The arena's map, whole, on the overview (flat chart colours; lvl.js).
+async function drawThumb(arena) {
+  const c = $("thumb");
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#04070e"; ctx.fillRect(0, 0, c.width, c.height);
+  try {
+    const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
+    if (!r.ok || current?.arena !== arena) return;
+    Lvl.drawOverview(c, Lvl.parse(new Uint8Array(await r.arrayBuffer())).grid, true);
+  } catch { /* leave it dark */ }
 }
 
 function renderLvz(files, max, owner) {

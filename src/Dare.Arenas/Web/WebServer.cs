@@ -290,6 +290,23 @@ public sealed partial class ArenaOwnership
         return ChangeCoMod(player, arena, action, name);
     }
 
+    /// <summary>The arena's General:Map value. Mainloop.</summary>
+    internal string? MapSetting(ConfigHandle cfg) => _configManager.GetStr(cfg, "General", "Map");
+
+    /// <summary>Recycle from the web (after a map publish); the owner role is checked again here. Mainloop.</summary>
+    internal Result WebRecycle(string player, string arena)
+    {
+        if (!HasRole(arena, player, ownerOnly: true))
+            return new Result(false, "Only the arena's owner can recycle it from the web.");
+        var (recycled, notRecycled) = RecycleRunning(arena);
+        Log(LogLevel.Info, $"(web) {player} recycled [{arena}]: {recycled.Count} recycled, {notRecycled.Count} could not be.");
+        if (notRecycled.Count > 0)
+            return new Result(false, $"Could not recycle {string.Join(", ", notRecycled)} right now; type ?recyclearena there.");
+        return new Result(true, recycled.Count > 0
+            ? "Arena recycled: players inside are back in with the new map."
+            : "Nobody is in the arena; the new map loads when someone enters.");
+    }
+
     internal Result WebRequest(string player, string arena, string pitch)
     {
         var result = SubmitRequest(player, arena, pitch);
@@ -447,6 +464,11 @@ internal sealed partial class WebServer : IDisposable
             case "/api/staff/create": return method == "POST" ? await StaffCreateAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/approve": return method == "POST" ? await StaffDecideAsync(req, approve: true).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/decline": return method == "POST" ? await StaffDecideAsync(req, approve: false).ConfigureAwait(false) : MethodNotAllowed();
+            case "/map": return Get(method, () => Static("map.html"));
+            case "/editor.js": return Get(method, () => Static("editor.js"));
+            case "/lvl.js": return Get(method, () => Static("lvl.js"));
+            case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
@@ -742,6 +764,58 @@ internal sealed partial class WebServer : IDisposable
         return ResultReply(result);
     }
 
+    /// <summary>
+    /// The arena's current map (General:Map) for the hub and the map editor; owner or co-mod. Read
+    /// from the arena's folder or the shared maps/ folder only (MapFile), at most 4 MB.
+    /// </summary>
+    private async Task<Reply> MapAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+
+        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        if (pick is null)
+            return JsonReply(403, new { ok = false, message = "You are not an owner or co-mod of that arena." });
+        var arena = pick.Value.Arena;
+
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        if (cfg is null)
+            return JsonReply(409, new { ok = false, message = ArenaOwnership.ConfigMissingMessage });
+        string? setting;
+        try
+        {
+            setting = await OnMain(() => _m.MapSetting(cfg)).ConfigureAwait(false);
+        }
+        finally
+        {
+            _m.CloseArenaConfig(cfg);
+        }
+
+        foreach (var path in MapFile.Candidates(ArenaOwnership.ArenasDir, arena, ArenaOwnership.MapsDir, setting))
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) continue;
+            if (info.Length > MapFile.MaxReadBytes || info.Length == 0)
+                return JsonReply(409, new { ok = false, message = "The current map can't be opened in the editor (empty or too large)." });
+            var bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+            return new Reply(200, "application/octet-stream", bytes, [("X-Map-Name", Path.GetFileName(path))]);
+        }
+        return JsonReply(404, new { ok = false, message = "This arena has no map file yet; start from an empty map or upload one." });
+    }
+
+    /// <summary>Owner only: recycles the arena so a newly published map loads (as ?recyclearena). Body {"arena"}.</summary>
+    private async Task<Reply> RecycleAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can recycle it from the web." });
+        var arena = pick.Value.Arena;
+        return ResultReply(await OnMain(() => _m.WebRecycle(player, arena)).ConfigureAwait(false));
+    }
+
     /// <summary>Owner only: {"arena", "action": "add"|"remove", "player"}, as ?comod.</summary>
     private async Task<Reply> CoModAsync(HttpListenerRequest req)
     {
@@ -897,7 +971,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "staff.html", "app.js", "style.css" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "staff.html", "map.html", "app.js", "lvl.js", "editor.js", "style.css" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

@@ -16,6 +16,7 @@ public sealed partial class ArenaOwnership : IModule
     public const string ModuleName = "Dare.Arenas";
     internal const string ArenasDir = "arenas";
     internal const string TemplateDir = "_template";
+    internal const string MapsDir = "maps"; // the server's shared maps (General:Map falls back here)
     internal const string DbPath = "data/dare-arenas.db";
     internal const string PasswdFile = "passwd.conf";
 

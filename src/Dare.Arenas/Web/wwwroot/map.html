@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map editor · SubSpace Foundation</title>
+<link rel="stylesheet" href="/arena/style.css">
+<script src="/arena/lvl.js" defer></script>
+<script src="/arena/editor.js" defer></script>
+</head>
+<body class="editor">
+<header class="edbar">
+  <a class="brand" href="/">FOUNDATION</a>
+  <span class="edname" id="edname">Map editor</span>
+  <div class="edtools" role="toolbar" aria-label="Tools">
+    <button type="button" class="ghost small on" id="tPencil" aria-pressed="true">Pencil <kbd>B</kbd></button>
+    <button type="button" class="ghost small" id="tRect" aria-pressed="false">Rectangle <kbd>R</kbd></button>
+    <button type="button" class="ghost small" id="tErase" aria-pressed="false">Eraser <kbd>E</kbd></button>
+    <button type="button" class="ghost small" id="tPan" aria-pressed="false">Pan <kbd>Space</kbd></button>
+    <button type="button" class="ghost small" id="undo">Undo</button>
+    <button type="button" class="ghost small" id="redo">Redo</button>
+    <button type="button" class="ghost small" id="zoomOut" aria-label="Zoom out">−</button>
+    <button type="button" class="ghost small" id="zoomIn" aria-label="Zoom in">+</button>
+  </div>
+  <div class="edactions">
+    <button type="button" class="ghost small" id="download">Download .lvl</button>
+    <button type="button" class="hot small" id="publish" disabled>Publish</button>
+    <a class="btn ghost small" href="/arena/me#map" id="back">Back to hub</a>
+  </div>
+</header>
+<div class="edbody">
+  <aside class="edside">
+    <p class="kicker">Current tile</p>
+    <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
+    <p class="kicker">Tiles</p>
+    <canvas id="palette" class="px" width="304" height="160" aria-label="Tile palette: click a tile to draw with it"></canvas>
+    <p class="hint" id="tilesetnote"></p>
+    <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
+    <p class="kicker">Special tiles</p>
+    <div id="specials" class="specials"></div>
+    <p class="kicker">Whole map</p>
+    <canvas id="mini" class="px" width="256" height="256" aria-label="Whole map: click to jump"></canvas>
+    <p class="hint">Wheel or +/− zoom · right-drag or Space-drag pans · Cmd/Ctrl-Z undo</p>
+  </aside>
+  <main class="edmain">
+    <canvas id="view"></canvas>
+    <div class="edstatus" id="status" aria-live="polite"></div>
+    <div class="edmsg" id="msg" role="status"></div>
+  </main>
+</div>
+</body>
+</html>

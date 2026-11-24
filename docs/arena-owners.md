@@ -122,7 +122,12 @@ one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/ar
   `?requestarena`).
 - **Owners and co-mods** see their arena: *Settings* (grouped by section, with a description,
   default and range for each).
-- **Owners** also get *Map* (upload a `.lvl`), *Graphics* (upload `.lvz` files by drag-and-drop,
+- **Owners** also get *Map*: **Open the map editor** shows the arena's current map in the browser
+  (pencil, rectangle, eraser, undo/redo, zoom and pan; tiles from the map's own tileset, or flat
+  colours, or a tileset file of your own that stays in your browser). **Publish** saves it as the
+  arena's map and recycles the arena, so players inside come straight back in with the new map.
+  You can also upload a `.lvl` made elsewhere. Co-mods can open the editor to look and download,
+  not publish. Then *Graphics* (upload `.lvz` files by drag-and-drop,
   remove one with its **Remove** button; a file with the same name replaces the old one) and
   *Crew* (add or remove co-mods; same rules as `?comod`).
 - **Staff** get a *Staff* page (<https://subspacefoundation.com/arena/staff>): waiting requests

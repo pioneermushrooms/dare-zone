@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your hub · SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
+<script src="/arena/lvl.js" defer></script>
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="me">
@@ -83,11 +84,12 @@
       <h2 id="maptitle">Map</h2>
       <p class="dim">Current map: <b class="name" id="curmap"></b></p>
       <div id="mapowner">
-        <div class="actions" id="editorstart"></div>
+        <div class="actions"><a class="btn hot" id="openeditor" href="/arena/map">Open the map editor</a></div>
+        <p class="dim">Or upload a map you made elsewhere:</p>
         <div class="drop" id="mapdrop">Drop a <b>.lvl</b> map here (2 MB max), or <label><u>choose a file</u><input type="file" id="mapfile" accept=".lvl" hidden></label></div>
       </div>
       <p class="msg" id="mapmsg"></p>
-      <p class="dim" id="maponly" hidden>Only the owner can change the map.</p>
+      <p class="dim" id="maponly" hidden>Only the owner can change the map. <a id="viewmap" href="/arena/map">Look at it in the editor</a>.</p>
     </section>
 
     <section data-view="graphics" hidden>
