@@ -14,7 +14,7 @@
 #  1. backs up every file it may change to /root/backup-arena-ownership-<utc timestamp>/
 #     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
 #     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
-#  2. copies site/*.html to /var/www/foundation
+#  2. copies static site files to /var/www/foundation
 #  3. adds deploy/Caddyfile.snippet (/arena/* and /account/*) to the subspacefoundation.com block of
 #     /etc/caddy/Caddyfile (each part once), validates and reloads Caddy; a config that does not validate is not installed
 #     (steps 2-3 come first so a failure there leaves the zone untouched)
@@ -167,7 +167,15 @@ rollback() {
   else
     echo "!!!! could not validate/reload the restored Caddyfile - check $CADDYFILE by hand" >&2
   fi
-  if [ -d "$BACKUP/site" ]; then cp -a "$BACKUP/site/." "$SITE/"; echo "restored the static site" >&2; fi
+  if [ -d "$BACKUP/site" ]; then
+    for path in "$STAGE/site/"*; do
+      [ -f "$path" ] && [ ! -L "$path" ] || continue
+      f=${path##*/}
+      if [ ! -e "$BACKUP/site/$f" ]; then rm -f -- "$SITE/$f"; fi
+    done
+    cp -a "$BACKUP/site/." "$SITE/"
+    echo "restored the static site" >&2
+  fi
   since=$(date '+%Y-%m-%d %H:%M:%S')
   systemctl restart subspace
   if wait_healthy "$since" "$expect"; then
@@ -234,8 +242,10 @@ find "$BACKUP" | sed 's/^/  /'
 # ---- 2. static site -----------------------------------------------------------------------
 step "site ($SITE)"
 mkdir -p "$SITE"
-for f in index.html arena-owners.html; do
-  if cmp -s "$STAGE/site/$f" "$SITE/$f"; then echo "$f unchanged"; else install -m 644 "$STAGE/site/$f" "$SITE/$f"; echo "$f installed"; fi
+for path in "$STAGE/site/"*; do
+  [ -f "$path" ] && [ ! -L "$path" ] || continue
+  f=${path##*/}
+  if cmp -s "$path" "$SITE/$f"; then echo "$f unchanged"; else install -m 644 "$path" "$SITE/$f"; echo "$f installed"; fi
 done
 
 # ---- 3. caddy -----------------------------------------------------------------------------
