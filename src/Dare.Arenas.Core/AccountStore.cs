@@ -18,6 +18,9 @@ namespace Dare.Arenas.Core;
 public sealed class AccountStore : IDisposable
 {
     public static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
+    /// <summary>One email can recover up to this many pilot names.</summary>
+    public const int MaxAccountsPerEmail = 10;
+    private static readonly string TooManyPilots = $"That email already has {MaxAccountsPerEmail} pilot names; use another email.";
     public static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(10);
     public const int MaxCodeAttempts = 5;
@@ -64,7 +67,8 @@ public sealed class AccountStore : IDisposable
               legacy_hash TEXT NULL
             );
             CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_name ON accounts(name COLLATE NOCASE);
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_email ON accounts(recovery_email COLLATE NOCASE);
+            DROP INDEX IF EXISTS ux_accounts_email;
+            CREATE INDEX IF NOT EXISTS ix_accounts_email ON accounts(recovery_email COLLATE NOCASE);
             CREATE TABLE IF NOT EXISTS email_codes (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               purpose TEXT NOT NULL,
@@ -128,7 +132,8 @@ public sealed class AccountStore : IDisposable
         string issued = "";
         var res = Tx(() =>
         {
-            if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n OR recovery_email = $e", ("$n", n), ("$e", e)) > 0)
+            if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0
+                || PilotsOn(e) >= MaxAccountsPerEmail)
                 return sent;
             var expires = Fmt(_clock() + CodeLifetime);
             Run("INSERT OR REPLACE INTO pending_signups(email, name, password_hash, password_salt, hash_iterations, expires) "
@@ -162,8 +167,8 @@ public sealed class AccountStore : IDisposable
             if (Parse(expires) <= _clock()) return Fail(BadCode);
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", name)) > 0)
                 return Fail($"Sorry, the name '{name}' was just taken. Please sign up with another name.");
-            if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e", ("$e", e)) > 0)
-                return Fail("That email is already used by another account.");
+            if (PilotsOn(e) >= MaxAccountsPerEmail)
+                return Fail(TooManyPilots);
             Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, recovery_email, email_verified, created, status) "
                 + "VALUES($n,$h,$s,$i,$e,1,$c,'active')",
                 ("$n", name), ("$h", hash), ("$s", salt), ("$i", iter), ("$e", e), ("$c", Now()));
@@ -250,48 +255,92 @@ public sealed class AccountStore : IDisposable
         if (!AccountRules.TryEmail(email, out var e, out var err)) return Fail(err);
         var sent = SentMessage(e);
         string issued = "";
-        string? found = null;
+        List<string> found = new();
         var res = Tx(() =>
         {
-            using (var cmd = Cmd("SELECT name FROM accounts WHERE recovery_email = $e AND email_verified = 1", ("$e", e)))
-                found = cmd.ExecuteScalar() as string;
-            if (found is null) return sent;
+            found = VerifiedPilotsOn(e);
+            if (found.Count == 0) return sent;
             issued = IssueCode(CodePurpose.Recovery, e, null);
             return sent;
         });
         code = issued;
-        name = found;
+        // the email names every pilot on it; the reset page asks which one
+        name = found.Count == 0 ? null : string.Join(" or ", found);
         return res;
     }
 
-    public Result CompleteRecovery(string email, string code, string newPassword)
+    public Result CompleteRecovery(string email, string code, string newPassword) =>
+        CompleteRecovery(email, code, newPassword, null, out _);
+
+    /// <summary>
+    /// Sets a new password for one pilot on <paramref name="email"/>. With several pilots on the
+    /// email, <paramref name="name"/> says which (only that one changes); with one, it may be
+    /// left out. A missing or wrong name is refused before the code is used, so it still works.
+    /// </summary>
+    public Result CompleteRecovery(string email, string code, string newPassword, string? name, out string? changed)
     {
+        changed = null;
         if (!AccountRules.TryPassword(newPassword, out var err)) return Fail(err);
         if (!AccountRules.TryEmail(email, out var e, out _)) return Fail(BadCode);
+        string? target = null;
         // Check the code first (counting a wrong try, consuming nothing); only a valid code is worth a PBKDF2 run.
-        var early = Tx(() => UseCode(CodePurpose.Recovery, e, null, code, out _, consume: false) ?? Ok(""));
+        var early = Tx(() =>
+        {
+            var bad = UseCode(CodePurpose.Recovery, e, null, code, out _, consume: false);
+            if (bad is not null) return bad;
+            target = PickPilot(VerifiedPilotsOn(e), name, out var refusal);
+            return refusal is null ? Ok("") : Fail(refusal);
+        });
         if (!early.Ok) return early;
         var (hash, salt, iter) = PasswordHasher.Hash(newPassword);
-        return Tx(() =>
+        var res = Tx(() =>
         {
             var bad = UseCode(CodePurpose.Recovery, e, null, code, out _);
             if (bad is not null) return bad;
-            string? name;
-            using (var cmd = Cmd("SELECT name FROM accounts WHERE recovery_email = $e", ("$e", e)))
-                name = cmd.ExecuteScalar() as string;
-            if (name is null) return Fail(BadCode);
-            Run("UPDATE accounts SET password_hash=$h, password_salt=$s, hash_iterations=$i, legacy_hash=NULL WHERE recovery_email=$e",
-                ("$h", hash), ("$s", salt), ("$i", iter), ("$e", e));
-            Run("DELETE FROM login_failures WHERE name = $n", ("$n", name));
-            return Ok("Your password was changed. You can log in with the new one now.");
+            if (!VerifiedPilotsOn(e).Contains(target!, StringComparer.OrdinalIgnoreCase)) return Fail(BadCode);
+            Run("UPDATE accounts SET password_hash=$h, password_salt=$s, hash_iterations=$i, legacy_hash=NULL "
+                + "WHERE name = $n AND recovery_email = $e AND email_verified = 1",
+                ("$h", hash), ("$s", salt), ("$i", iter), ("$n", target!), ("$e", e));
+            Run("DELETE FROM login_failures WHERE name = $n", ("$n", target!));
+            return Ok($"The password for {target} was changed. You can log in with the new one now.");
         });
+        if (res.Ok) changed = target;
+        return res;
     }
+
+    /// <summary>The pilot a reset is for: <paramref name="name"/> if it is on the email, else the only one.</summary>
+    private static string? PickPilot(List<string> pilots, string? name, out string? refusal)
+    {
+        refusal = null;
+        if (pilots.Count == 0) { refusal = BadCode; return null; }
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            if (pilots.Count == 1) return pilots[0];
+            refusal = "More than one pilot uses this email; type the pilot name to reset.";
+            return null;
+        }
+        var match = pilots.FirstOrDefault(p => string.Equals(p, name.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (match is null) refusal = "That pilot name doesn't use this email.";
+        return match;
+    }
+
+    private List<string> VerifiedPilotsOn(string email)
+    {
+        using var cmd = Cmd("SELECT name FROM accounts WHERE recovery_email = $e AND email_verified = 1 ORDER BY id", ("$e", email));
+        using var r = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
+    private long PilotsOn(string email, long? exceptId = null) =>
+        Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e AND id <> $x", ("$e", email), ("$x", exceptId ?? -1));
 
     // ---- recovery email --------------------------------------------------
 
     /// <summary>
-    /// Starts adding (or changing) the recovery email of an account. When the email belongs to
-    /// another account, returns the same Ok result with an empty <paramref name="code"/>.
+    /// Starts adding (or changing) the recovery email of an account. An email may serve up to
+    /// <see cref="MaxAccountsPerEmail"/> pilots; past that it is refused.
     /// </summary>
     public Result StartAddEmail(long accountId, string email, out string code)
     {
@@ -303,8 +352,8 @@ public sealed class AccountStore : IDisposable
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id", ("$id", accountId)) == 0)
                 return Fail("No such account.");
-            if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e", ("$e", e)) > 0)
-                return sent;
+            if (PilotsOn(e, accountId) >= MaxAccountsPerEmail)
+                return Fail(TooManyPilots);
             issued = IssueCode(CodePurpose.AddEmail, e, accountId);
             return sent;
         });
@@ -316,8 +365,8 @@ public sealed class AccountStore : IDisposable
     {
         var bad = UseCode(CodePurpose.AddEmail, null, accountId, code, out var e);
         if (bad is not null) return bad;
-        if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e AND id <> $id", ("$e", e!), ("$id", accountId)) > 0)
-            return Fail("That email is already used by another account.");
+        if (PilotsOn(e!, accountId) >= MaxAccountsPerEmail)
+            return Fail(TooManyPilots);
         Run("UPDATE accounts SET recovery_email = $e, email_verified = 1 WHERE id = $id", ("$e", e!), ("$id", accountId));
         return Ok($"Your recovery email is now {e}.");
     });

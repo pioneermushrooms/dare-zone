@@ -22,6 +22,9 @@ public static class EmailMessages
                 name is null ? "Here is the code to confirm this recovery email." : $"Here is the code to confirm this recovery email for {name}."),
             _ => throw new ArgumentOutOfRangeException(nameof(purpose)),
         };
+        // several pilots share this email: the reset page asks which one
+        if (purpose == CodePurpose.Recovery && name is not null && name.Contains(" or ", StringComparison.Ordinal))
+            lead += " On the page, type the pilot name you want to reset.";
         const string tail = "It is valid for 10 minutes and works once. If you didn't ask for it, ignore this email.";
 
         var text = $"{lead}\n\n    {code}\n\nType it on the page where you asked for it. {tail}\n\nSubSpace Foundation · {Site}\n";

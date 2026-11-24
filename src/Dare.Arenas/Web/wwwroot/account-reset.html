@@ -14,6 +14,8 @@
   <p class="dim" id="sent">Enter the code we emailed you (valid 10 minutes).</p>
   <form method="post" class="stack" id="form">
     <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
+    <label>Pilot name <input name="name" maxlength="20" autocomplete="username">
+      <span class="hint">Only needed when this email has more than one pilot; the email lists them.</span></label>
     <label>Code <input name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
     <label>New password <input name="password" type="password" minlength="8" maxlength="31" autocomplete="new-password" required>
       <span class="hint">8–31 characters.</span></label>
