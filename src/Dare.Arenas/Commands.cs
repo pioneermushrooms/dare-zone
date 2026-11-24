@@ -56,6 +56,10 @@ public sealed partial class ArenaOwnership
 
     private void Reply(Player player, string message) => _chat.SendMessage(player, message);
 
+    /// <summary>Names with a pending request, longest-waiting first.</summary>
+    private List<string> PendingNames() =>
+        Store.PendingRequestsOldestFirst(200).Select(r => r.Arena).ToList();
+
     private static (string First, string Remainder) SplitFirst(ReadOnlySpan<char> parameters)
     {
         var s = parameters.Trim();
@@ -219,14 +223,21 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var (raw, _) = SplitFirst(parameters);
-        if (raw.Length == 0)
+        var typed = parameters.ToString().Trim();
+        if (typed.Length == 0)
         {
             Reply(player, "Usage: ?approvearena <name>   (see ?arenarequests)");
             return;
         }
 
-        var name = raw.ToLowerInvariant();
+        // Forgiving about spaces, quotes, capitals and the server's ' ' -> 'x' (see RequestNames).
+        var pending = PendingNames();
+        var name = RequestNames.Find(typed, pending);
+        if (name is null)
+        {
+            Reply(player, RequestNames.NotFound(typed, pending));
+            return;
+        }
         // The folder is created inside the approval: if that fails, nothing is approved.
         var result = Store.Approve(name, player.Name, ArenaFolderExists, () => TryCreateArenaFolder(name));
         if (!result.Ok)
@@ -297,14 +308,18 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var (raw, reason) = SplitFirst(parameters);
-        if (raw.Length == 0 || reason.Length == 0)
+        var pending = PendingNames();
+        var (name, reason) = RequestNames.SplitNameAndReason(parameters.ToString(), pending);
+        if (name.Length == 0 || reason.Length == 0)
         {
             Reply(player, "Usage: ?declinearena <name> <reason>");
             return;
         }
-
-        var name = raw.ToLowerInvariant();
+        if (!pending.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            Reply(player, RequestNames.NotFound(name, pending));
+            return;
+        }
         var requesterName = Store.Requests(pendingOnly: true, 1000)
             .FirstOrDefault(r => string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase))?.Player;
 
