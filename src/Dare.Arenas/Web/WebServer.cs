@@ -221,6 +221,23 @@ public sealed partial class ArenaOwnership
         return result;
     }
 
+    /// <summary>
+    /// Whether the signed-in web name may use staff capability <paramref name="capability"/>: the
+    /// server's check by name, i.e. the name's staff.conf [(global)] group (arena-scoped groups such
+    /// as arenaowner never count here). The web session already proved the name. Mainloop.
+    /// </summary>
+    internal bool WebStaffCan(string player, string capability) =>
+        _capabilityManager.HasCapability(player, capability);
+
+    /// <summary>?createarena from the web staff view; null when the name lacks cmd_createarena.</summary>
+    internal Result? WebCreateArena(string player, string arena, string? owner)
+    {
+        if (!WebStaffCan(player, CreateCapability)) return null;
+        var (result, _, _) = CreateArena(player, arena, owner);
+        Log(LogLevel.Info, $"(web) {player} create arena '{arena}': {(result.Ok ? "created" : "refused: " + result.Message)}");
+        return result;
+    }
+
     internal Result WebRequest(string player, string arena, string pitch)
     {
         var result = SubmitRequest(player, arena, pitch);
@@ -372,6 +389,7 @@ internal sealed partial class WebServer : IDisposable
             case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/rmlvz": return method == "POST" ? await RemoveLvzAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/request": return method == "POST" ? await RequestAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/create": return method == "POST" ? await StaffCreateAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
     }
@@ -607,6 +625,24 @@ internal sealed partial class WebServer : IDisposable
         var arena = Str(body, "arena") ?? "";
         var pitch = Str(body, "pitch") ?? "";
         var result = await OnMain(() => _m.WebRequest(player, arena, pitch)).ConfigureAwait(false);
+        return ResultReply(result);
+    }
+
+    /// <summary>
+    /// Staff only (cmd_createarena: smod/sysop by their staff.conf [(global)] group): same as
+    /// ?createarena. Body {"arena", "owner"?}; no owner: the signed-in staff member owns it.
+    /// </summary>
+    private async Task<Reply> StaffCreateAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var arena = Str(body, "arena") ?? "";
+        var owner = Str(body, "owner");
+        var result = await OnMain(() => _m.WebCreateArena(player, arena, owner)).ConfigureAwait(false);
+        if (result is null)
+            return JsonReply(403, new { ok = false, message = "Only super moderators and sysops can create arenas." });
         return ResultReply(result);
     }
 

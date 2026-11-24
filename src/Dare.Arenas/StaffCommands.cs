@@ -15,6 +15,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 {
     internal const string ArchiveDir = "_archive";
     internal const string AdminCapability = "cmd_arenaadmin";
+    internal const string CreateCapability = "cmd_createarena";
     internal static readonly TimeSpan IdleBeforeArchive = TimeSpan.FromDays(30);
     private const int ArchiveCheckIntervalMs = 24 * 60 * 60 * 1000;
     private const int ArchiveFirstCheckMs = 5 * 60 * 1000;
@@ -186,6 +187,95 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Reply(online, $"Staff ({staff.Name}) made you the owner of arena '{name}'. Type ?go {name}, then ?myarena.");
 
         RefreshGrantsIn(name);
+    }
+
+    // ---- ?createarena -------------------------------------------------------------------
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "<name> [owner]",
+        Description = """
+            Creates a player-owned arena at once, without a request: arenas/<name>/ is copied from
+            the template and you (or the named player, who must have a Foundation account) become
+            its owner. Same name rules as ?requestarena. Public in ?arenalog.
+            """)]
+    private void Command_createarena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (player.Name is null) return;
+
+        // The command manager checked cmd_createarena (smod/sysop through groupdef.dir/arenaadmin);
+        // staff.conf groups only apply to authenticated names, but say so plainly if not.
+        if (!player.Flags.Authenticated)
+        {
+            Reply(player, "Your name is not authenticated; log in with your password.");
+            return;
+        }
+
+        var (rawName, ownerRaw) = SplitFirst(parameters);
+        if (rawName.Length == 0) // the owner is the rest of the line: names may contain spaces
+        {
+            Reply(player, "Usage: ?createarena <name> [owner]   e.g. ?createarena skyrace Racer");
+            return;
+        }
+
+        var (result, name, owner) = CreateArena(player.Name, rawName, ownerRaw.Length == 0 ? null : ownerRaw);
+        Reply(player, result.Message);
+        if (!result.Ok) return;
+
+        var self = string.Equals(owner, player.Name, StringComparison.OrdinalIgnoreCase);
+        Reply(player, self ? $"Type ?go {name}, then ?myarena." : $"Tell {owner} to type ?go {name}, then ?myarena.");
+    }
+
+    /// <summary>
+    /// The shared create path for ?createarena and the web staff view: validates the name, resolves
+    /// the owner (null: <paramref name="staff"/> themselves) to a claimed name, creates the folder
+    /// inside the store transaction, recycles a running arena of that name and tells the owner.
+    /// The caller has checked that <paramref name="staff"/> holds cmd_createarena. Mainloop.
+    /// </summary>
+    internal (Result Result, string Name, string Owner) CreateArena(string staff, string rawName, string? ownerRaw)
+    {
+        rawName = rawName.Trim();
+        if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
+            return (new Result(false, $"Can't create '{rawName}': {error}"), "", "");
+
+        string owner;
+        Player? online = null;
+        if (string.IsNullOrWhiteSpace(ownerRaw))
+        {
+            owner = staff;
+        }
+        else
+        {
+            ownerRaw = ownerRaw.Trim();
+            if (ownerRaw.Length > 24 || ownerRaw.Any(char.IsControl))
+                return (new Result(false, "That is not a valid player name."), "", "");
+            online = _playerData.FindPlayer(ownerRaw);
+            // Only a claimed name (canonical spelling): otherwise whoever first claims it owns the arena.
+            var claimed = ResolveClaimedName(ownerRaw, online);
+            if (claimed is null)
+                return (new Result(false, $"{ownerRaw} has no Foundation account (subspacefoundation.com); an arena can only go to a claimed name."), "", "");
+            owner = claimed;
+            if (online is not null && !string.Equals(online.Name, owner, StringComparison.OrdinalIgnoreCase))
+                online = null;
+        }
+
+        var result = Store.Create(name, staff, owner, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        if (!result.Ok) return (result, name, owner);
+
+        Log(LogLevel.Info, $"{staff} created arena '{name}' for {owner}.");
+        var (recycled, notRecycled) = RecycleRunning(name);
+        var message = $"{result.Message} Folder arenas/{name}/ created from the template.";
+        if (recycled.Count > 0) message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
+        if (notRecycled.Count > 0)
+        {
+            message += $" Could not recycle {string.Join(", ", notRecycled)}: type ?recyclearena there so it uses its own settings.";
+            Log(LogLevel.Warn, $"Arena '{name}' created while {string.Join(", ", notRecycled)} was running and could not be recycled.");
+        }
+
+        online ??= _playerData.FindPlayer(owner);
+        if (online is not null && !string.Equals(online.Name, staff, StringComparison.OrdinalIgnoreCase))
+            Reply(online, $"Staff ({staff}) created arena '{name}' for you! Type ?go {name} to enter it, then ?myarena.");
+        return (new Result(true, message), name, owner);
     }
 
     // ---- daily idle archive ---------------------------------------------------------------

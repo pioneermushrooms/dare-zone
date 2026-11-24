@@ -94,6 +94,7 @@ Staff:
 | --- | --- |
 | `?approvearena <name>` | Approves a request: creates the arena and makes the asker its owner (moderators and up). |
 | `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request. |
+| `?createarena <name> [owner]` | Creates an arena at once, without a request; you (or the named player, who needs a Foundation account) own it. Public in `?arenalog` (super moderators and sysops). |
 | `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
 | `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
 | `?arenaadmin transfer <name> <player>` | Gives the arena to another player (a name with a Foundation account). |
@@ -137,5 +138,5 @@ signs you in for 24 hours. No password is ever typed on the web.
   settings can't be changed, and the map and graphics lists change only through uploads.
 - An arena nobody enters for **30 days** is archived (never while players are in it): it closes
   and its files are stored away at the next server restart, not deleted. Staff can bring it back with `?arenaadmin revive`.
-- Every decision (request, approval, decline, transfer, suspend, revive, archive, co-mod change)
+- Every decision (request, approval, decline, staff create, transfer, suspend, revive, archive, co-mod change)
   is public in `?arenalog` and on the web page.

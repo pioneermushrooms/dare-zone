@@ -39,6 +39,7 @@ public sealed partial class ArenaOwnership
 
         // staff overrides (smod and up: cmd_arenaadmin)
         Add("arenaadmin", Command_arenaadmin);
+        Add("createarena", Command_createarena);
     }
 
     private void Add(string name, CommandDelegate handler)
