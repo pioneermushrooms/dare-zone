@@ -244,12 +244,12 @@ public sealed class DraftStoreTests : IDisposable
     }
 
     [Fact]
-    public void roles_for_lists_draft_after_owned_arena()
+    public void roles_for_lists_draft_and_owned_arena()
     {
         var s = WithDraft();
         Assert.True(s.RequestPublic("pilot", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
-        Assert.Equal(new[] { ("skyrace", "owner"), ("#skyrace", "owner") }, s.RolesFor("pilot"));
+        Assert.Equal(new[] { ("#skyrace", "owner"), ("skyrace", "owner") }, s.RolesFor("pilot"));
     }
 
     [Fact]
@@ -273,5 +273,61 @@ public sealed class DraftStoreTests : IDisposable
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.RolledBack("skyrace", "staff").Ok);
         Assert.Contains(s.Events("skyrace", 10), e => e.Kind == "rollback" && e.Actor == "staff");
+    }
+
+    [Fact]
+    public void owned_or_draft_reads_hash_names()
+    {
+        var s = WithDraft();
+        Assert.True(s.AddCoMod("#skyrace", "pilot", "Helper").Ok);
+        var a = s.OwnedOrDraft("#SkyRace");
+        Assert.NotNull(a);
+        Assert.Equal("#skyrace", a!.Name);
+        Assert.Equal("Pilot", a.Owner);
+        Assert.Equal(ArenaStatus.Active, a.Status);
+        Assert.Equal(new[] { "Helper" }, a.CoMods);
+        Assert.Null(s.OwnedOrDraft("#nothing"));
+        Assert.Null(s.OwnedOrDraft("skyrace")); // not public yet
+    }
+
+    [Fact]
+    public void live_drafts_are_never_idle_archived()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        _now = _now.AddDays(90);
+        Assert.Empty(s.ArchiveIdleDrafts(TimeSpan.FromDays(30), _ => false));
+        Assert.Equal("owner", s.RoleIn("#skyrace", "pilot"));
+    }
+
+    [Fact]
+    public void comods_of_a_live_arena_and_its_draft_stay_the_same()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        Assert.True(s.AddCoMod("skyrace", "pilot", "Bob").Ok);
+        Assert.Equal("comod", s.RoleIn("#skyrace", "bob"));
+        Assert.True(s.RemoveCoMod("skyrace", "pilot", "bob").Ok);
+        Assert.Null(s.RoleIn("#skyrace", "bob"));
+        Assert.True(s.AddCoMod("#skyrace", "pilot", "Cat").Ok);
+        Assert.Equal("comod", s.RoleIn("skyrace", "cat"));
+        Assert.True(s.RemoveCoMod("#skyrace", "pilot", "cat").Ok);
+        Assert.Null(s.RoleIn("skyrace", "cat"));
+        // a draft that isn't public keeps its own list
+        var t = Open();
+        Assert.True(t.CreateDraft("Solo", "solo", NoFolder, Made).Ok);
+        Assert.True(t.AddCoMod("#solo", "solo", "Dan").Ok);
+        Assert.Null(t.RoleIn("solo", "dan"));
+    }
+
+    [Fact]
+    public void roles_for_lists_the_draft_first_when_the_live_arena_publishes_from_it()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        Assert.Equal(("#skyrace", "owner"), s.RolesFor("pilot")[0]);
     }
 }

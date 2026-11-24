@@ -130,7 +130,8 @@ public sealed partial class ArenaStore
             var nowDto = _clock();
             var now = Fmt(nowDto);
             var names = new List<string>();
-            using (var cmd = Cmd("SELECT name FROM drafts WHERE status <> 'Archived' AND last_touched < $c ORDER BY name",
+            // a live arena's draft is its workshop: it stays as long as the arena does
+            using (var cmd = Cmd("SELECT name FROM drafts WHERE status <> 'Archived' AND live = 0 AND last_touched < $c ORDER BY name",
                        ("$c", Fmt(nowDto - idle))))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) names.Add(r.GetString(0));
@@ -224,6 +225,13 @@ public sealed partial class ArenaStore
         lock (_gate) return LoadDraftByOwner(player);
     }
 
+    /// <summary>
+    /// The owned arena, or for a <c>#name</c> the draft shaped as one (Active unless archived):
+    /// what the in-game owner commands and the owner page act on.
+    /// </summary>
+    public OwnedArena? OwnedOrDraft(string arena) =>
+        DraftRules.IsDraft(arena) ? DraftAsArena(arena) : Get(arena);
+
     public bool IsInvited(string name, string player)
     {
         lock (_gate)
@@ -259,6 +267,17 @@ public sealed partial class ArenaStore
     }
 
     // ---- internals -------------------------------------------------------
+
+    /// <summary>
+    /// A live arena and its draft share one co-mod list: the other arena of the pair, or null
+    /// when <paramref name="arena"/> has no live counterpart.
+    /// </summary>
+    private string? MirrorOf(string arena)
+    {
+        var name = DraftRules.PublicOf(arena);
+        if (Scalar("SELECT COUNT(*) FROM drafts WHERE name = $n AND live = 1", ("$n", name)) == 0) return null;
+        return DraftRules.IsDraft(arena) ? name : DraftRules.DraftOf(name);
+    }
 
     private bool NameTaken(string name) =>
         Scalar("SELECT COUNT(*) FROM drafts WHERE name = $n", ("$n", name)) > 0
@@ -303,11 +322,12 @@ public sealed partial class ArenaStore
     private OwnedArena? LoadDraftAsArena(string arena)
     {
         var d = LoadDraft(arena);
-        return d is null
-            ? null
-            : new OwnedArena(DraftRules.DraftOf(d.Name), d.Owner,
-                d.Status == DraftStatus.Archived ? ArenaStatus.Archived : ArenaStatus.Active,
-                d.Created, d.LastTouched, d.CoMods);
+        if (d is null) return null;
+        // a live arena's draft shares its fate: suspended or archived by staff, no powers here either
+        var status = d.Status == DraftStatus.Archived ? ArenaStatus.Archived
+            : d.Live && Load(d.Name) is { Status: not ArenaStatus.Active } live ? live.Status
+            : ArenaStatus.Active;
+        return new OwnedArena(DraftRules.DraftOf(d.Name), d.Owner, status, d.Created, d.LastTouched, d.CoMods);
     }
 
     private OwnedArena? DraftAsArena(string arena)

@@ -191,6 +191,8 @@ public sealed partial class ArenaStore : IDisposable
         if (a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is already a co-mod.");
         if (a.CoMods.Count >= MaxCoMods) return Fail($"An arena can have at most {MaxCoMods} co-mods.");
         Run("INSERT INTO comods(arena, player) VALUES($a,$p)", ("$a", arena), ("$p", player));
+        if (MirrorOf(arena) is { } other)
+            Run("INSERT OR IGNORE INTO comods(arena, player) VALUES($a,$p)", ("$a", other), ("$p", player));
         AddEvent(Now(), arena, owner, "comod-add", player);
         return Ok($"{player} is now a co-mod of '{arena}'.");
     });
@@ -202,6 +204,8 @@ public sealed partial class ArenaStore : IDisposable
         if (!Same(a.Owner, owner)) return Fail("Only the arena owner can remove co-mods.");
         if (!a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is not a co-mod.");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", player));
+        if (MirrorOf(arena) is { } other)
+            Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", other), ("$p", player));
         AddEvent(Now(), arena, owner, "comod-remove", player);
         return Ok($"{player} is no longer a co-mod of '{arena}'.");
     });
@@ -349,15 +353,17 @@ public sealed partial class ArenaStore : IDisposable
         lock (_gate)
         {
             using var cmd = Cmd("""
-                SELECT name, 'owner' AS role, 0 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
+                SELECT name, 'owner' AS role, 1 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
                 UNION ALL
-                SELECT a.name, 'comod', 2 FROM comods c JOIN arenas a ON a.name = c.arena
+                SELECT a.name, 'comod', 3 FROM comods c JOIN arenas a ON a.name = c.arena
                   WHERE c.player = $p AND a.status = 'Active'
                 UNION ALL
-                SELECT '#' || name, 'owner', 1 FROM drafts WHERE owner = $p AND status <> 'Archived'
+                SELECT '#' || d.name, 'owner', 0 FROM drafts d WHERE d.owner = $p AND d.status <> 'Archived'
+                  AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
                 UNION ALL
-                SELECT '#' || d.name, 'comod', 3 FROM comods c JOIN drafts d ON c.arena = '#' || d.name
+                SELECT '#' || d.name, 'comod', 2 FROM comods c JOIN drafts d ON c.arena = '#' || d.name
                   WHERE c.player = $p AND d.status <> 'Archived'
+                  AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
                 ORDER BY ord, name
                 """, ("$p", player));
             using var r = cmd.ExecuteReader();

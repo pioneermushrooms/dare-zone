@@ -370,7 +370,7 @@ public sealed partial class ArenaOwnership
         }
 
         var current = player.Arena;
-        var owned = current is null ? null : Store.Get(current.BaseName.ToLowerInvariant());
+        var owned = current is null ? null : Store.OwnedOrDraft(current.BaseName.ToLowerInvariant());
         if (current is null || owned is null)
         {
             Reply(player, "Use this in your own arena (see ?myarena).");
@@ -448,7 +448,7 @@ public sealed partial class ArenaOwnership
         action = action.ToLowerInvariant();
         if (action.Length == 0)
         {
-            var coMods = Store.Get(arenaName)?.CoMods ?? Array.Empty<string>();
+            var coMods = Store.OwnedOrDraft(arenaName)?.CoMods ?? Array.Empty<string>();
             Reply(player, $"Co-mods of {arenaName} ({coMods.Count}/{ArenaStore.MaxCoMods}): {(coMods.Count == 0 ? "none" : string.Join(", ", coMods))}");
             Reply(player, "Usage: ?comod add <player> / ?comod remove <player>");
             return;

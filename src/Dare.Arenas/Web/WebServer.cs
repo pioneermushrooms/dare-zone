@@ -106,7 +106,7 @@ public sealed partial class ArenaOwnership
     /// <summary>The owner page's data for <paramref name="arena"/> (role already checked by the caller).</summary>
     internal object ArenaData(string player, IReadOnlyList<(string Arena, string Role)> roles, string arena, string role, ConfigHandle? cfg)
     {
-        var owned = Store.Get(arena);
+        var owned = Store.OwnedOrDraft(arena);
         var levelFiles = cfg is null ? new List<string>() : LevelFiles.Parse(_configManager.GetStr(cfg, "General", "LevelFiles")).ToList();
         return new
         {

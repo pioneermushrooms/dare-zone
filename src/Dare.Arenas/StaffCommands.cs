@@ -233,6 +233,8 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Reply(online, $"Staff ({staff.Name}) made you the owner of arena '{name}'. Type ?go {name}, then ?myarena.");
 
         RefreshGrantsIn(name);
+        RefreshDraftAfterTransfer(name); // the old owner and their invited pilots leave the draft
+
     }
 
     // ---- daily idle archive ---------------------------------------------------------------
@@ -459,7 +461,13 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         OwnedArena? owned;
         try
         {
-            owned = _store.Get(arena.BaseName.ToLowerInvariant());
+            owned = _store.OwnedOrDraft(arena.BaseName.ToLowerInvariant());
+            // a draft: only its owner, co-mods, invited pilots and staff get in at all
+            if (owned is not null && DraftRules.IsDraft(arena.BaseName) && !MayEnterDraft(player, arena.BaseName))
+            {
+                errorMessage?.Append(DraftEntryRefused);
+                return false;
+            }
         }
         catch (Exception ex)
         {

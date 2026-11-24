@@ -14,9 +14,18 @@ public static class RequestNames
         var squashed = Squash(typed);
         if (squashed.Length == 0) return null;
         var names = pending.ToList();
-        var exact = names.FirstOrDefault(p => string.Equals(p, squashed, StringComparison.OrdinalIgnoreCase));
-        if (exact is not null) return exact;
-        // one 'x' that stood for a space
+        return names.FirstOrDefault(p => string.Equals(p, squashed, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// A pending name <paramref name="typed"/> may have meant with one 'x' that stood for a space
+    /// (the server's spelling of a visited name). Only ever suggested: acting on it could decide
+    /// a different request ("taxi" when "tai" is pending).
+    /// </summary>
+    public static string? Suggest(string typed, IEnumerable<string> pending)
+    {
+        var squashed = Squash(typed);
+        var names = pending.ToList();
         for (var i = squashed.IndexOf('x'); i >= 0; i = squashed.IndexOf('x', i + 1))
         {
             var without = squashed.Remove(i, 1);
@@ -47,6 +56,7 @@ public static class RequestNames
     /// <summary>The reply when nothing matched, naming what staff can decide.</summary>
     public static string NotFound(string typed, IReadOnlyCollection<string> pending) =>
         $"No pending request for '{typed.Trim()}'. "
+        + (Suggest(typed, pending) is { } guess ? $"Did you mean '{guess}'? " : "")
         + (pending.Count == 0 ? "Nothing is pending." : $"Pending: {string.Join(", ", pending)}.");
 
     private static string Squash(string typed) =>

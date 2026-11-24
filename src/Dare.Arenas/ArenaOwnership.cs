@@ -161,7 +161,7 @@ public sealed partial class ArenaOwnership : IModule
             if (DraftRules.IsDraft(baseName))
             {
                 // a plain private arena (?go #anything) is nobody's: leave it alone
-                if (_store.Draft(baseName) is null || !DraftEntryAllowed(player, baseName))
+                if (_store.Draft(baseName) is null || !DraftEntryAllowed(player, arena))
                     return;
                 ApplyGrant(player, arena);
                 _store.TouchDraft(baseName);

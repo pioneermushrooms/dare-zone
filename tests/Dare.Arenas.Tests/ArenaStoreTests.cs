@@ -307,8 +307,11 @@ public sealed class ArenaStoreTests : IDisposable
         s.Suspend("three", "staff", "r");
 
         var roles = s.RolesFor("A");
-        // every approved arena has its draft (#one) since drafts; the owner works there
-        Assert.Equal(new[] { ("one", "owner"), ("#one", "owner"), ("two", "comod") }, roles.Select(r => (r.Arena, r.Role)));
+        // every approved arena has its draft (#one) since drafts, sharing its co-mods; a suspended
+        // arena's draft (#three) gives no powers either
+        Assert.Equal(new[] { ("#one", "owner"), ("one", "owner"), ("#two", "comod"), ("two", "comod") }, roles.Select(r => (r.Arena, r.Role)));
+        Assert.Null(s.RoleIn("#three", "a"));
+        Assert.Null(s.RoleIn("#three", "c"));
         Assert.Empty(s.RolesFor("nobody"));
     }
 

@@ -149,18 +149,25 @@ public sealed partial class ArenaOwnership
     /// stay (names count only when authenticated); anyone else goes to the public arena.
     /// Returns false when the player was sent away.
     /// </summary>
-    private bool DraftEntryAllowed(Player player, string draft)
+    private bool DraftEntryAllowed(Player player, Arena arena)
     {
-        var name = player.Name!;
-        var authenticated = player.Flags.Authenticated;
-        var decision = DraftRules.Entry(
-            authenticated ? Store.RoleIn(draft, name) : null,
-            authenticated && Store.IsInvited(draft, name),
-            authenticated && GrantLogic.IsGlobalStaff(GlobalGroupOf(name)));
-        if (decision == EntryDecision.Allow) return true;
+        if (MayEnterDraft(player, arena.BaseName)) return true;
+        ApplyGrant(player, arena); // no role here any more: drops a group left from before
         _chat.SendMessage(player, DraftEntryRefused);
         _arenaManager.SendToArena(player, PublicArena, 0, 0);
         return false;
+    }
+
+    /// <summary>The entry rule for a draft (names count only when authenticated). Also used before entry.</summary>
+    private bool MayEnterDraft(Player player, string draft)
+    {
+        var name = player.Name;
+        if (name is null) return false;
+        var authenticated = player.Flags.Authenticated;
+        return DraftRules.Entry(
+            authenticated ? Store.RoleIn(draft, name) : null,
+            authenticated && Store.IsInvited(draft, name),
+            authenticated && GrantLogic.IsGlobalStaff(GlobalGroupOf(name))) == EntryDecision.Allow;
     }
 
     private void MoveOutIfNotAllowed(string name, string playerName)
@@ -168,16 +175,27 @@ public sealed partial class ArenaOwnership
         var p = _playerData.FindPlayer(playerName);
         var draft = DraftRules.DraftOf(name);
         if (p?.Arena is { } a && string.Equals(a.BaseName, draft, StringComparison.OrdinalIgnoreCase))
-            DraftEntryAllowed(p, draft);
+            DraftEntryAllowed(p, a);
+    }
+
+    /// <summary>After a transfer: everyone in the draft gets the grant their new role calls for, or leaves.</summary>
+    private void RefreshDraftAfterTransfer(string name)
+    {
+        foreach (var p in PlayersIn(DraftRules.DraftOf(name)))
+            if (p.Arena is { } a && DraftEntryAllowed(p, a))
+                ApplyGrant(p, a);
     }
 
     // ---- live-edit lock --------------------------------------------------------------------
 
     /// <summary>Null when <paramref name="arenaName"/> may be edited directly, else why not (it publishes from a draft).</summary>
-    internal string? LiveEditRefusal(string arenaName) =>
-        Store.IsLiveWithDraft(arenaName)
-            ? $"'{arenaName}' changes only by publishing: edit your draft #{arenaName} (?go #{arenaName}), then ?publish."
-            : null;
+    internal string? LiveEditRefusal(string arenaName)
+    {
+        if (Store.IsLiveWithDraft(arenaName))
+            return $"'{arenaName}' changes only by publishing: edit your draft #{arenaName} (?go #{arenaName}), then ?publish.";
+        if (DraftRules.IsDraft(arenaName)) Store.TouchDraft(arenaName); // an edit counts as activity
+        return null;
+    }
 
     // ---- commands --------------------------------------------------------------------------
 

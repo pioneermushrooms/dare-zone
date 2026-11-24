@@ -16,11 +16,15 @@ public class RequestNamesTests
     }
 
     [Fact]
-    public void approve_name_finds_a_name_the_server_turned_spaces_into_x()
+    public void a_name_the_server_turned_spaces_into_x_is_only_suggested()
     {
-        // ?go yo mama makes the server visit "yoxmama"; people then type that
-        Assert.Equal("yomama", RequestNames.Find("yoxmama", Pending));
-        Assert.Null(RequestNames.Find("yoxxmama", Pending));
+        // ?go yo mama makes the server visit "yoxmama"; people then type that. Guessing could
+        // approve the wrong request ("taxi" when "tai" is pending), so it is only suggested.
+        Assert.Null(RequestNames.Find("yoxmama", Pending));
+        Assert.Equal("yomama", RequestNames.Suggest("yoxmama", Pending));
+        Assert.Null(RequestNames.Suggest("yoxxmama", Pending));
+        Assert.Equal("No pending request for 'yoxmama'. Did you mean 'yomama'? Pending: yomama, skyrace.",
+            RequestNames.NotFound("yoxmama", Pending));
     }
 
     [Fact]
