@@ -365,6 +365,7 @@ internal sealed partial class WebServer : IDisposable
             case "/app.js": return Get(method, () => Static("app.js"));
             case "/style.css": return Get(method, () => Static("style.css"));
             case "/login": return method == "GET" ? Login(req) : MethodNotAllowed();
+            case "/api/zones": return Get(method, ZonesReply);
             case "/api/public":
                 return method == "GET" ? await PublicAsync().ConfigureAwait(false) : MethodNotAllowed();
             case "/api/me": return method == "GET" ? await MeAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -404,6 +405,22 @@ internal sealed partial class WebServer : IDisposable
         {
             _publicBuild.Release();
         }
+    }
+
+    /// <summary>
+    /// The live zone list (public; served from the module's cache, never fetched per request).
+    /// Addresses stay server-side: the page only needs to know which zones play in the browser.
+    /// </summary>
+    private Reply ZonesReply()
+    {
+        var z = _m.Zones();
+        return JsonReply(200, new
+        {
+            zones = z.Zones.Select(x => new { x.Name, x.Description, x.Players, browser = ArenaOwnership.PlaysInBrowser(x.Address) }),
+            at = z.At == DateTimeOffset.MinValue ? (DateTimeOffset?)null : z.At,
+            answered = z.Answered,
+            asked = z.Asked,
+        });
     }
 
     private static Reply JsonBytes(int status, byte[] body) => new(status, "application/json; charset=utf-8", body);
