@@ -25,6 +25,8 @@ public sealed partial class ArenaOwnership
     /// </summary>
     internal Result StoreUpload(ConfigHandle cfg, string arenaName, string actor, UploadKind kind, string fileName, ReadOnlySpan<byte> content)
     {
+        if (LiveEditRefusal(arenaName) is { } locked)
+            return new Result(false, locked);
         if (kind == UploadKind.Lvz && !LevelFiles.IsSafeFileName(fileName))
             return new Result(false, $"Graphics file names may use only letters, digits, '.', '_' and '-' (up to {LevelFiles.MaxFileNameLength} characters).");
 
@@ -41,7 +43,7 @@ public sealed partial class ArenaOwnership
             return new Result(false, error);
 
         // a replacement keeps the listed spelling, so the list and the file name match on Linux
-        var storedName = kind == UploadKind.Map ? arenaName + ".lvl" : existingEntry ?? fileName;
+        var storedName = kind == UploadKind.Map ? DraftRules.MapFileName(arenaName) : existingEntry ?? fileName;
         var target = ArenaPaths.Resolve(ArenasDir, arenaName, storedName);
         var temp = ArenaPaths.Resolve(ArenasDir, arenaName, $".upload-{Guid.NewGuid():N}.tmp");
         if (target is null || temp is null)
@@ -91,6 +93,8 @@ public sealed partial class ArenaOwnership
     /// </summary>
     internal Result RemoveLvz(ConfigHandle cfg, string arenaName, string actor, string fileName)
     {
+        if (LiveEditRefusal(arenaName) is { } locked)
+            return new Result(false, locked);
         var current = _configManager.GetStr(cfg, "General", "LevelFiles");
         if (!LevelFiles.Remove(current, fileName, out var updated, out var removed, out var error))
             return new Result(false, error);

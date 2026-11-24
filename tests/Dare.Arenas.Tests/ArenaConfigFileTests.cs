@@ -44,7 +44,19 @@ public sealed class ArenaConfigFileTests : IDisposable
         Assert.Null(ArenaConfigFile.OwnPath(Arenas, "skyrace"));
     }
 
+    [Fact]
+    public void a_drafts_own_file_is_its_target()
+    {
+        Directory.CreateDirectory(Path.Combine(Arenas, "#skyrace"));
+        File.WriteAllText(Path.Combine(Arenas, "#skyrace", "arena.conf"), "[General]\n");
+        Assert.Equal(Path.GetFullPath(Path.Combine(Arenas, "#skyrace", "arena.conf")), ArenaConfigFile.OwnPath(Arenas, "#skyrace"));
+    }
+
     [Theory]
+    [InlineData("#")]
+    [InlineData("##sky")]
+    [InlineData("sky#")]
+    [InlineData("#../conf")]
     [InlineData("(default)")]
     [InlineData("..")]
     [InlineData("../conf")]

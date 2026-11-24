@@ -33,6 +33,9 @@ public sealed partial class ArenaOwnership
         Add("rmlvz", Command_rmlvz);
         Add("weblogin", Command_weblogin);
 
+        // drafts (any signed-in pilot)
+        RegisterDraftCommands();
+
         // staff (mod and up)
         Add("approvearena", Command_approvearena);
         Add("declinearena", Command_declinearena);
@@ -239,7 +242,8 @@ public sealed partial class ArenaOwnership
             return;
         }
         // The folder is created inside the approval: if that fails, nothing is approved.
-        var result = Store.Approve(name, player.Name, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        var fromDraft = Store.IsDraftRequest(name);
+        var result = Store.Approve(name, player.Name, ArenaFolderExists, () => CreateApprovalFolders(name));
         if (!result.Ok)
         {
             Reply(player, result.Message);
@@ -247,7 +251,9 @@ public sealed partial class ArenaOwnership
         }
 
         Log(LogLevel.Info, $"{player.Name} approved arena '{name}'.");
-        Reply(player, $"{result.Message} Folder arenas/{name}/ created from the template.");
+        Reply(player, fromDraft
+            ? $"{result.Message} Folder arenas/{name}/ copied from the draft #{name}."
+            : $"{result.Message} Folder arenas/{name}/ created from the template, with its draft #{name}.");
 
         // Someone may already be in an arena of that name; it opened a shared fallback config
         // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players

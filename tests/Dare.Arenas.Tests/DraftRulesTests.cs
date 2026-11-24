@@ -71,4 +71,13 @@ public class DraftRulesTests
         Assert.Equal(new[] { "20261124T100100Z", "20261124T100200Z" }, DraftRules.BackupsToDelete(names));
         Assert.Empty(DraftRules.BackupsToDelete(names.Take(3)));
     }
+
+    [Fact]
+    public void publish_files_read_from_an_arena_conf()
+    {
+        var conf = "; comment\n#include conf/svs/svs.conf\n[Misc]\nMap = nope.lvl\n[General]\nMap = sky.lvl\nLevelFiles = a.lvz, b.lvz\n[Team]\nLevelFiles = c.lvz\n";
+        Assert.Equal(new[] { "arena.conf", "sky.lvl", "a.lvz", "b.lvz" }, DraftRules.PublishFilesFromConf(conf));
+        Assert.Equal(new[] { "arena.conf" }, DraftRules.PublishFilesFromConf(""));
+        Assert.Equal(new[] { "arena.conf", "x.lvl" }, DraftRules.PublishFilesFromConf("[general]\nmap=x.lvl"));
+    }
 }

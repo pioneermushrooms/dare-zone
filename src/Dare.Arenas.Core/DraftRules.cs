@@ -77,6 +77,34 @@ public static class DraftRules
         return files;
     }
 
+    /// <summary>
+    /// <see cref="PublishFiles"/> from the text of an arena.conf: <c>Map</c> and <c>LevelFiles</c>
+    /// in its <c>[General]</c> section (names compared case-insensitively, as the server does).
+    /// </summary>
+    public static IReadOnlyList<string> PublishFilesFromConf(string confText)
+    {
+        string? map = null, levelFiles = null;
+        var inGeneral = false;
+        foreach (var raw in (confText ?? "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] is ';' or '#') continue;
+            if (line[0] == '[')
+            {
+                inGeneral = string.Equals(line.Trim('[', ']').Trim(), "General", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!inGeneral) continue;
+            var eq = line.IndexOf('=');
+            if (eq < 0) continue;
+            var key = line[..eq].Trim();
+            var value = line[(eq + 1)..].Trim();
+            if (string.Equals(key, "Map", StringComparison.OrdinalIgnoreCase)) map = value;
+            else if (string.Equals(key, "LevelFiles", StringComparison.OrdinalIgnoreCase)) levelFiles = value;
+        }
+        return PublishFiles(map, levelFiles);
+    }
+
     /// <summary>The map file an upload stores for <paramref name="arena"/>: no '#' in file names.</summary>
     public static string MapFileName(string arena) => PublicOf(arena) + ".lvl";
 

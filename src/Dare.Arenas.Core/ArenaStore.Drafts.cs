@@ -101,6 +101,15 @@ public sealed partial class ArenaStore
         return Ok($"Published #{d.Name} to {d.Name}.");
     });
 
+    /// <summary>Records that staff put the previous published version of <paramref name="name"/> back.</summary>
+    public Result RolledBack(string name, string staff) => Tx(() =>
+    {
+        var d = LoadDraft(name);
+        if (d is null || !d.Live) return Fail($"'{DraftRules.PublicOf(name)}' is not published from a draft.");
+        AddEvent(Now(), d.Name, staff, "rollback", "previous version restored");
+        return Ok($"Rolled '{d.Name}' back to its previous version.");
+    });
+
     public void TouchDraft(string name) => Tx(() =>
     {
         Run("UPDATE drafts SET last_touched=$t WHERE name=$n AND status <> 'Archived'",

@@ -3,3 +3,7 @@ cmd_arenarequests
 cmd_myarena
 cmd_arenalog
 cmd_weblogin
+cmd_draft
+cmd_draftinvite
+cmd_requestpublic
+cmd_publish

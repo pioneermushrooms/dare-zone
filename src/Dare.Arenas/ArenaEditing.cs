@@ -136,6 +136,8 @@ public sealed partial class ArenaOwnership
     /// </summary>
     internal Result ApplySetting(ConfigHandle cfg, string arenaName, string actor, string sectionKey, string rawValue)
     {
+        if (LiveEditRefusal(arenaName) is { } locked)
+            return new Result(false, locked);
         if (!SettingRef.TryParse(sectionKey, out var section, out var key))
             return new Result(false, "Use Section:Key, e.g. Warbird:BulletSpeed.");
 

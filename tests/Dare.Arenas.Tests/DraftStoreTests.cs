@@ -263,4 +263,15 @@ public sealed class DraftStoreTests : IDisposable
         Assert.True(d.Live);
         Assert.Equal("owner", s.RoleIn("#oldway", "owner"));
     }
+
+    [Fact]
+    public void rollback_is_a_public_event()
+    {
+        var s = WithDraft();
+        Assert.False(s.RolledBack("skyrace", "staff").Ok); // not public yet
+        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        Assert.True(s.RolledBack("skyrace", "staff").Ok);
+        Assert.Contains(s.Events("skyrace", 10), e => e.Kind == "rollback" && e.Actor == "staff");
+    }
 }

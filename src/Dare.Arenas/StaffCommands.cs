@@ -38,7 +38,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name>",
+        Args = "suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name> | rollback <name> | revivedraft <name>",
         Description = """
             Staff overrides for player-owned arenas; each is public in ?arenalog.
             suspend: closes the arena to players (reason required). revive: reopens a suspended or
@@ -46,13 +46,14 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             the arena to another player (a claimed name: a Foundation account). archive: closes it; its folder
             moves to arenas/_archive/ at the next server restart. To take an arena from its owner,
             transfer or suspend it here: removing the owner's group with ?rmgroup does not last (it
-            is granted again on their next entry).
+            is granted again on their next entry). rollback: puts back the arena's previous published
+            version (repeatable, up to 3 steps). revivedraft: reopens an archived draft #<name>.
             """)]
     private void Command_arenaadmin(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null) return;
 
-        const string usage = "Usage: ?arenaadmin suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name>";
+        const string usage = "Usage: ?arenaadmin suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name> | rollback <name> | revivedraft <name>";
         var (action, rest) = SplitFirst(parameters);
         var (rawName, arg) = SplitFirst(rest);
         action = action.ToLowerInvariant();
@@ -62,7 +63,12 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             return;
         }
 
-        var name = rawName.ToLowerInvariant();
+        var name = DraftRules.PublicOf(rawName.ToLowerInvariant());
+        if (action == "revivedraft")
+        {
+            AdminReviveDraft(player, name);
+            return;
+        }
         var owned = Store.Get(name);
         if (owned is null)
         {
@@ -99,10 +105,51 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                 AdminArchive(player, name);
                 break;
 
+            case "rollback":
+                AdminRollback(player, name);
+                break;
+
             default:
                 Reply(player, usage);
                 break;
         }
+    }
+
+    private void AdminRollback(Player staff, string name)
+    {
+        if (!Store.IsLiveWithDraft(name))
+        {
+            Reply(staff, $"'{name}' is not published from a draft.");
+            return;
+        }
+        var error = DraftFiles.Rollback(ArenasDir, name);
+        if (error is not null)
+        {
+            Reply(staff, $"Can't roll '{name}' back: {error}");
+            return;
+        }
+        var result = Store.RolledBack(name, staff.Name!);
+        Log(LogLevel.Info, $"{staff.Name} rolled [{name}] back to its previous published version.");
+        var (recycled, notRecycled) = RecycleRunning(name);
+        Reply(staff, result.Message + (notRecycled.Count > 0 ? " Type ?recyclearena there for it to take effect." : ""));
+    }
+
+    private void AdminReviveDraft(Player staff, string name)
+    {
+        var draft = DraftRules.DraftOf(name);
+        var result = Store.ReviveDraft(name, staff.Name!, () =>
+        {
+            if (ArenaConfigFile.OwnPath(ArenasDir, draft) is not null) return null; // move still pending
+            if (ArenaFolderExists(draft))
+                return $"arenas/{draft}/ has no {ArenaConfigFile.FileName}; restore it by hand first.";
+            if (RestoreFromArchive(draft) is null)
+                return $"arenas/{draft}/ is missing and no archived copy was found in arenas/{ArchiveDir}/.";
+            return ArenaConfigFile.OwnPath(ArenasDir, draft) is null
+                ? $"the restored folder has no {ArenaConfigFile.FileName}."
+                : null;
+        });
+        Reply(staff, result.Message);
+        if (result.Ok) Log(LogLevel.Info, $"{staff.Name} revived draft {draft}.");
     }
 
     private void AdminSuspend(Player staff, string name, string reason)
@@ -199,6 +246,8 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             // when someone has stayed inside since).
             var occupied = PlayerCounts();
             var archived = Store.ArchiveIdle(IdleBeforeArchive, name => occupied.GetValueOrDefault(name) > 0);
+            foreach (var draft in Store.ArchiveIdleDrafts(IdleBeforeArchive, name => occupied.GetValueOrDefault(name) > 0))
+                Log(LogLevel.Info, $"Archived idle draft [{draft}] (untouched for {(int)IdleBeforeArchive.TotalDays} days); its folder moves to arenas/{ArchiveDir}/ at the next start.");
             foreach (var name in archived)
             {
                 SendPlayersOut(name, $"Arena '{name}' was archived after {(int)IdleBeforeArchive.TotalDays} days without visitors.");
