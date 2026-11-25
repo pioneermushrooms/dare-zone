@@ -102,6 +102,11 @@ public sealed partial class AccountStore : IDisposable
               count INTEGER NOT NULL,
               PRIMARY KEY (purpose, email)
             );
+            CREATE TABLE IF NOT EXISTS pilot_settings (
+              account_id INTEGER NOT NULL PRIMARY KEY,
+              text TEXT NOT NULL,
+              updated TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS game_passes (
               pass_hash TEXT NOT NULL PRIMARY KEY,
               account_id INTEGER NOT NULL,

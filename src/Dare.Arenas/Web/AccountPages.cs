@@ -131,6 +131,8 @@ internal sealed partial class WebServer
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
         if (api == "/pilots" && method == "GET")
             return await PilotsAsync(req).ConfigureAwait(false);
+        if (api == "/pilots/settings" && method == "GET")
+            return PilotSettings(req);
         if (method != "POST")
             return MethodNotAllowed();
         if (AccountPostCheck(req) is { } refused)
@@ -168,6 +170,7 @@ internal sealed partial class WebServer
             "/gamepass" => GamePass(req),
             "/pilots/switch" => SwitchPilot(req, body),
             "/pilots/add" => AddPilot(req, body),
+            "/pilots/settings" => SavePilotSettings(req, body),
             "/pilots/delete" => await DeletePilotAsync(req, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
@@ -389,7 +392,8 @@ internal sealed partial class WebServer
         var pass = _m.Accounts.IssueGamePass(cur.Account.Id);
         if (pass is null) return JsonReply(403, new { ok = false, message = "This account can't sign in." });
         _m.Log(LogLevel.Info, $"Game pass issued for '{cur.Account.Name}' ({ClientIp(req)}).");
-        return JsonReply(200, new { ok = true, name = cur.Account.Name, pass });
+        // the name's own keys and macros travel with the pass (the game applies them at start)
+        return JsonReply(200, new { ok = true, name = cur.Account.Name, pass, settings = _m.Accounts.PilotSettings(cur.Account.Id) });
     }
 
     // ---- pilot names on one email ------------------------------------------------------------
@@ -408,6 +412,26 @@ internal sealed partial class WebServer
             max = AccountStore.MaxAccountsPerEmail,
             pilots = holdings,
         });
+    }
+
+    /// <summary>One of the signed-in pilot's names' keys and macros (<c>?name=</c>, default the current one).</summary>
+    private Reply PilotSettings(HttpListenerRequest req)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var wanted = req.QueryString["name"];
+        var pilot = string.IsNullOrWhiteSpace(wanted) ? cur.Account : _m.Accounts.PilotOf(cur.Account.Id, wanted);
+        if (pilot is null) return Bad("That isn't one of your names.");
+        return JsonReply(200, new { ok = true, name = pilot.Name, text = _m.Accounts.PilotSettings(pilot.Id) });
+    }
+
+    /// <summary>Saves one of the signed-in pilot's names' keys and macros: {"name", "text"}.</summary>
+    private Reply SavePilotSettings(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var pilot = _m.Accounts.PilotOf(cur.Account.Id, Str(body, "name") ?? cur.Account.Name);
+        if (pilot is null) return Bad("That isn't one of your names.");
+        var r = _m.Accounts.SavePilotSettings(pilot.Id, Str(body, "text") ?? "");
+        return r.Ok ? Ok(r.Message) : Bad(r.Message);
     }
 
     /// <summary>Switches the site session to another name on the same confirmed email (no password).</summary>

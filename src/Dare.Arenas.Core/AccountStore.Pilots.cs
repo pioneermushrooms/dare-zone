@@ -78,6 +78,7 @@ public sealed partial class AccountStore
         return Tx(() =>
         {
             Run("DELETE FROM game_passes WHERE account_id = $id", ("$id", target.Id));
+            Run("DELETE FROM pilot_settings WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM login_failures WHERE name = $n", ("$n", target.Name));
             Run("DELETE FROM email_codes WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM accounts WHERE id = $id", ("$id", target.Id));
