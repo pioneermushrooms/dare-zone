@@ -14,6 +14,8 @@ namespace Dare.Arenas.Core;
 public sealed partial class ArenaStore : IDisposable
 {
     public const int MaxCoMods = 5;
+    /// <summary>Public arenas one pilot may own, drafts they may keep (not archived), and requests they may have waiting.</summary>
+    public const int MaxPerPilot = 3;
 
     private readonly SqliteConnection _conn;
     private readonly Func<DateTimeOffset> _clock;
@@ -46,7 +48,7 @@ public sealed partial class ArenaStore : IDisposable
             );
             CREATE TABLE IF NOT EXISTS arenas (
               name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
-              owner TEXT NOT NULL UNIQUE COLLATE NOCASE,
+              owner TEXT NOT NULL COLLATE NOCASE,
               status TEXT NOT NULL,
               created TEXT NOT NULL,
               last_entered TEXT NOT NULL
@@ -88,6 +90,8 @@ public sealed partial class ArenaStore : IDisposable
             """);
         if (Scalar("SELECT COUNT(*) FROM pragma_table_info('requests') WHERE name = 'draft'") == 0)
             Exec("ALTER TABLE requests ADD COLUMN draft INTEGER NULL;");
+        AllowSeveralArenasPerOwner();
+        Exec("CREATE INDEX IF NOT EXISTS ix_arenas_owner ON arenas(owner);");
     }
 
     public void Dispose()
@@ -101,18 +105,18 @@ public sealed partial class ArenaStore : IDisposable
     {
         if (string.IsNullOrWhiteSpace(player) || string.IsNullOrWhiteSpace(arena))
             return Fail("Player and arena name are required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", player)) > 0)
-            return Fail("You already own an arena.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", player)) > 0)
-            return Fail("You already have a pending arena request.");
+        if (OwnedCount(player) >= MaxPerPilot)
+            return Fail($"You already own {MaxPerPilot} arenas.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", player)) >= MaxPerPilot)
+            return Fail($"You already have {MaxPerPilot} arena requests waiting; withdraw one with ?withdrawrequest.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
         if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' already has a pending request.");
-        if (LoadDraftByOwner(player) is { } own)
-            return Fail($"You have a draft (#{own.Name}); request it with ?requestpublic.");
-        if (Scalar("SELECT COUNT(*) FROM drafts WHERE name = $a", ("$a", arena)) > 0)
-            return Fail($"Arena '{arena}' is already taken.");
+        if (LoadDraft(arena) is { } d)
+            return Fail(Same(d.Owner, player)
+                ? $"That's your draft #{d.Name}; ask with ?requestpublic {d.Name} <pitch>."
+                : $"Arena '{arena}' is already taken.");
         var now = Now();
         Run("INSERT INTO requests(arena, player, pitch, status, at) VALUES($a,$p,$pitch,'Pending',$at)",
             ("$a", arena), ("$p", player), ("$pitch", pitch ?? ""), ("$at", now));
@@ -134,14 +138,14 @@ public sealed partial class ArenaStore : IDisposable
         if (req is null) return Fail(err!);
         if (folderExists(arena))
             return Fail($"A folder named '{arena}' already exists on the server; cannot approve.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", req.Player)) > 0)
-            return Fail($"{req.Player} already owns an arena.");
+        if (OwnedCount(req.Player) >= MaxPerPilot)
+            return Fail($"{req.Player} already owns {MaxPerPilot} arenas.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
         var fromDraft = IsDraftRequestId(req.Id);
         var existingDraft = LoadDraft(arena);
-        if (!fromDraft && existingDraft is null && LoadDraftByOwner(req.Player) is { } other)
-            return Fail($"{req.Player} has a draft (#{other.Name}); approve that instead.");
+        if (!fromDraft && existingDraft is null && DraftCount(req.Player) >= MaxPerPilot)
+            return Fail($"{req.Player} already has {MaxPerPilot} drafts; the arena would have none.");
         var folderError = createFolder();
         if (folderError is not null)
             return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was approved and the request is still pending.");
@@ -244,10 +248,10 @@ public sealed partial class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (string.IsNullOrWhiteSpace(newOwner)) return Fail("New owner is required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", newOwner)) > 0)
-            return Fail($"{newOwner} already owns an arena.");
-        if (LoadDraftByOwner(newOwner) is { } theirs && !Same(theirs.Name, arena))
-            return Fail($"{newOwner} already has a draft (#{theirs.Name}).");
+        if (OwnedCount(newOwner) >= MaxPerPilot)
+            return Fail($"{newOwner} already owns {MaxPerPilot} arenas.");
+        if (LoadDraft(arena) is { Status: not DraftStatus.Archived } && DraftCount(newOwner) >= MaxPerPilot)
+            return Fail($"{newOwner} already has {MaxPerPilot} drafts.");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", newOwner));
         Run("UPDATE arenas SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
         // the draft goes with the arena; the old owner's invites go with the old owner

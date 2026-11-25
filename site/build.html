@@ -19,6 +19,8 @@
 .invites{list-style:none;margin:10px 0 0;padding:0}
 .invites li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .invites li button{min-height:34px;padding:4px 12px}
+.draft{display:grid;gap:16px}
+.draft h3{margin:18px 0 4px;font-size:1rem}
 .steps{margin:10px 0 0;padding-left:22px;color:var(--muted)}.steps li+li{margin-top:8px}.steps strong{color:var(--ink)}
 </style></head>
 <body><header><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html" aria-current="page">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
@@ -28,37 +30,17 @@
 <section class="panel" id="signin" hidden><h2>Sign in first</h2><p>Drafts belong to Foundation pilots. <a href="/account/login">Sign in</a>, then come back to this page. No account yet? <a href="/account/signup">Claim a pilot name</a>.</p></section>
 
 <section class="panel" id="create" hidden>
-  <h2>Make your draft</h2>
+  <h2 id="createtitle">Make your draft</h2>
   <ol class="steps"><li><strong>Name it.</strong> 3–14 letters and digits, starting with a letter. It becomes <code>#name</code> now and <code>name</code> when it goes public.</li><li><strong>Build and fly.</strong> Nobody else sees it unless you invite them.</li><li><strong>Ask to go public</strong> when it's ready.</li></ol>
   <form id="createform"><input id="draftname" maxlength="15" placeholder="e.g. skyrace" autocomplete="off" required aria-label="Draft name"><button type="submit">Make my draft</button></form>
   <p class="msg" id="createmsg" role="status"></p>
 </section>
 
-<div id="mine" hidden>
-<section class="panel">
-  <div class="status-line"><h2 id="draftname-title"></h2><span class="tag" id="draftstatus"></span></div>
-  <p class="msg" id="draftnote"></p>
-  <div class="actions"><a class="primary" id="fly" href="/play/">Fly in it</a><a class="outline" id="edit" href="/arena/me">Edit settings, map and graphics</a></div>
+<section class="panel" id="requests" hidden>
+  <h2>Waiting for staff</h2>
+  <ul class="invites" id="requestlist"></ul>
+  <p class="msg" id="requestsmsg" role="status"></p>
 </section>
-<section class="panel">
-  <h2>Who can enter</h2>
-  <p>Only you, your co-mods and pilots you invite (up to <span id="maxinv">5</span>). Anyone else who tries is sent to the public arena.</p>
-  <ul class="invites" id="invites"></ul>
-  <form id="inviteform"><input id="invitee" maxlength="24" placeholder="pilot name" autocomplete="off" required aria-label="Pilot to invite"><button type="submit" class="outline">Invite</button></form>
-  <p class="msg" id="invitemsg" role="status"></p>
-</section>
-<section class="panel" id="requestpanel" hidden>
-  <h2>Go public</h2>
-  <p>Staff fly in your draft and decide in public. Say in a line what it's for.</p>
-  <form id="requestform"><input id="pitch" maxlength="120" placeholder="e.g. fast racing laps for warbirds" autocomplete="off" required aria-label="What your arena is for"><button type="submit">Ask to go public</button></form>
-  <p class="msg" id="requestmsg" role="status"></p>
-</section>
-<section class="panel" id="publishpanel" hidden>
-  <h2>Publish an update</h2>
-  <p>Copies your draft's settings, map and graphics over the public arena and restarts it. Players in it rejoin in a second.</p>
-  <form id="publishform"><button type="submit">Publish update</button></form>
-  <p class="msg" id="publishmsg" role="status"></p>
-</section>
-</div>
+<div id="drafts"></div>
 </main>
 <footer><div class="wrap"><a class="brand" href="/">SUBSPACE FOUNDATION</a><a href="/arena-owner-reference.html">Arena owner reference</a></div></footer></body></html>

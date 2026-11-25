@@ -378,11 +378,13 @@ internal sealed partial class WebServer : IDisposable
             case "/api/drafts":
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.CreateDraftFor(p, Str(b, "name") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/drafts/invite":
-                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.InviteFor(p, Str(b, "player") ?? "", Str(b, "add") != "false")).ConfigureAwait(false) : MethodNotAllowed();
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.InviteFor(p, Str(b, "name") ?? "", Str(b, "player") ?? "", Str(b, "add") != "false")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/drafts/request":
-                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.RequestPublicFor(p, Str(b, "pitch") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.RequestPublicFor(p, Str(b, "name") ?? "", Str(b, "pitch") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/drafts/publish":
-                return method == "POST" ? await DraftActionAsync(req, (p, _) => _m.PublishFor(p)).ConfigureAwait(false) : MethodNotAllowed();
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.PublishFor(p, Str(b, "name") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/requests/withdraw":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
     }
@@ -629,21 +631,24 @@ internal sealed partial class WebServer : IDisposable
     private async Task<Reply> DraftsMineAsync(HttpListenerRequest req)
     {
         if (Gate(req, write: false, out var player) is { } denied) return denied;
-        var d = _m.WebStore.DraftOwnedBy(player);
-        var live = d is { Live: true } ? _m.WebStore.Get(d.Name) : null;
+        var store = _m.WebStore;
         return JsonReply(200, new
         {
             player,
-            draft = d is null ? null : new
+            max = ArenaStore.MaxPerPilot,
+            maxInvites = ArenaStore.MaxInvites,
+            drafts = store.DraftsOwnedBy(player).Select(d => new
             {
                 name = d.Name,
                 status = d.Status.ToString(),
                 live = d.Live,
-                liveStatus = live?.Status.ToString(),
+                liveStatus = d.Live ? store.Get(d.Name)?.Status.ToString() : null,
                 invited = d.Invited,
                 coMods = d.CoMods,
-                maxInvites = ArenaStore.MaxInvites,
-            },
+            }),
+            requests = store.PendingRequestsOldestFirst(200)
+                .Where(r => string.Equals(r.Player, player, StringComparison.OrdinalIgnoreCase))
+                .Select(r => new { arena = r.Arena, pitch = r.Pitch, at = r.At }),
         });
     }
 

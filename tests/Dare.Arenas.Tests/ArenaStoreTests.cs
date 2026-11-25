@@ -60,18 +60,25 @@ public sealed class ArenaStoreTests : IDisposable
     }
 
     [Fact]
-    public void one_pending_request_per_player()
+    public void three_pending_requests_per_player()
     {
         var s = Open();
         Assert.True(s.Request("chris", "one", "x").Ok);
-        Assert.False(s.Request("CHRIS", "two", "x").Ok);
+        Assert.True(s.Request("CHRIS", "two", "x").Ok);
+        Assert.True(s.Request("chris", "three", "x").Ok);
+        Assert.False(s.Request("chris", "four", "x").Ok);
     }
 
     [Fact]
-    public void one_arena_per_player_and_names_unique()
+    public void three_arenas_per_player_and_names_unique()
     {
         var s = Owned("one", "chris");
-        Assert.False(s.Request("Chris", "two", "x").Ok);
+        Assert.True(s.Request("Chris", "alpha", "x").Ok);
+        Assert.True(s.Approve("alpha", "staff", NoFolder).Ok);
+        Assert.True(s.Request("Chris", "beta", "x").Ok);
+        Assert.True(s.Approve("beta", "staff", NoFolder).Ok);
+        Assert.False(s.Request("Chris", "two", "x").Ok); // owns three
+        Assert.Equal(3, s.OwnedArenas("chris").Count);
         Assert.False(s.Request("other", "ONE", "x").Ok);
         Assert.True(s.Request("other", "two", "x").Ok);
         Assert.False(s.Request("third", "two", "x").Ok); // pending name
@@ -234,6 +241,12 @@ public sealed class ArenaStoreTests : IDisposable
         Assert.Equal("M", s.Get("one")!.Owner);
         Assert.Empty(s.Get("one")!.CoMods);
 
+        // up to three arenas per owner: a fourth can't be transferred to them
+        foreach (var n in new[] { "mtwo", "mthree" })
+        {
+            Assert.True(s.Request("m", n, "x").Ok);
+            Assert.True(s.Approve(n, "staff", NoFolder).Ok);
+        }
         Assert.True(s.Request("c", "two", "x").Ok);
         Assert.True(s.Approve("two", "staff", NoFolder).Ok);
         Assert.False(s.Transfer("two", "staff", "m").Ok);

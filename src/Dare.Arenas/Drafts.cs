@@ -60,10 +60,37 @@ public sealed partial class ArenaOwnership
         return result;
     }
 
-    internal Result InviteFor(string owner, string player, bool add)
+    /// <summary>
+    /// Which of <paramref name="owner"/>'s drafts a command means: the one named, else the one they
+    /// stand in (the draft or its live arena), else their only one. Null with a reason otherwise.
+    /// </summary>
+    private DraftInfo? PickDraft(string owner, string? name, Player? inGame, out string? why)
     {
-        var d = Store.DraftOwnedBy(owner);
-        if (d is null) return new Result(false, "You have no draft; make one with ?draft <name>.");
+        why = null;
+        var mine = Store.DraftsOwnedBy(owner);
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var wanted = DraftRules.PublicOf(name.Trim());
+            var d = mine.FirstOrDefault(x => string.Equals(x.Name, wanted, StringComparison.OrdinalIgnoreCase));
+            if (d is null) why = $"You have no draft named #{wanted}.";
+            return d;
+        }
+        if (inGame?.Arena?.BaseName is { } here)
+        {
+            var d = mine.FirstOrDefault(x => string.Equals(x.Name, DraftRules.PublicOf(here), StringComparison.OrdinalIgnoreCase));
+            if (d is not null) return d;
+        }
+        if (mine.Count == 1) return mine[0];
+        why = mine.Count == 0
+            ? "You have no draft; make one with ?draft <name>."
+            : $"Which draft? Go into it (?go #name) first. Yours: {string.Join(", ", mine.Select(x => "#" + x.Name))}.";
+        return null;
+    }
+
+    internal Result InviteFor(string owner, string? draftName, string player, bool add, Player? inGame = null)
+    {
+        var d = PickDraft(owner, draftName, inGame, out var why);
+        if (d is null) return new Result(false, why!);
         player = player.Trim();
         var result = add
             ? Store.Invite(d.Name, owner, player, p => _accounts?.Find(p) is not null)
@@ -72,15 +99,17 @@ public sealed partial class ArenaOwnership
         return result;
     }
 
-    internal Result RequestPublicFor(string owner, string pitch)
+    internal Result RequestPublicFor(string owner, string? draftName, string pitch, Player? inGame = null)
     {
+        var d = PickDraft(owner, draftName, inGame, out var why);
+        if (d is null) return new Result(false, why!);
         pitch = pitch.Trim();
         if (pitch.Length == 0) return new Result(false, "Say in a line what your arena is for.");
         if (pitch.Length > MaxPitchLength)
             return new Result(false, $"Your pitch is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer.");
         if (pitch.Any(char.IsControl)) return new Result(false, "The pitch must be a single line of text.");
-        var result = Store.RequestPublic(owner, pitch);
-        if (result.Ok && Store.DraftOwnedBy(owner) is { } d)
+        var result = Store.RequestPublic(owner, d.Name, pitch);
+        if (result.Ok)
         {
             Log(LogLevel.Info, $"{owner} asked to make draft #{d.Name} public: {pitch}");
             _chat.SendModMessage($"[Dare.Arenas] {owner} asked to make draft #{d.Name} public: {pitch}  (fly in it: ?go #{d.Name}; ?approvearena {d.Name} / ?declinearena {d.Name} <reason>)");
@@ -88,10 +117,10 @@ public sealed partial class ArenaOwnership
         return result;
     }
 
-    internal Result PublishFor(string owner)
+    internal Result PublishFor(string owner, string? draftName, Player? inGame = null)
     {
-        var d = Store.DraftOwnedBy(owner);
-        if (d is null) return new Result(false, "You have no draft.");
+        var d = PickDraft(owner, draftName, inGame, out var why);
+        if (d is null) return new Result(false, why!);
         if (!d.Live) return new Result(false, $"#{d.Name} isn't public yet; ask staff with ?requestpublic <pitch>.");
         var live = Store.Get(d.Name);
         if (live is null || live.Status != ArenaStatus.Active)
@@ -248,26 +277,31 @@ public sealed partial class ArenaOwnership
         }
         var result = CreateDraftFor(player.Name, raw);
         Reply(player, result.Message);
-        if (result.Ok && Store.DraftOwnedBy(player.Name) is { } d)
+        if (result.Ok && DraftRules.TryValidate(raw, new HashSet<string>(), out var made, out _))
         {
             Reply(player, $"Taking you there. Invite friends with ?draftinvite add <name>; when it's ready, ?requestpublic <what it's for>.");
-            _arenaManager.SendToArena(player, DraftRules.DraftOf(d.Name), 0, 0);
+            _arenaManager.SendToArena(player, DraftRules.DraftOf(made), 0, 0);
         }
     }
 
     private void ShowDraft(Player player)
     {
-        var d = Store.DraftOwnedBy(player.Name!);
-        if (d is null)
+        var mine = Store.DraftsOwnedBy(player.Name!);
+        if (mine.Count == 0)
         {
-            Reply(player, "You have no draft. Make one with ?draft <name>, or at subspacefoundation.com/build/.");
+            Reply(player, $"You have no draft. Make one with ?draft <name> (up to {ArenaStore.MaxPerPilot}), or at subspacefoundation.com/build.html.");
             return;
         }
-        Reply(player, $"Your draft: #{d.Name} ({d.Status.ToString().ToLowerInvariant()}{(d.Live ? $", public as '{d.Name}'" : "")}).");
-        Reply(player, d.Invited.Count == 0 ? "Invited: nobody yet (?draftinvite add <name>)." : $"Invited: {string.Join(", ", d.Invited)}.");
-        Reply(player, d.Live ? "Change it in #" + d.Name + ", then ?publish."
-            : d.Status == DraftStatus.Requested ? "Waiting for staff to review it."
-            : "When it's ready: ?requestpublic <what it's for>.");
+        foreach (var d in mine)
+        {
+            var state = d.Live ? $"public as '{d.Name}': change it here, then ?publish"
+                : d.Status == DraftStatus.Requested ? "waiting for staff"
+                : "private: ?requestpublic <what it's for> when it's ready";
+            var invited = d.Invited.Count == 0 ? "nobody invited" : "invited: " + string.Join(", ", d.Invited);
+            Reply(player, $"#{d.Name} ({state}; {invited}).");
+        }
+        if (mine.Count < ArenaStore.MaxPerPilot)
+            Reply(player, $"You can make {ArenaStore.MaxPerPilot - mine.Count} more with ?draft <name>. Commands act on the draft you're in.");
     }
 
     [CommandHelp(
@@ -284,7 +318,7 @@ public sealed partial class ArenaOwnership
             Reply(player, "Usage: ?draftinvite add|remove <player>");
             return;
         }
-        Reply(player, InviteFor(player.Name, who, action == "add").Message);
+        Reply(player, InviteFor(player.Name, null, who, action == "add", player).Message);
     }
 
     [CommandHelp(
@@ -294,7 +328,7 @@ public sealed partial class ArenaOwnership
     private void Command_requestpublic(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null || !player.Flags.Authenticated) return;
-        Reply(player, RequestPublicFor(player.Name, parameters.ToString()).Message);
+        Reply(player, RequestPublicFor(player.Name, null, parameters.ToString(), player).Message);
     }
 
     [CommandHelp(
@@ -304,7 +338,8 @@ public sealed partial class ArenaOwnership
     private void Command_publish(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null || !player.Flags.Authenticated) return;
-        Reply(player, PublishFor(player.Name).Message);
+        var name = parameters.ToString().Trim();
+        Reply(player, PublishFor(player.Name, name.Length == 0 ? null : name, player).Message);
     }
 
     // ---- helpers ---------------------------------------------------------------------------

@@ -57,7 +57,7 @@ public sealed class DraftStoreTests : IDisposable
         Assert.Equal("owner", s.RoleIn("#skyrace", "pilot"));
         Assert.Null(s.RoleIn("#skyrace", "someone"));
         Assert.Null(s.RoleIn("skyrace", "pilot"));
-        Assert.Equal("skyrace", s.DraftOwnedBy("PILOT")!.Name);
+        Assert.Equal("skyrace", s.DraftsOwnedBy("PILOT").Single().Name);
         Assert.Contains(s.Events("#skyrace", 10), e => e.Kind == "draft");
     }
 
@@ -82,10 +82,28 @@ public sealed class DraftStoreTests : IDisposable
     }
 
     [Fact]
-    public void one_draft_per_pilot()
+    public void three_drafts_per_pilot()
     {
         var s = WithDraft();
-        Assert.False(s.CreateDraft("pilot", "other", NoFolder, Made).Ok);
+        Assert.True(s.CreateDraft("pilot", "second", NoFolder, Made).Ok);
+        Assert.True(s.CreateDraft("pilot", "third", NoFolder, Made).Ok);
+        var fourth = s.CreateDraft("pilot", "fourth", NoFolder, Made);
+        Assert.False(fourth.Ok);
+        Assert.Contains("3", fourth.Message);
+        Assert.Equal(new[] { "second", "skyrace", "third" }, s.DraftsOwnedBy("pilot").Select(d => d.Name));
+    }
+
+    [Fact]
+    public void an_owner_can_draft_another_arena_and_pending_requests_dont_block()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        Assert.True(s.Request("Pilot", "oldway", "an old-style request").Ok);
+        Assert.True(s.CreateDraft("pilot", "nextone", NoFolder, Made).Ok);
+        Assert.True(s.RequestPublic("pilot", "nextone", "the second").Ok);
+        Assert.False(s.RequestPublic("pilot", "notmine", "x").Ok);
+        Assert.False(s.RequestPublic("someone", "nextone", "x").Ok);
     }
 
     [Fact]
@@ -95,8 +113,9 @@ public sealed class DraftStoreTests : IDisposable
         Assert.False(s.Request("Someone", "skyrace", "pitch").Ok);
         Assert.True(s.Request("Someone", "duelzone", "pitch").Ok);
         Assert.False(s.CreateDraft("Third", "duelzone", NoFolder, Made).Ok);
-        // the draft's owner can't make an old-style request for another name
-        Assert.False(s.Request("Pilot", "elsewhere", "pitch").Ok);
+        // a draft owner can still make an old-style request for another name
+        Assert.True(s.Request("Pilot", "elsewhere", "pitch").Ok);
+        Assert.False(s.Request("Pilot", "skyrace", "pitch").Ok); // their draft's name: ?requestpublic
     }
 
     [Fact]
@@ -129,9 +148,9 @@ public sealed class DraftStoreTests : IDisposable
     {
         var s = WithDraft();
         Assert.True(s.AddCoMod("#skyrace", "pilot", "Helper").Ok);
-        Assert.True(s.RequestPublic("pilot", "fast laps").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "fast laps").Ok);
         Assert.Equal(DraftStatus.Requested, s.Draft("skyrace")!.Status);
-        Assert.False(s.RequestPublic("pilot", "again").Ok);
+        Assert.False(s.RequestPublic("pilot", "skyrace", "again").Ok);
         Assert.True(s.IsDraftRequest("skyrace"));
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         var d = s.Draft("skyrace")!;
@@ -147,10 +166,10 @@ public sealed class DraftStoreTests : IDisposable
     public void decline_returns_draft_to_active()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "fast laps").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "fast laps").Ok);
         Assert.True(s.Decline("skyrace", "staff", "needs a map").Ok);
         Assert.Equal(DraftStatus.Active, s.Draft("skyrace")!.Status);
-        Assert.True(s.RequestPublic("pilot", "now with a map").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "now with a map").Ok);
     }
 
     [Fact]
@@ -158,7 +177,7 @@ public sealed class DraftStoreTests : IDisposable
     {
         var s = WithDraft();
         Assert.False(s.IsLiveWithDraft("skyrace"));
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.IsLiveWithDraft("skyrace"));
         Assert.False(s.IsLiveWithDraft("#skyrace"));
@@ -168,7 +187,7 @@ public sealed class DraftStoreTests : IDisposable
     public void publish_rate_limit_two_minutes()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.PublishAllowed("skyrace"));
         Assert.True(s.Published("skyrace", "pilot").Ok);
@@ -233,21 +252,21 @@ public sealed class DraftStoreTests : IDisposable
     {
         var s = WithDraft();
         Assert.True(s.Invite("skyrace", "pilot", "friend", HasAccount).Ok);
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.Transfer("skyrace", "staff", "Heir").Ok);
         Assert.Equal("owner", s.RoleIn("#skyrace", "heir"));
         Assert.Null(s.RoleIn("#skyrace", "pilot"));
         Assert.Null(s.RoleIn("skyrace", "pilot"));
         Assert.Empty(s.Draft("skyrace")!.Invited);
-        Assert.Null(s.DraftOwnedBy("pilot"));
+        Assert.Empty(s.DraftsOwnedBy("pilot"));
     }
 
     [Fact]
     public void roles_for_lists_draft_and_owned_arena()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.Equal(new[] { ("#skyrace", "owner"), ("skyrace", "owner") }, s.RolesFor("pilot"));
     }
@@ -269,7 +288,7 @@ public sealed class DraftStoreTests : IDisposable
     {
         var s = WithDraft();
         Assert.False(s.RolledBack("skyrace", "staff").Ok); // not public yet
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.RolledBack("skyrace", "staff").Ok);
         Assert.Contains(s.Events("skyrace", 10), e => e.Kind == "rollback" && e.Actor == "staff");
@@ -294,7 +313,7 @@ public sealed class DraftStoreTests : IDisposable
     public void live_drafts_are_never_idle_archived()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         _now = _now.AddDays(90);
         Assert.Empty(s.ArchiveIdleDrafts(TimeSpan.FromDays(30), _ => false));
@@ -305,7 +324,7 @@ public sealed class DraftStoreTests : IDisposable
     public void comods_of_a_live_arena_and_its_draft_stay_the_same()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.True(s.AddCoMod("skyrace", "pilot", "Bob").Ok);
         Assert.Equal("comod", s.RoleIn("#skyrace", "bob"));
@@ -326,7 +345,7 @@ public sealed class DraftStoreTests : IDisposable
     public void roles_for_lists_the_draft_first_when_the_live_arena_publishes_from_it()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.Equal(("#skyrace", "owner"), s.RolesFor("pilot")[0]);
     }
@@ -348,9 +367,34 @@ public sealed class DraftStoreTests : IDisposable
     public void withdrawing_a_drafts_request_returns_it_to_editing()
     {
         var s = WithDraft();
-        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
         Assert.True(s.Withdraw("pilot", "skyrace").Ok);
         Assert.Equal(DraftStatus.Active, s.Draft("skyrace")!.Status);
-        Assert.True(s.RequestPublic("pilot", "again").Ok);
+        Assert.True(s.RequestPublic("pilot", "skyrace", "again").Ok);
+    }
+
+    [Fact]
+    public void an_old_database_with_one_arena_per_owner_is_upgraded()
+    {
+        using (var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db};Pooling=False"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE arenas (
+                  name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+                  owner TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                  status TEXT NOT NULL, created TEXT NOT NULL, last_entered TEXT NOT NULL);
+                INSERT INTO arenas VALUES ('first', 'Owner', 'Active', '2026-11-20T00:00:00Z', '2026-11-20T00:00:00Z');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        var s = Open();
+        Assert.Equal("Owner", s.Get("first")!.Owner);
+        Assert.True(s.Request("owner", "second", "p").Ok);
+        Assert.True(s.Approve("second", "staff", NoFolder).Ok);
+        Assert.Equal(2, s.OwnedArenas("owner").Count);
+        Open(); // a second start leaves it as it is
+        Assert.Equal(2, Open().OwnedArenas("OWNER").Count);
     }
 }

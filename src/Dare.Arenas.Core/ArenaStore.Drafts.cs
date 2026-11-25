@@ -25,12 +25,8 @@ public sealed partial class ArenaStore
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
             return Fail("Player and draft name are required.");
         name = DraftRules.PublicOf(name);
-        if (LoadDraftByOwner(owner) is { } mine)
-            return Fail($"You already have a draft (#{mine.Name}).");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", owner)) > 0)
-            return Fail("You already own an arena; its draft is where you build.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", owner)) > 0)
-            return Fail("You already have a pending arena request.");
+        if (DraftCount(owner) >= MaxPerPilot)
+            return Fail($"You already have {MaxPerPilot} drafts; archive or publish one first.");
         if (NameTaken(name))
             return Fail($"The name '{name}' is already taken.");
         var draft = DraftRules.DraftOf(name);
@@ -73,10 +69,14 @@ public sealed partial class ArenaStore
     });
 
     /// <summary>Asks staff to make the owner's draft public (a request for its public name, linked to the draft).</summary>
-    public Result RequestPublic(string owner, string pitch) => Tx(() =>
+    public Result RequestPublic(string owner, string name, string pitch) => Tx(() =>
     {
-        var d = LoadDraftByOwner(owner);
-        if (d is null) return Fail("You have no draft; make one with ?draft <name>.");
+        var d = LoadDraft(name ?? "");
+        if (d is null || !Same(d.Owner, owner)) return Fail($"You have no draft named #{DraftRules.PublicOf(name ?? "")}.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", owner)) >= MaxPerPilot)
+            return Fail($"You already have {MaxPerPilot} arena requests waiting; withdraw one with ?withdrawrequest.");
+        if (OwnedCount(owner) >= MaxPerPilot)
+            return Fail($"You already own {MaxPerPilot} arenas.");
         if (d.Live) return Fail($"#{d.Name} is already public; use ?publish to update it.");
         if (d.Status == DraftStatus.Requested) return Fail($"#{d.Name} is already waiting for staff.");
         if (d.Status != DraftStatus.Active) return Fail($"#{d.Name} is {d.Status.ToString().ToLowerInvariant()}.");
@@ -172,8 +172,8 @@ public sealed partial class ArenaStore
         var d = LoadDraft(name);
         if (d is null) return Fail($"No such draft '{DraftRules.DraftOf(name)}'.");
         if (d.Status != DraftStatus.Archived) return Fail($"#{d.Name} is not archived.");
-        if (LoadDraftByOwner(d.Owner) is { } other)
-            return Fail($"{d.Owner} has another draft (#{other.Name}) now.");
+        if (DraftCount(d.Owner) >= MaxPerPilot)
+            return Fail($"{d.Owner} already has {MaxPerPilot} drafts.");
         var folderError = ensureFolder();
         if (folderError is not null) return Fail($"Can't revive #{d.Name}: {folderError}");
         var draft = DraftRules.DraftOf(d.Name);
@@ -237,9 +237,30 @@ public sealed partial class ArenaStore
         lock (_gate) return LoadDraft(name);
     }
 
-    public DraftInfo? DraftOwnedBy(string player)
+    /// <summary>The pilot's drafts that aren't archived, by name.</summary>
+    public IReadOnlyList<DraftInfo> DraftsOwnedBy(string player)
     {
-        lock (_gate) return LoadDraftByOwner(player);
+        lock (_gate)
+        {
+            var names = new List<string>();
+            using (var cmd = Cmd("SELECT name FROM drafts WHERE owner = $p AND status <> 'Archived' ORDER BY name", ("$p", player)))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) names.Add(r.GetString(0));
+            return names.Select(n => LoadDraft(n)!).ToList();
+        }
+    }
+
+    /// <summary>The pilot's public arenas (any status), by name.</summary>
+    public IReadOnlyList<OwnedArena> OwnedArenas(string player)
+    {
+        lock (_gate)
+        {
+            var names = new List<string>();
+            using (var cmd = Cmd("SELECT name FROM arenas WHERE owner = $p ORDER BY name", ("$p", player)))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) names.Add(r.GetString(0));
+            return names.Select(n => Load(n)!).ToList();
+        }
     }
 
     /// <summary>
@@ -304,11 +325,45 @@ public sealed partial class ArenaStore
     private bool IsDraftRequestId(long id) =>
         Scalar("SELECT COALESCE(draft, 0) FROM requests WHERE id = $id", ("$id", id)) == 1;
 
-    private DraftInfo? LoadDraftByOwner(string player)
+    // An archived draft keeps its name but frees its slot.
+    private long DraftCount(string player) =>
+        Scalar("SELECT COUNT(*) FROM drafts WHERE owner = $p AND status <> 'Archived'", ("$p", player));
+
+    private long OwnedCount(string player) =>
+        Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p AND status <> 'Archived'", ("$p", player));
+
+    /// <summary>
+    /// Databases from before drafts allowed one arena per owner (a UNIQUE column, which SQLite
+    /// can only drop by rebuilding the table). Rebuilds it once, keeping every row.
+    /// </summary>
+    private void AllowSeveralArenasPerOwner()
     {
-        // One draft per pilot that isn't archived; an archived one keeps its name but frees the slot.
-        using var cmd = Cmd("SELECT name FROM drafts WHERE owner = $p AND status <> 'Archived'", ("$p", player));
-        return cmd.ExecuteScalar() is string name ? LoadDraft(name) : null;
+        using (var cmd = Cmd("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'arenas'"))
+            if (cmd.ExecuteScalar() is not string sql || !sql.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase))
+                return;
+        Exec("BEGIN IMMEDIATE");
+        try
+        {
+            Exec("""
+                CREATE TABLE arenas_new (
+                  name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+                  owner TEXT NOT NULL COLLATE NOCASE,
+                  status TEXT NOT NULL,
+                  created TEXT NOT NULL,
+                  last_entered TEXT NOT NULL
+                );
+                INSERT INTO arenas_new(name, owner, status, created, last_entered)
+                  SELECT name, owner, status, created, last_entered FROM arenas;
+                DROP TABLE arenas;
+                ALTER TABLE arenas_new RENAME TO arenas;
+                """);
+            Exec("COMMIT");
+        }
+        catch
+        {
+            try { Exec("ROLLBACK"); } catch { }
+            throw;
+        }
     }
 
     private DraftInfo? LoadDraft(string name)
