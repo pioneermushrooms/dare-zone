@@ -100,3 +100,48 @@ dialog .forgot, dialog .small { margin: 0; font-size: .85rem; color: var(--muted
 }
 @media (max-width: 380px) { .cards { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { #start { transition: none; } }
+
+/* the chat panel: the chosen arena's live chat, over the right side of the home page */
+.chat { position: fixed; z-index: 3; right: clamp(16px, 3vw, 36px); top: 88px; bottom: 150px; width: min(380px, 36vw);
+  display: flex; flex-direction: column; background: #070d18c7; border: 1px solid var(--line); border-top-color: #537a92;
+  border-radius: 4px; backdrop-filter: blur(8px); }
+.chat.folded { bottom: auto; }
+.chat.folded .chatbody { display: none; }
+.chathead { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.chathead b { color: var(--cyan); font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; }
+.chat .dim { color: var(--muted); font-size: .8rem; }
+.ghostbtn { font: 600 .8rem Inter, system-ui, sans-serif; color: var(--muted); background: transparent; border: 1px solid #344762; border-radius: 3px; padding: 4px 10px; cursor: pointer; }
+.ghostbtn:hover { color: var(--ink); border-color: var(--cyan); }
+.chatbody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.players { border-bottom: 1px solid var(--line); }
+.players summary { cursor: pointer; padding: 8px 14px; color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.players ul { list-style: none; margin: 0; padding: 0 8px 8px; max-height: 26vh; overflow-y: auto; }
+.players li.freq { color: var(--muted); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; padding: 6px 6px 2px; }
+.players button.player { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; font: 500 .88rem Inter, system-ui, sans-serif;
+  color: var(--ink); background: transparent; border: 0; border-radius: 3px; padding: 4px 6px; cursor: pointer; }
+.players button.player:hover, .players button.player.picked { background: #16243a; }
+.players button.player.picked { outline: 1px solid var(--cyan); }
+.players .ship { color: var(--muted); font-size: .75rem; }
+.lines { list-style: none; margin: 0; padding: 8px 12px; flex: 1 1 auto; min-height: 80px; overflow-y: auto; font-size: .88rem; line-height: 1.4; }
+.lines .line { padding: 2px 0; overflow-wrap: anywhere; }
+.lines time { color: #6f819a; font-size: .72rem; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.lines .from { color: var(--cyan); margin-right: 6px; cursor: pointer; }
+.lines .from:hover { text-decoration: underline; }
+.lines .k-arena .text { color: #8ef0b2; }
+.lines .k-priv .from, .lines .k-priv .text { color: #ffcf7a; }
+.lines .k-freq .from, .lines .k-freq .text { color: #ffd98a; }
+.lines .k-error .text { color: var(--warn); }
+.say { padding: 8px 10px 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.say .to { margin: 0; display: flex; justify-content: space-between; align-items: center; color: #ffcf7a; font-size: .8rem; }
+.sayrow { display: flex; gap: 6px; }
+.sayrow input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: .9rem; color: var(--ink); background: #09111d; border: 1px solid #344762; border-radius: 3px; padding: 8px 10px; }
+.sayrow input:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.sayrow button, .join button { font: 700 .9rem Inter, system-ui, sans-serif; color: #07131e; background: var(--cyan); border: 1px solid var(--cyan); border-radius: 3px; padding: 8px 14px; cursor: pointer; }
+.sayrow button:hover, .join button:hover:not(:disabled) { background: var(--cyan-hi); }
+.say .leave { justify-self: start; }
+.join { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid var(--line); }
+.join[hidden], .say[hidden] { display: none; }
+@media (max-width: 860px) {
+  .chat { position: static; width: auto; max-height: 70vh; }
+  .chat .lines { max-height: 40vh; }
+}

@@ -7,10 +7,11 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=4">
+<link rel="stylesheet" href="/play.css?v=5">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=4"></script>
+<script type="module" src="/play/start.mjs?v=5"></script>
+<script type="module" src="/chat.js?v=5"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 setTimeout(function () {
@@ -50,6 +51,24 @@ setTimeout(function () {
     <p role="status" id="status"></p>
     <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a></p>
   </main>
+
+  <aside class="chat" id="chat" aria-label="Arena chat">
+    <header class="chathead">
+      <span><b id="chatarena">public</b> <span class="dim" id="chatcount"></span></span>
+      <button type="button" class="ghostbtn" id="chatfold" aria-expanded="true" aria-controls="chatbody">Hide</button>
+    </header>
+    <div class="chatbody" id="chatbody">
+      <details class="players" open><summary>Players</summary><ul id="chatplayers"></ul></details>
+      <ol class="lines" id="chatlines" aria-live="polite"></ol>
+      <form class="say" id="chatform" hidden>
+        <p class="to" id="chatto" hidden><span>To <b id="chattoname"></b></span><button type="button" class="ghostbtn" id="chattoclear" aria-label="Back to public chat">✕</button></p>
+        <div class="sayrow"><input id="chatinput" maxlength="240" autocomplete="off" placeholder="Say something (// team, ? commands)" aria-label="Message">
+          <button type="submit">Send</button></div>
+        <button type="button" class="ghostbtn leave" id="chatleave">Leave chat</button>
+      </form>
+      <div class="join" id="chatjoin"><button type="button" id="chatgo">Chat</button><span class="dim" id="chatnote">Read along, or join to talk.</span></div>
+    </div>
+  </aside>
 
   <nav class="cards" aria-label="Site">
     <a class="card" href="/arenas.html"><b>Arenas</b><span>What players have built, and who's flying.</span></a>

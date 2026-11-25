@@ -424,6 +424,10 @@ internal sealed partial class WebServer : IDisposable
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/chat": return method == "GET" ? await ChatAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/chat/join": return method == "POST" ? await ChatJoinAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/chat/say": return method == "POST" ? await ChatSayAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/chat/leave": return method == "POST" ? await ChatLeaveAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/requests/withdraw":
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
@@ -791,6 +795,77 @@ internal sealed partial class WebServer : IDisposable
         var arena = pick.Value.Arena;
         var result = await OnMain(() => _m.WebCoMod(player, arena, action, name)).ConfigureAwait(false);
         return ResultReply(result);
+    }
+
+    // ---- the home page's chat panel ------------------------------------------------------------
+
+    /// <summary>The signed-in pilot's account (account sessions; ?weblogin sessions by name), or null.</summary>
+    private Account? ChatAccount(HttpListenerRequest req)
+    {
+        var session = req.Cookies[WebPaths.SessionCookieName]?.Value;
+        if (string.IsNullOrEmpty(session) || _m.WebAuth.SessionFor(session) is not { } s) return null;
+        return s.AccountId is { } id ? _m.Accounts.Get(id) : _m.Accounts.Find(s.Player);
+    }
+
+    /// <summary>
+    /// GET ?arena=&amp;after=: the arena's chat after id <c>after</c> and who is in it. Anyone gets a public
+    /// arena's public chat; a pilot chatting in the arena (a bridge) gets everything their chat
+    /// client sees, private and team messages to them included.
+    /// </summary>
+    private async Task<Reply> ChatAsync(HttpListenerRequest req)
+    {
+        if (ArenaOwnership.ChatArenaName(req.QueryString["arena"]) is not { } arena)
+            return JsonReply(400, new { ok = false, message = "No such arena." });
+        long.TryParse(req.QueryString["after"], out var after);
+        var bridge = ChatAccount(req) is { } account ? _m.BridgeFor(account.Id) : null;
+        var mine = bridge is not null && string.Equals(bridge.Arena, arena, StringComparison.OrdinalIgnoreCase);
+        if (!mine && DraftRules.IsDraft(arena))
+            return JsonReply(403, new { ok = false, message = "Drafts are private." });
+        var (lines, last) = mine ? bridge!.Since(after) : _m.PublicChat(arena, after);
+        var players = await OnMain(() => _m.ChatPlayers(arena)).ConfigureAwait(false);
+        return JsonReply(200, new
+        {
+            ok = true,
+            arena,
+            last,
+            mine,
+            messages = lines.Select(l => new { l.Id, l.At, kind = l.Kind, from = l.From, text = l.Text }),
+            players,
+            chat = bridge is null ? null : new { state = bridge.State, arena = bridge.Arena, name = bridge.Pilot, error = bridge.Error, freq = bridge.Freq },
+        });
+    }
+
+    /// <summary>POST {"arena"}: joins the arena as a chat client, as the signed-in pilot.</summary>
+    private async Task<Reply> ChatJoinAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out _) is { } denied) return denied;
+        if (ChatAccount(req) is not { } account) return JsonReply(401, new { ok = false, message = "Sign in first." });
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        if (ArenaOwnership.ChatArenaName(Str(body, "arena")) is not { } arena)
+            return JsonReply(400, new { ok = false, message = "No such arena." });
+        return ResultReply(await OnMain(() => _m.StartChat(account, arena)).ConfigureAwait(false));
+    }
+
+    /// <summary>POST {"text", "to"?}: says something in the arena (privately to "to" when given).</summary>
+    private async Task<Reply> ChatSayAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out _) is { } denied) return denied;
+        if (ChatAccount(req) is not { } account || _m.BridgeFor(account.Id) is not { } bridge)
+            return JsonReply(409, new { ok = false, message = "Press Chat to join the arena first." });
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var why = await bridge.SayAsync(Str(body, "text") ?? "", Str(body, "to")).ConfigureAwait(false);
+        return why is null ? JsonReply(200, new { ok = true }) : JsonReply(400, new { ok = false, message = why });
+    }
+
+    /// <summary>POST: leaves the arena's chat.</summary>
+    private async Task<Reply> ChatLeaveAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out _) is { } denied) return denied;
+        if (ChatAccount(req) is { } account) _m.StopChat(account.Id);
+        await Task.CompletedTask.ConfigureAwait(false);
+        return JsonReply(200, new { ok = true });
     }
 
     private async Task<Reply> RequestAsync(HttpListenerRequest req)
