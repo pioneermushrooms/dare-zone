@@ -208,3 +208,26 @@ label.switch input:focus-visible + .track { outline:2px solid var(--accent); out
 details.discard summary { cursor:pointer; color:var(--bad); font-size:.9rem; }
 details.discard form { margin-top:8px; }
 [hidden] { display:none !important; }
+/* account page: cards side by side on wide screens (Your account + Pilot names, Recovery email + Change password),
+   Keys and macros as a full-width section that opens on demand; one column on phones */
+main.acct { width:min(980px, calc(100% - 32px)); margin:0 auto; display:grid; gap:16px; grid-template-columns:minmax(0, 1fr); align-items:start; }
+@media (min-width:820px) { main.acct { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+main.acct > .card { width:auto; margin:0; padding:26px 26px; }
+main.acct > .card > h2:first-child, main.acct > .keys > summary h2 { font-family:'Barlow Condensed', 'Arial Narrow', Impact, sans-serif;
+  font-size:2rem; line-height:1; letter-spacing:.01em; color:var(--text); margin-bottom:10px; }
+main.acct > .keys { grid-column:1 / -1; padding:0; }
+.keys > summary { list-style:none; cursor:pointer; padding:22px 26px; display:grid; grid-template-columns:minmax(0, 1fr) auto;
+  gap:2px 16px; align-items:center; }
+.keys > summary::-webkit-details-marker { display:none; }
+.keys > summary h2 { margin:0 !important; }
+.keys > summary .dim { grid-column:1; font-size:.9rem; }
+.keys > summary::after { content:"Show \25B8"; grid-column:2; grid-row:1 / span 2; color:var(--text); font-size:.85rem; font-weight:700;
+  border:1px solid var(--line2); border-radius:3px; padding:8px 14px; white-space:nowrap; }
+.keys[open] > summary::after { content:"Hide \25BE"; }
+.keys > summary:hover::after { border-color:var(--accent); }
+.keys > summary:hover h2 { color:var(--accent); }
+.keys > summary:focus-visible { outline:2px solid var(--accent); outline-offset:-4px; }
+.keys > .keysinner { padding:4px 26px 26px; border-top:1px solid #18243a; }
+.keys > .keysinner > .row:first-child { margin-top:14px; }
+.keys > .keysinner > * { max-width:760px; }
+@media (max-width:480px) { main.acct > .card { padding:22px 18px; } .keys > summary { padding:20px 18px; } .keys > .keysinner { padding:4px 18px 22px; } }
