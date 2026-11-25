@@ -38,25 +38,25 @@
   <p>On the Foundation zone (<code>5.161.238.245:5000</code>, Continuum or oss-client) any player can ask for an arena of their own. If staff say yes, the arena is yours: you choose its settings, its map and its graphics, and you can pick up to five co-mods to help run it. Everything is public: who asked for what, who decided, and why.</p>
 
   <h2>First: claim your name</h2>
-  <p>Foundation has its own accounts (there is no billing server). Every player needs one: the zone only lets in names that have been claimed, and arena requests and arena powers only work for a <b>logged-in name</b>. To claim yours:</p>
+  <p>Foundation has its own accounts (there is no billing server). Every player needs one: the zone only lets in names that have been claimed, and making an arena and arena powers only work for a <b>logged-in name</b>. To claim yours:</p>
   <ol>
     <li>Go to <a href="/account/signup">subspacefoundation.com/account/signup</a> and enter your name, a password (8 to 31 characters) and a recovery email. We email you a 6-digit code; enter it and the name is yours. It's first come, first served.</li>
-    <li>In game, log in with that same name and password. That makes you logged in, which you need to request or own an arena or to use <code>?weblogin</code>.</li>
+    <li>In game, log in with that same name and password. That makes you logged in, which you need to make or own an arena or to use <code>?weblogin</code>.</li>
     <li>Forgot your password? Use <a href="/account/forgot">subspacefoundation.com/account/forgot</a>: we email a code to your recovery email and you choose a new password. You can also change your password and email while signed in on the site.</li>
   </ol>
   <p><b>If you played here before:</b> your old name and password still work in game. The first time you sign in on the <a href="/account/">site</a> with your old name and password, you will be asked to add a recovery email (we send a code to confirm it). Until you do, you can't recover the account if you forget the password.</p>
   <p>If a login says "This name isn't claimed", this is the step you are missing. Passwords are changed on the site.</p>
 
-  <h2>Asking for an arena</h2>
+  <h2>Making an arena</h2>
   <p>Type, in any arena:</p>
-  <pre><code>?requestarena &lt;name&gt; &lt;what the arena is for&gt;</code></pre>
-  <p>for example <code>?requestarena skyrace Fast racing laps for warbirds</code>.</p>
+  <pre><code>?makearena &lt;name&gt; [what the arena is for]</code></pre>
+  <p>for example <code>?makearena skyrace Fast racing laps for warbirds</code>. Or use <b>Make an arena</b> in <a href="/arena/me#make">your hub</a>. There is no approval: the arena is yours at once.</p>
   <ul>
     <li>The name is 3 to 15 characters of lowercase letters and digits. It must start with a letter and must not end in a digit. Names already in use (and <code>public</code>, <code>2v2pub</code>, <code>3v3pub</code>, <code>4v4pub</code>, <code>duel</code>) are taken.</li>
-    <li>The description is up to 120 characters. Everyone can read it.</li>
-    <li>You can have one request waiting and own one arena at a time.</li>
+    <li>The description is optional, up to 120 characters. Everyone can read it.</li>
+    <li>You can own one arena at a time. <code>?requestarena</code> still works and does the same thing.</li>
   </ul>
-  <p>Staff (moderators and up) approve or decline it. A decline always comes with a reason. You can follow it with <code>?arenarequests</code>. Once approved, go to your arena with <code>?go &lt;name&gt;</code>.</p>
+  <p>Then go to your arena with <code>?go &lt;name&gt;</code>. Staff can still suspend an arena that breaks the rules.</p>
 
   <h2>What owners and co-mods can do</h2>
   <p>In <b>your own arena</b> (the powers do not work anywhere else):</p>
@@ -70,8 +70,8 @@
   <h3>For everyone</h3>
   <table>
     <tr><th>Command</th><th>What it does</th></tr>
-    <tr><td><code>?requestarena &lt;name&gt; &lt;pitch&gt;</code></td><td>Ask for an arena of your own (needs a password, see above).</td></tr>
-    <tr><td><code>?arenarequests</code></td><td>Lists waiting requests and the latest decisions.</td></tr>
+    <tr><td><code>?makearena &lt;name&gt; [pitch]</code></td><td>Make an arena of your own, right away (needs a password, see above).</td></tr>
+    <tr><td><code>?arenarequests</code></td><td>Lists the newest arenas (and any requests from before arenas launched without approval).</td></tr>
     <tr><td><code>?arenalog [name]</code></td><td>The last 10 public events (requests, decisions, co-mod changes, …), for all arenas or one.</td></tr>
     <tr><td><code>?myarena</code></td><td>Shows the arena you own: status, co-mods, when someone last entered it.</td></tr>
     <tr><td><code>?weblogin</code></td><td>Sends you a one-time link to the arena web page (valid 10 minutes, works once).</td></tr>
@@ -109,7 +109,7 @@
   <p>Type <code>?weblogin</code> in game. You get a link like <code>https://subspacefoundation.com/arena/login?t=…</code>. Open it within 10 minutes; it works once and signs you in for 24 hours. No password is ever typed on the web.</p>
   <ul>
     <li><b>Everyone</b> can see the public page, <a href="/arena/">subspacefoundation.com/arena/</a>: every player-owned arena with its owner, co-mods and players online, waiting requests, decisions and the public log.</li>
-    <li><b>Without an arena</b>, the signed-in page lets you send a request (same rules as <code>?requestarena</code>).</li>
+    <li><b>Without an arena</b>, the signed-in page launches one (same rules as <code>?makearena</code>).</li>
     <li><b>Owners and co-mods</b> see their arena's settings, grouped by section, with a description, default and range for each, and can change them.</li>
     <li><b>Owners</b> can also upload the map (<code>.lvl</code>) and graphics (<code>.lvz</code>) by drag-and-drop, and remove a graphics file with its <b>remove</b> button. A graphics file with the same name as one already there replaces it.</li>
   </ul>
