@@ -22,9 +22,10 @@
   <p class="links"><a href="/arena/me">Your arena</a> · <button type="button" class="small" id="signout">Sign out</button></p>
 </section>
 
-<section class="panel card" id="pilots" hidden>
-  <h2>Pilot names</h2>
-  <p class="dim" id="pilotsnote">Every name on your recovery email. Fly as any of them; each keeps its own keys and macros.</p>
+<details class="panel fold" name="acctfold" id="pilots" hidden>
+  <summary><h2>Pilot names</h2><span class="dim" id="pilotssum">Every name on your recovery email.</span></summary>
+  <div class="foldbody">
+  <p class="dim" id="pilotsnote">Fly as any of them; each keeps its own keys and macros.</p>
   <ul class="list" id="pilotlist"></ul>
   <div id="deletebox" hidden>
     <h3 id="deletetitle"></h3>
@@ -41,10 +42,12 @@
     <button type="submit">Add name</button>
   </form>
   <p class="msg" id="pilotsmsg"></p>
-</section>
+  </div>
+</details>
 
-<section class="panel card" id="emailbox" hidden>
-  <h2 id="emailtitle">Recovery email</h2>
+<details class="panel fold" name="acctfold" id="emailbox" hidden>
+  <summary><h2 id="emailtitle">Recovery email</h2><span class="dim" id="emailsum">Used only to recover your password.</span></summary>
+  <div class="foldbody">
   <p class="dim" id="emailnote"></p>
   <form method="post" class="stack" id="emailform">
     <label>New recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
@@ -55,10 +58,12 @@
     <button type="submit">Confirm email</button>
   </form>
   <p class="msg" id="emailmsg"></p>
-</section>
+  </div>
+</details>
 
-<section class="panel card" id="pwbox" hidden>
-  <h2>Change password</h2>
+<details class="panel fold" name="acctfold" id="pwbox" hidden>
+  <summary><h2>Change password</h2><span class="dim" id="pwsum">Used to sign in here and in the game.</span></summary>
+  <div class="foldbody">
   <form method="post" class="stack" id="pwform">
     <label>Current password <input name="current" type="password" maxlength="31" autocomplete="current-password" required></label>
     <label>New password <input name="next" type="password" minlength="8" maxlength="31" autocomplete="new-password" required>
@@ -66,10 +71,11 @@
     <button type="submit">Change password</button>
   </form>
   <p class="msg" id="pwmsg"></p>
-</section>
-<details class="panel card keys" id="keysbox" hidden>
-  <summary><h2>Keys and macros</h2><span class="dim">Per pilot name: the controls and chat macros the game uses when you fly as that name.</span></summary>
-  <div class="keysinner">
+  </div>
+</details>
+<details class="panel fold" name="acctfold" id="keysbox" hidden>
+  <summary><h2>Keys and macros</h2><span class="dim">Per pilot name: the controls and chat macros the game uses for that name.</span></summary>
+  <div class="foldbody">
   <div class="row"><label class="inline">For <select id="keysname" aria-label="Pilot name"></select></label>
     <span class="dim">They apply the next time you enter as that name.</span></div>
   <p class="hint">Click a key, then press the new one. Hold Shift or Ctrl while pressing to need it; press Esc to cancel, Backspace to remove.</p>

@@ -78,11 +78,13 @@ const pages = {
     $("email").textContent = me.emailVerified ? me.email : "none yet";
     $("isoj").textContent = me.isojName || "not linked";
     $("emailbox").hidden = false;
+    $("emailsum").textContent = me.emailVerified ? me.email : "None yet: add one so you can recover your password.";
     if (me.needsEmail) {
+      $("emailbox").open = true;
       $("emailtitle").textContent = "Add a recovery email";
       $("emailnote").textContent = "Your name came from the old zone. Add a recovery email before anything else; it is used only to recover your password.";
     } else {
-      $("emailtitle").textContent = "Change recovery email";
+      $("emailtitle").textContent = "Recovery email";
       $("emailnote").textContent = "We email a code to the new address.";
       $("pwbox").hidden = false;
     }
@@ -94,7 +96,7 @@ const pages = {
       location.href = "/account/login";
     });
     await pilots(me);
-    if (location.hash === "#pilots") $("pilots").scrollIntoView();
+    if (location.hash === "#pilots") { $("pilots").open = true; $("pilots").scrollIntoView(); }
   },
 };
 
@@ -114,7 +116,12 @@ async function pilots(me) {
     const r = await fetch(API + "/pilots", { credentials: "same-origin", cache: "no-store" });
     data = await r.json();
   } catch { data = { ok: false }; }
-  if (!data.ok) { msg($("pilotsmsg"), "Couldn't load your names.", false); return; }
+  if (!data.ok) {
+    msg($("pilotsmsg"), "Couldn't load your names.", false);
+    $("pilotssum").textContent = "Couldn't load your names.";
+    return;
+  }
+  $("pilotssum").textContent = `${data.pilots.length} name${data.pilots.length === 1 ? "" : "s"} on your email · signed in as ${data.current}`;
   if (!data.emailVerified) {
     $("pilotsnote").textContent = "Confirm a recovery email (below) to have more than one name: your names share it.";
     $("addform").hidden = true;

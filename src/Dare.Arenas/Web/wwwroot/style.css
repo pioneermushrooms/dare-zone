@@ -208,26 +208,41 @@ label.switch input:focus-visible + .track { outline:2px solid var(--accent); out
 details.discard summary { cursor:pointer; color:var(--bad); font-size:.9rem; }
 details.discard form { margin-top:8px; }
 [hidden] { display:none !important; }
-/* account page: cards side by side on wide screens (Your account + Pilot names, Recovery email + Change password),
-   Keys and macros as a full-width section that opens on demand; one column on phones */
-main.acct { width:min(980px, calc(100% - 32px)); margin:0 auto; display:grid; gap:16px; grid-template-columns:minmax(0, 1fr); align-items:start; }
-@media (min-width:820px) { main.acct { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
-main.acct > .card { width:auto; margin:0; padding:26px 26px; }
-main.acct > .card > h2:first-child, main.acct > .keys > summary h2 { font-family:'Barlow Condensed', 'Arial Narrow', Impact, sans-serif;
-  font-size:2rem; line-height:1; letter-spacing:.01em; color:var(--text); margin-bottom:10px; }
-main.acct > .keys { grid-column:1 / -1; padding:0; }
-.keys > summary { list-style:none; cursor:pointer; padding:22px 26px; display:grid; grid-template-columns:minmax(0, 1fr) auto;
-  gap:2px 16px; align-items:center; }
-.keys > summary::-webkit-details-marker { display:none; }
-.keys > summary h2 { margin:0 !important; }
-.keys > summary .dim { grid-column:1; font-size:.9rem; }
-.keys > summary::after { content:"Show \25B8"; grid-column:2; grid-row:1 / span 2; color:var(--text); font-size:.85rem; font-weight:700;
-  border:1px solid var(--line2); border-radius:3px; padding:8px 14px; white-space:nowrap; }
-.keys[open] > summary::after { content:"Hide \25BE"; }
-.keys > summary:hover::after { border-color:var(--accent); }
-.keys > summary:hover h2 { color:var(--accent); }
-.keys > summary:focus-visible { outline:2px solid var(--accent); outline-offset:-4px; }
-.keys > .keysinner { padding:4px 26px 26px; border-top:1px solid #18243a; }
-.keys > .keysinner > .row:first-child { margin-top:14px; }
-.keys > .keysinner > * { max-width:760px; }
-@media (max-width:480px) { main.acct > .card { padding:22px 18px; } .keys > summary { padding:20px 18px; } .keys > .keysinner { padding:4px 18px 22px; } }
+/* account page: a compact "Your account" card, then one folded section per task (Pilot names, Recovery email,
+   Change password, Keys and macros); each opens on demand so the whole page fits one screen */
+main.acct { width:min(760px, calc(100% - 32px)); margin:0 auto; display:grid; gap:10px; }
+main.acct > .panel { width:auto; margin:0; }
+main.acct > .card { padding:24px 26px; display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:4px 20px; align-items:end; }
+main.acct > .card > h2 { grid-column:1 / -1; font-family:'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; font-size:2.2rem;
+  line-height:1; letter-spacing:.01em; color:var(--text); margin:0 0 12px; }
+main.acct > .card dl.facts { grid-template-columns:repeat(3, max-content); grid-auto-flow:column; grid-template-rows:auto auto;
+  gap:0 28px; margin:0; }
+main.acct > .card dl.facts dt { font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; }
+main.acct > .card .links { margin:0; white-space:nowrap; }
+@media (max-width:640px) {
+  main.acct > .card { grid-template-columns:minmax(0, 1fr); }
+  main.acct > .card dl.facts { grid-template-columns:minmax(0, 1fr); grid-auto-flow:row; grid-template-rows:none; gap:0; }
+  main.acct > .card dl.facts dd { margin-bottom:8px; }
+}
+.fold { padding:0; }
+.fold > summary { list-style:none; cursor:pointer; padding:16px 22px; display:grid; grid-template-columns:minmax(0, 1fr) auto;
+  gap:0 16px; align-items:center; }
+.fold > summary::-webkit-details-marker { display:none; }
+.fold > summary h2 { margin:0; font-family:'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; font-size:1.45rem; line-height:1.1;
+  letter-spacing:.02em; color:var(--text); }
+.fold > summary .dim { grid-column:1; font-size:.85rem; overflow-wrap:anywhere; }
+.fold > summary::after { content:"Open \25B8"; grid-column:2; grid-row:1 / span 2; color:var(--dim); font-size:.8rem; font-weight:700;
+  border:1px solid var(--line2); border-radius:3px; padding:6px 12px; white-space:nowrap; }
+.fold[open] > summary::after { content:"Close \25BE"; color:var(--text); }
+.fold > summary:hover h2 { color:var(--accent); }
+.fold > summary:hover::after { border-color:var(--accent); color:var(--text); }
+.fold > summary:focus-visible { outline:2px solid var(--accent); outline-offset:-4px; }
+.fold[open] { border-top-color:var(--accent); }
+.fold > .foldbody { padding:4px 22px 22px; border-top:1px solid #18243a; }
+.fold > .foldbody > :first-child { margin-top:14px; }
+.fold form.stack input:not(.code) { max-width:420px; }
+@media (max-width:480px) {
+  main.acct > .card { padding:20px 18px; }
+  .fold > summary { padding:14px 16px; }
+  .fold > .foldbody { padding:4px 16px 18px; }
+}
