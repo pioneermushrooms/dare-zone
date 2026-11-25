@@ -91,6 +91,39 @@ public sealed partial class ArenaStore
     });
 
     /// <summary>
+    /// Staff create a public arena at once (no request): <paramref name="owner"/> owns it and its
+    /// draft <c>#arena</c>. Refuses a taken or requested name, an owner at the limit, and an
+    /// existing folder. <paramref name="createFolder"/> makes both folders inside the transaction;
+    /// on error nothing is created.
+    /// </summary>
+    public Result Create(string arena, string staff, string owner, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
+    {
+        if (string.IsNullOrWhiteSpace(arena) || string.IsNullOrWhiteSpace(staff) || string.IsNullOrWhiteSpace(owner))
+            return Fail("Arena name, staff and owner are required.");
+        if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0
+            || Scalar("SELECT COUNT(*) FROM drafts WHERE name = $a", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' is already taken.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' has a pending request; approve or decline it instead.");
+        if (OwnedCount(owner) >= MaxPerPilot)
+            return Fail($"{owner} already owns {MaxPerPilot} arenas.");
+        if (DraftCount(owner) >= MaxPerPilot)
+            return Fail($"{owner} already has {MaxPerPilot} drafts; the arena would have none.");
+        if (folderExists(arena) || folderExists(DraftRules.DraftOf(arena)))
+            return Fail($"A folder named '{arena}' already exists on the server; cannot create.");
+        var folderError = createFolder();
+        if (folderError is not null)
+            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
+        var now = Now();
+        Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
+            ("$a", arena), ("$o", owner), ("$t", now));
+        Run("INSERT INTO drafts(name, owner, status, live, created, last_touched) VALUES($a,$o,'Published',1,$t,$t)",
+            ("$a", arena), ("$o", owner), ("$t", now));
+        AddEvent(now, arena, staff, "create", $"owner: {owner}");
+        return Ok($"Created '{arena}' for {owner}.");
+    });
+
+    /// <summary>
     /// <paramref name="player"/> takes back their pending request for <paramref name="arena"/>; a
     /// request from a draft returns the draft to editing.
     /// </summary>

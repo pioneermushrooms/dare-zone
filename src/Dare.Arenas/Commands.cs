@@ -39,6 +39,7 @@ public sealed partial class ArenaOwnership
         // staff (mod and up)
         Add("approvearena", Command_approvearena);
         Add("declinearena", Command_declinearena);
+        Add("createarena", Command_createarena);
 
         // staff overrides (smod and up: cmd_arenaadmin)
         Add("arenaadmin", Command_arenaadmin);
@@ -246,36 +247,43 @@ public sealed partial class ArenaOwnership
             Reply(player, RequestNames.NotFound(typed, pending));
             return;
         }
+        Reply(player, ApproveArena(player.Name, name).Message);
+    }
+
+    /// <summary>
+    /// Approves the pending request for <paramref name="name"/> (an exact pending name) for
+    /// <paramref name="staff"/>: folders inside the approval, recycle, tell the requester. Shared by
+    /// ?approvearena and the staff page; the caller has checked the capability. Mainloop.
+    /// </summary>
+    internal Result ApproveArena(string staff, string name)
+    {
         // The folder is created inside the approval: if that fails, nothing is approved.
         var fromDraft = Store.IsDraftRequest(name);
-        var result = Store.Approve(name, player.Name, ArenaFolderExists, () => CreateApprovalFolders(name));
-        if (!result.Ok)
-        {
-            Reply(player, result.Message);
-            return;
-        }
+        var result = Store.Approve(name, staff, ArenaFolderExists, () => CreateApprovalFolders(name));
+        if (!result.Ok) return result;
 
-        Log(LogLevel.Info, $"{player.Name} approved arena '{name}'.");
-        Reply(player, fromDraft
+        Log(LogLevel.Info, $"{staff} approved arena '{name}'.");
+        var message = fromDraft
             ? $"{result.Message} Folder arenas/{name}/ copied from the draft #{name}."
-            : $"{result.Message} Folder arenas/{name}/ created from the template, with its draft #{name}.");
+            : $"{result.Message} Folder arenas/{name}/ created from the template, with its draft #{name}.";
 
         // Someone may already be in an arena of that name; it opened a shared fallback config
         // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players
         // re-enter (which also grants the owner). If it can't be recycled, staff must do it.
         var (recycled, notRecycled) = RecycleRunning(name);
         if (recycled.Count > 0)
-            Reply(player, $"Recycled {string.Join(", ", recycled)} so it loads its new settings.");
+            message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
         if (notRecycled.Count > 0)
         {
-            Reply(player, $"Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings; the owner's powers start on their next entry.");
+            message += $" Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings.";
             Log(LogLevel.Warn, $"Arena '{name}' approved while {string.Join(", ", notRecycled)} was running and could not be recycled.");
         }
 
         var owner = Store.Get(name)?.Owner;
         var requester = owner is null ? null : _playerData.FindPlayer(owner);
-        if (requester is not null)
-            Reply(requester, $"Your arena request '{name}' was approved by {player.Name}! Type ?go {name} to enter it, then ?myarena.");
+        if (requester is not null && !string.Equals(owner, staff, StringComparison.OrdinalIgnoreCase))
+            Reply(requester, $"Your arena request '{name}' was approved by {staff}! Type ?go {name} to enter it, then ?myarena.");
+        return new Result(true, message);
     }
 
     /// <summary>Recycles every running arena whose base name is <paramref name="name"/>.</summary>
@@ -331,17 +339,27 @@ public sealed partial class ArenaOwnership
             Reply(player, RequestNames.NotFound(name, pending));
             return;
         }
+        Reply(player, DeclineArena(player.Name, name, reason).Message);
+    }
+
+    /// <summary>Declines the pending request for <paramref name="name"/>; tells the requester. Shared with the staff page. Mainloop.</summary>
+    internal Result DeclineArena(string staff, string name, string reason)
+    {
+        reason = reason.Trim();
+        if (reason.Length == 0) return new Result(false, "A reason is required to decline a request.");
+        if (reason.Length > MaxPitchLength || reason.Any(char.IsControl))
+            return new Result(false, $"Keep the reason to one line of up to {MaxPitchLength} characters.");
         var requesterName = Store.Requests(pendingOnly: true, 1000)
             .FirstOrDefault(r => string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase))?.Player;
 
-        var result = Store.Decline(name, player.Name, reason);
-        Reply(player, result.Message);
-        if (!result.Ok) return;
+        var result = Store.Decline(name, staff, reason);
+        if (!result.Ok) return result;
 
-        Log(LogLevel.Info, $"{player.Name} declined arena '{name}': {reason}");
+        Log(LogLevel.Info, $"{staff} declined arena '{name}': {reason}");
         var requester = requesterName is null ? null : _playerData.FindPlayer(requesterName);
-        if (requester is not null)
-            Reply(requester, $"Your arena request '{name}' was declined by {player.Name}: {reason}");
+        if (requester is not null && !string.Equals(requesterName, staff, StringComparison.OrdinalIgnoreCase))
+            Reply(requester, $"Your arena request '{name}' was declined by {staff}: {reason}");
+        return result;
     }
 
     // ---- arena owners and co-mods -----------------------------------------------------

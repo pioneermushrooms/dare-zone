@@ -363,6 +363,15 @@ internal sealed partial class WebServer : IDisposable
         {
             case "/": return Get(method, () => Static("index.html"));
             case "/me": return Get(method, () => Static("arena.html"));
+            case "/staff": return Get(method, () => Static("staff.html"));
+            case "/staff.js": return Get(method, () => Static("staff.js"));
+            case "/api/staff": return method == "GET" ? await StaffDataAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/approve":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffApprove(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/decline":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffDecline(p, Str(b, "arena") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/create":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));
             case "/style.css": return Get(method, () => Static("style.css"));
             case "/login": return method == "GET" ? Login(req) : MethodNotAllowed();
@@ -652,6 +661,27 @@ internal sealed partial class WebServer : IDisposable
         });
     }
 
+    private async Task<Reply> StaffDataAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var data = await OnMain(() => _m.StaffData(player)).ConfigureAwait(false);
+        return data is null
+            ? JsonReply(403, new { ok = false, message = "This page is for zone staff." })
+            : JsonReply(200, data);
+    }
+
+    /// <summary>A staff POST: null from the action means the name lacks that staff power.</summary>
+    private async Task<Reply> StaffActionAsync(HttpListenerRequest req, Func<string, JsonElement?, Result?> action)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var result = await OnMain(() => action(player, body)).ConfigureAwait(false);
+        return result is null
+            ? JsonReply(403, new { ok = false, message = "Only zone staff can do that." })
+            : ResultReply(result);
+    }
+
     /// <summary>A POST from the /build/ page: JSON body, signed-in pilot, run on the mainloop.</summary>
     private async Task<Reply> DraftActionAsync(HttpListenerRequest req, Func<string, JsonElement?, Result> action)
     {
@@ -812,7 +842,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

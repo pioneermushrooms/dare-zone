@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff desk — SubSpace Foundation</title>
+<link rel="stylesheet" href="/arena/style.css">
+<script src="/arena/staff.js" defer></script>
+<style>
+.req { display:grid; gap:8px; padding:14px 0; border-bottom:1px solid #18243a; }
+.req:last-child { border-bottom:0; }
+.req .who { color:var(--dim); font-size:.9rem; }
+.req .row a { color:var(--text); text-decoration:none; border:1px solid #4a6179; border-radius:3px; padding:8px 14px; font-weight:700; font-size:.9rem; }
+.req .row a:hover { border-color:var(--accent); }
+.req .row input { flex:1 1 220px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #18243a; overflow-wrap:anywhere; }
+th { color:var(--dim); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Staff desk</h1><p class="sub" id="who"></p></div>
+
+<section class="panel" id="gate" hidden><p id="gatemsg"></p></section>
+
+<div id="desk" hidden>
+<section class="panel">
+  <h2>Waiting for a decision</h2>
+  <div id="pending"><p class="dim">Loading…</p></div>
+</section>
+<section class="panel" id="createpanel" hidden>
+  <h2>Create an arena</h2>
+  <p class="dim">Makes a public arena and its draft at once, no request. Leave the owner empty to own it yourself.</p>
+  <form class="row" id="createform">
+    <input type="text" id="newname" placeholder="name (3-14 letters and digits)" maxlength="15" required autocomplete="off" aria-label="Arena name">
+    <input type="text" id="newowner" placeholder="owner (optional)" maxlength="24" autocomplete="off" aria-label="Owner">
+    <button type="submit">Create</button>
+  </form>
+  <p class="msg" id="createmsg" role="status"></p>
+</section>
+<section class="panel">
+  <h2>Player-owned arenas</h2>
+  <table><thead><tr><th>Arena</th><th>Owner</th><th>Status</th><th>Pilots</th></tr></thead><tbody id="arenas"></tbody></table>
+</section>
+</div>
+</body>
+</html>
