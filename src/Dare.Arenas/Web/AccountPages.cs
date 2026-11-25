@@ -129,6 +129,8 @@ internal sealed partial class WebServer
 
         if (api == "/me")
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
+        if (api == "/pilots" && method == "GET")
+            return await PilotsAsync(req).ConfigureAwait(false);
         if (method != "POST")
             return MethodNotAllowed();
         if (AccountPostCheck(req) is { } refused)
@@ -164,6 +166,9 @@ internal sealed partial class WebServer
             "/email/verify" => VerifyEmail(req, body),
             "/password" => ChangePassword(req, body),
             "/gamepass" => GamePass(req),
+            "/pilots/switch" => SwitchPilot(req, body),
+            "/pilots/add" => AddPilot(req, body),
+            "/pilots/delete" => await DeletePilotAsync(req, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
     }
@@ -385,6 +390,70 @@ internal sealed partial class WebServer
         if (pass is null) return JsonReply(403, new { ok = false, message = "This account can't sign in." });
         _m.Log(LogLevel.Info, $"Game pass issued for '{cur.Account.Name}' ({ClientIp(req)}).");
         return JsonReply(200, new { ok = true, name = cur.Account.Name, pass });
+    }
+
+    // ---- pilot names on one email ------------------------------------------------------------
+
+    /// <summary>The signed-in pilot's names (same confirmed email) and what each owns.</summary>
+    private async Task<Reply> PilotsAsync(HttpListenerRequest req)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var pilots = _m.Accounts.PilotsOf(cur.Account.Id);
+        var holdings = await OnMain(() => _m.PilotHoldings(pilots)).ConfigureAwait(false);
+        return JsonReply(200, new
+        {
+            ok = true,
+            current = cur.Account.Name,
+            emailVerified = cur.Account.EmailVerified,
+            max = AccountStore.MaxAccountsPerEmail,
+            pilots = holdings,
+        });
+    }
+
+    /// <summary>Switches the site session to another name on the same confirmed email (no password).</summary>
+    private Reply SwitchPilot(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var target = _m.Accounts.PilotOf(cur.Account.Id, Str(body, "name") ?? "");
+        if (target is null) return Bad("That isn't one of your names.");
+        _m.WebAuth.Revoke(cur.Session);
+        _m.Log(LogLevel.Info, $"Web pilot switch: '{cur.Account.Name}' -> '{target.Name}' ({ClientIp(req)}).");
+        return Signed(target, $"Flying as {target.Name}.");
+    }
+
+    /// <summary>Adds a name to the signed-in pilot's email, with the same password.</summary>
+    private Reply AddPilot(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var r = _m.Accounts.AddPilot(cur.Account.Id, Str(body, "name") ?? "", out var added);
+        if (!r.Ok || added is null) return Bad(r.Message);
+        _m.Log(LogLevel.Info, $"Pilot name '{added.Name}' added by '{cur.Account.Name}' ({ClientIp(req)}).");
+        return JsonReply(200, new { ok = true, message = r.Message, name = added.Name });
+    }
+
+    /// <summary>
+    /// Deletes one of the signed-in pilot's names: {"name", "keep": {"arena": "other name", ...}}
+    /// (arenas and drafts not listed are archived). Deleting the name signed in now switches the
+    /// session to another of the pilot's names.
+    /// </summary>
+    private async Task<Reply> DeletePilotAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var name = Str(body, "name") ?? "";
+        var keep = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (body is { } b && b.TryGetProperty("keep", out var k) && k.ValueKind == System.Text.Json.JsonValueKind.Object)
+            foreach (var p in k.EnumerateObject())
+                if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String && p.Name.Length <= 32)
+                    keep[p.Name] = p.Value.GetString() ?? "";
+        var before = _m.Accounts.PilotsOf(cur.Account.Id);
+        Account? deleted = null;
+        var r = await OnMain(() => _m.DeletePilotName(cur.Account.Id, name, keep, out deleted)).ConfigureAwait(false);
+        if (!r.Ok || deleted is null) return Bad(r.Message);
+        // deleted the name signed in now: carry on as another of the pilot's names
+        if (deleted.Id == cur.Account.Id && before.FirstOrDefault(a => a.Id != deleted.Id) is { } next
+            && _m.Accounts.Get(next.Id) is { } still)
+            return Signed(still, r.Message);
+        return Ok(r.Message);
     }
 
     private Reply AccountMe(HttpListenerRequest req)
