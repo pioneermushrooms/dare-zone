@@ -29,11 +29,6 @@
     const body = await me.json().catch(() => null);
     if (!me.ok || !body || !body.arena) { say((body && body.message) || "You don't own or co-mod an arena yet.", false); return; }
     arena = body.arena; role = body.role;
-    // a live arena with a draft: edit the draft (#name) and publish from it
-    if (!arena.startsWith("#") && role === "owner") {
-      const d = await fetch(API + "/drafts/mine", { credentials: "same-origin" }).then((x) => x.ok ? x.json() : null).catch(() => null);
-      if (d && (d.drafts || []).some((x) => x.name.toLowerCase() === arena.toLowerCase() && x.live)) { liveName = arena; arena = "#" + arena; }
-    }
     $("edname").textContent = `${arena} · ${body.map || "no map"}`;
     document.title = `${arena} map · SubSpace Foundation`;
     if (role !== "owner") say("You can look and download; only the owner can publish.", false);
@@ -51,6 +46,44 @@
     drawPalette(); drawMini(); draw();
     setDirty(false);
   }
+
+  // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
+  function replaceMap(next, nextPrefix, nextTileset, note) {
+    if (dirty && !confirm("Replace the map you're editing? (Undo brings it back.)")) return;
+    const change = [];
+    for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
+    for (const [i, , t] of change) grid[i] = t;
+    if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); }
+    if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; drawPalette(); }
+    centre(); drawMini(); draw();
+    say(note, true);
+  }
+
+  async function loadShared() {
+    const r = await fetch(API + "/maps", { credentials: "same-origin" }).catch(() => null);
+    const j = r && r.ok ? await r.json().catch(() => null) : null;
+    for (const name of (j && j.maps) || []) {
+      const o = document.createElement("option");
+      o.value = name; o.textContent = name.replace(/\.lvl$/i, "");
+      $("startfrom").append(o);
+    }
+  }
+  $("startfrom").addEventListener("change", async (e) => {
+    const name = e.target.value;
+    e.target.value = "";
+    if (!name) return;
+    if (name === "!empty") { replaceMap(new Uint8Array(N * N), null, null, "Started from an empty map."); return; }
+    const r = await fetch(API + "/maps/file?name=" + encodeURIComponent(name), { credentials: "same-origin" });
+    if (!r.ok) { say("Couldn't open that map.", false); return; }
+    const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
+    replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name}: ${m.count} tiles. Publish to use it.`);
+  });
+  $("randomize").addEventListener("click", () => {
+    const seed = (Math.random() * 2 ** 32) >>> 0;
+    const g = Lvl.generate(seed, { size: $("gensize").value, symmetry: Number($("gensym").value), tile: cur > 0 && cur <= 161 ? cur : 1 });
+    replaceMap(g.grid, undefined, undefined, "A random map. Randomize again for another, or draw on it.");
+    $("genseed").textContent = `Seed ${seed}`;
+  });
 
   function centre() {
     let minX = N, minY = N, maxX = -1, maxY = -1;
@@ -286,7 +319,7 @@
   window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("resize", resize);
   resize();
-  load();
+  load().then(loadShared);
   // for checks in a browser console
   window.chartRoom = { get grid() { return grid; }, setTile: (x, y, t) => { stroke = []; setTile(x, y, t); endStroke(); draw(); }, save: () => Lvl.serialize(grid, prefix) };
 })();

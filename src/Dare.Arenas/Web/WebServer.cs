@@ -424,11 +424,14 @@ internal sealed partial class WebServer : IDisposable
             case "/map": return Get(method, () => Static("map.html"));
             case "/editor.js": return Get(method, () => Static("editor.js"));
             case "/lvl.js": return Get(method, () => Static("lvl.js"));
+            case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/visibility": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebSetPrivate(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/discard": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebDiscard(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/maps": return method == "GET" ? SharedMaps() : MethodNotAllowed();
+            case "/api/maps/file": return method == "GET" ? await SharedMapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/arenas":
                 return method == "GET" ? JsonReply(200, new { ok = true, arenas = await OnMain(() => _m.ZoneArenas()).ConfigureAwait(false) }) : MethodNotAllowed();
             case "/api/chat": return method == "GET" ? await ChatAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -889,6 +892,31 @@ internal sealed partial class WebServer : IDisposable
         return JsonReply(200, new { ok = true });
     }
 
+    /// <summary>The server's shared maps (maps/*.lvl), for the map editor's "Start from".</summary>
+    private static Reply SharedMaps()
+    {
+        var names = Directory.Exists(ArenaOwnership.MapsDir)
+            ? Directory.EnumerateFiles(ArenaOwnership.MapsDir, "*.lvl")
+                .Select(Path.GetFileName).OfType<string>()
+                .Where(n => LevelFiles.IsSafeFileName(n) && n.Length <= MapFile.MaxNameLength)
+                .Where(n => new FileInfo(Path.Combine(ArenaOwnership.MapsDir, n)) is { LinkTarget: null, Length: > 0 and <= MapFile.MaxReadBytes })
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
+            : new List<string>();
+        return JsonReply(200, new { ok = true, maps = names });
+    }
+
+    /// <summary>One shared map's bytes (?name=x.lvl): a plain .lvl name, only from maps/, never a link.</summary>
+    private static async Task<Reply> SharedMapAsync(HttpListenerRequest req)
+    {
+        var name = req.QueryString["name"] ?? "";
+        var path = MapFile.Candidates(ArenaOwnership.ArenasDir, "_none_", ArenaOwnership.MapsDir, name)
+            .FirstOrDefault(p => string.Equals(Path.GetDirectoryName(Path.GetFullPath(p)), Path.GetFullPath(ArenaOwnership.MapsDir).TrimEnd(Path.DirectorySeparatorChar), StringComparison.Ordinal));
+        if (path is null || new FileInfo(path) is not { Exists: true, Length: > 0 and <= MapFile.MaxReadBytes })
+            return JsonReply(404, new { ok = false, message = "No such map." });
+        var bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+        return new Reply(200, "application/octet-stream", bytes, [("X-Map-Name", Path.GetFileName(path))]);
+    }
+
     private async Task<Reply> RequestAsync(HttpListenerRequest req)
     {
         if (Gate(req, write: true, out var player) is { } denied) return denied;
@@ -1039,7 +1067,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "editor.js" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "editor.js" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");
