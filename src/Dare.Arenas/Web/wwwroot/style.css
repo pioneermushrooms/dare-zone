@@ -94,4 +94,14 @@ dl.facts dd { margin:0; color:#fff; overflow-wrap:anywhere; }
   .navlinks { order:3; width:100%; justify-content:space-between; gap:8px; }
   header.site { margin-bottom:24px; }
 }
+/* staff desk */
+.staff .req { display:grid; gap:8px; padding:14px 0; border-bottom:1px solid #18243a; }
+.staff .req:last-child { border-bottom:0; }
+.staff .req .who { color:var(--dim); font-size:.9rem; }
+.staff .req .row a { color:var(--text); text-decoration:none; border:1px solid #4a6179; border-radius:3px; padding:8px 14px; font-weight:700; font-size:.9rem; }
+.staff .req .row a:hover { border-color:var(--accent); }
+.staff .req .row input { flex:1 1 220px; }
+.staff table { width:100%; border-collapse:collapse; }
+.staff th, .staff td { text-align:left; padding:8px 6px; border-bottom:1px solid #18243a; overflow-wrap:anywhere; }
+.staff th { color:var(--dim); font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
 [hidden] { display:none !important; }

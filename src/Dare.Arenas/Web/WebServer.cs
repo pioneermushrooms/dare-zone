@@ -822,7 +822,7 @@ internal sealed partial class WebServer : IDisposable
             res.Headers["Cache-Control"] = "no-store";
             if (reply.ContentType.StartsWith("text/html", StringComparison.Ordinal))
                 res.Headers["Content-Security-Policy"] =
-                    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+                    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
             if (reply.Headers is not null)
                 foreach (var (n, v) in reply.Headers)
                     res.AppendHeader(n, v);
