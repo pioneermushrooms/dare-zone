@@ -19,7 +19,8 @@ public sealed partial class ArenaOwnership
     private void RegisterCommands()
     {
         // players
-        Add("requestarena", Command_requestarena);
+        Add("makearena", Command_makearena);
+        Add("requestarena", Command_makearena); // the old name; same thing now
         Add("arenarequests", Command_arenarequests);
         Add("arenalog", Command_arenalog);
         Add("myarena", Command_myarena);
@@ -70,73 +71,82 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "<name> <pitch>",
+        Args = "<name> [what it's for]",
         Description = """
-            Requests a new arena that you will own. Names are 3-15 letters and digits (a-z, 0-9),
-            start with a letter and do not end in a digit. The pitch (up to 120 characters) says
-            what the arena is for. Staff decide publicly; see ?arenarequests.
+            Makes a new arena that you own, right away (no approval). Names are 3-15 letters and
+            digits (a-z, 0-9), start with a letter and do not end in a digit. One arena per player.
+            The optional line (up to 120 characters) says what it's for; it is public in ?arenalog.
+            ?requestarena does the same.
             """)]
-    private void Command_requestarena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    private void Command_makearena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null) return;
 
         if (!player.Flags.Authenticated)
         {
-            Reply(player, "Only players logged in with a registered (password-protected) name can request an arena.");
+            Reply(player, "Only players logged in with a registered (password-protected) name can make an arena.");
             return;
         }
 
         var (rawName, pitch) = SplitFirst(parameters);
-        if (rawName.Length == 0 || pitch.Length == 0)
+        if (rawName.Length == 0)
         {
-            Reply(player, "Usage: ?requestarena <name> <pitch>   e.g. ?requestarena skyrace Fast racing laps for warbirds");
+            Reply(player, "Usage: ?makearena <name> [what it's for]   e.g. ?makearena skyrace Fast racing laps for warbirds");
             return;
         }
 
-        var result = SubmitRequest(player.Name, rawName, pitch);
-        Reply(player, result.Ok
-            ? $"{result.Message} Staff will review it publicly; check ?arenarequests."
-            : result.Message);
+        var (result, name) = LaunchArena(player.Name, rawName, pitch);
+        Reply(player, result.Ok ? $"{result.Message} Type ?go {name}, then ?myarena." : result.Message);
     }
 
     /// <summary>
-    /// The shared request path for ?requestarena and the web form (caller has checked the name is
-    /// authenticated): pitch length, name rules and store limits; logs and notifies staff. Mainloop.
+    /// The shared launch path for ?makearena/?requestarena and the web form (caller has checked the
+    /// name is authenticated / signed in): line length, name rules and store limits; creates the
+    /// folder inside the store transaction, recycles a running arena of that name, logs and tells
+    /// staff. Mainloop.
     /// </summary>
-    internal Result SubmitRequest(string playerName, string rawName, string pitch)
+    internal (Result Result, string Name) LaunchArena(string playerName, string rawName, string pitch)
     {
         rawName = rawName.Trim();
         pitch = pitch.Trim();
-        if (rawName.Length == 0 || pitch.Length == 0)
-            return new Result(false, "An arena name and a pitch are both required.");
+        if (rawName.Length == 0)
+            return (new Result(false, "An arena name is required."), "");
 
         if (pitch.Length > MaxPitchLength)
-            return new Result(false, $"Your pitch is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer.");
+            return (new Result(false, $"That line is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer."), "");
         if (pitch.Any(char.IsControl))
-            return new Result(false, "The pitch must be a single line of text.");
+            return (new Result(false, "What it's for must be a single line of text."), "");
 
         if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
-            return new Result(false, $"Can't request '{rawName}': {error}");
+            return (new Result(false, $"Can't make '{rawName}': {error}"), "");
 
-        var result = Store.Request(playerName, name, pitch);
-        if (result.Ok)
+        var result = Store.Launch(name, playerName, pitch, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        if (!result.Ok) return (result, name);
+
+        Log(LogLevel.Info, $"{playerName} launched arena '{name}'{(pitch.Length > 0 ? ": " + pitch : "")}");
+        _chat.SendModMessage($"[Dare.Arenas] {playerName} launched arena '{name}'{(pitch.Length > 0 ? ": " + pitch : "")}");
+
+        var message = result.Message;
+        var (recycled, notRecycled) = RecycleRunning(name);
+        if (recycled.Count > 0)
+            message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
+        if (notRecycled.Count > 0)
         {
-            Log(LogLevel.Info, $"{playerName} requested arena '{name}': {pitch}");
-            _chat.SendModMessage($"[Dare.Arenas] {playerName} requested arena '{name}': {pitch}  (?approvearena {name} / ?declinearena {name} <reason>)");
+            message += $" {string.Join(", ", notRecycled)} is running and could not be recycled; type ?recyclearena there so it uses your settings.";
+            Log(LogLevel.Warn, $"Arena '{name}' launched while {string.Join(", ", notRecycled)} was running and could not be recycled.");
         }
-        return result;
+        return (new Result(true, message), name);
     }
 
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = null,
-        Description = "Lists pending arena requests (longest-waiting first) and the most recent decisions.")]
+        Description = "Lists the newest arenas, and any requests still waiting from before arenas launched without approval.")]
     private void Command_arenarequests(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
+        // Arenas launch without approval now; old requests stay listed until staff decide them.
         var pending = Store.PendingRequestsOldestFirst(PendingListMax);
-        if (pending.Count == 0)
-            Reply(player, "No pending arena requests.");
-        else
+        if (pending.Count > 0)
         {
             Reply(player, $"Pending arena requests, longest-waiting first ({pending.Count}):");
             foreach (var r in pending)
@@ -147,11 +157,19 @@ public sealed partial class ArenaOwnership
             .Where(r => r.Status != RequestStatus.Pending)
             .Take(DecisionListMax)
             .ToList();
-        if (decided.Count > 0)
+        if (decided.Count == 0)
+            Reply(player, "No arenas yet. Make one with ?makearena <name>.");
+        else
         {
-            Reply(player, "Recent decisions:");
+            Reply(player, "Newest arenas:");
             foreach (var r in decided)
             {
+                var launched = r.Status == RequestStatus.Approved && string.Equals(r.DecidedBy, r.Player, StringComparison.OrdinalIgnoreCase);
+                if (launched)
+                {
+                    Reply(player, $"  {r.Arena} - launched by {r.Player} ({When(r.At)}){(string.IsNullOrEmpty(r.Pitch) ? "" : ": " + r.Pitch)}");
+                    continue;
+                }
                 var verdict = r.Status == RequestStatus.Approved ? "approved" : "declined";
                 var reason = string.IsNullOrEmpty(r.Reason) ? "" : $": {r.Reason}";
                 Reply(player, $"  {r.Arena} - {r.Player}: {verdict} by {r.DecidedBy}{reason}");
@@ -197,7 +215,7 @@ public sealed partial class ArenaOwnership
                 .FirstOrDefault(r => string.Equals(r.Player, player.Name, StringComparison.OrdinalIgnoreCase));
             Reply(player, pending is not null
                 ? $"Your request for '{pending.Arena}' is pending ({When(pending.At)}). See ?arenarequests."
-                : "You don't own an arena. Request one with ?requestarena <name> <pitch>.");
+                : "You don't own an arena. Make one with ?makearena <name>.");
             return;
         }
 

@@ -30,22 +30,22 @@ recover the account if you forget the password.
 
 If a login says "This name isn't claimed", this is the step you are missing. Passwords are changed on the site.
 
-## Asking for an arena
+## Making an arena
 
 Type, in any arena:
 
-    ?requestarena <name> <what the arena is for>
+    ?makearena <name> [what the arena is for]
 
-for example `?requestarena skyrace Fast racing laps for warbirds`.
+for example `?makearena skyrace Fast racing laps for warbirds`. Or use *Make an arena* in your
+hub on the site. There is no approval: the arena is yours at once.
 
 - The name is 3 to 15 characters of lowercase letters and digits. It must start with a letter
   and must not end in a digit. Names already in use (and `public`, `2v2pub`, `3v3pub`, `4v4pub`,
   `duel`) are taken.
-- The description is up to 120 characters. Everyone can read it.
-- You can have one request waiting and own one arena at a time.
+- The description is optional, up to 120 characters. Everyone can read it.
+- You can own one arena at a time. `?requestarena` still works and does the same thing.
 
-Staff (moderators and up) approve or decline it. A decline always comes with a reason. You can
-follow it with `?arenarequests`. Once approved, go to your arena with `?go <name>`.
+Then go to your arena with `?go <name>`. Staff can still suspend an arena that breaks the rules.
 
 ## What owners and co-mods can do
 
@@ -65,8 +65,8 @@ For everyone:
 
 | Command | What it does |
 | --- | --- |
-| `?requestarena <name> <pitch>` | Ask for an arena of your own (needs a password, see above). |
-| `?arenarequests` | Lists waiting requests and the latest decisions. |
+| `?makearena <name> [pitch]` | Make an arena of your own, right away (needs a password, see above). |
+| `?arenarequests` | Lists the newest arenas (and any requests from before arenas launched without approval). |
 | `?arenalog [name]` | The last 10 public events (requests, decisions, co-mod changes, …), for all arenas or one. |
 | `?myarena` | Shows the arena you own: status, co-mods, when someone last entered it. |
 | `?weblogin` | Sends you a one-time link to the arena web page (valid 10 minutes, works once). |
@@ -118,8 +118,8 @@ one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/ar
 - **Everyone** can see <https://subspacefoundation.com/arena/>: every player-owned arena with its
   owner, co-mods and players online, waiting requests, decisions and the public log. The home page
   lists every SubSpace zone, live from the directory servers, A to Z.
-- **Without an arena**, the hub's *Make an arena* page sends a request (same rules as
-  `?requestarena`).
+- **Without an arena**, the hub's *Make an arena* page launches one (same rules as
+  `?makearena`).
 - **Owners and co-mods** see their arena: *Settings* (grouped by section, with a description,
   default and range for each).
 - **Owners** also get *Map*: **Open the map editor** shows the arena's current map in the browser

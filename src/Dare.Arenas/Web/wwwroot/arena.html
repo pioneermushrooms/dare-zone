@@ -36,22 +36,22 @@
   </nav>
 
   <div class="content">
-    <!-- no arena yet: request one (or, for staff, create one directly) -->
+    <!-- no arena yet: launch one (staff can also make one for someone else) -->
     <section data-view="make" hidden>
       <p class="kicker">Make an arena</p>
-      <h2 id="maketitle">Name it. Say what it's for.</h2>
-      <p class="dim" id="makeinfo">Staff approve requests in public, usually within a day. Then it's yours: map, graphics, rules and crew.</p>
+      <h2 id="maketitle">Name it. Launch it.</h2>
+      <p class="dim" id="makeinfo">It's yours at once: map, graphics, rules and crew. One arena per player.</p>
       <form class="stack" id="requestform">
         <label>Arena name <input type="text" id="reqname" maxlength="15" pattern="[A-Za-z][A-Za-z0-9]{1,13}[A-Za-z]" title="3-15 letters and digits (a-z, 0-9); start with a letter, do not end in a digit" required autocomplete="off">
           <span class="hint">3–15 letters and digits; starts with a letter, doesn't end in a digit.</span></label>
-        <label>What is it for? <input type="text" id="reqpitch" maxlength="120" required autocomplete="off">
+        <label>What is it for? (optional) <input type="text" id="reqpitch" maxlength="120" autocomplete="off">
           <span class="hint">Up to 120 characters. Everyone can read it.</span></label>
-        <button type="submit" class="hot">Request arena</button>
+        <button type="submit" class="hot">Launch arena</button>
       </form>
       <p class="msg" id="reqmsg"></p>
       <div id="staffcreate" hidden>
-        <h3>Staff: create it now</h3>
-        <p class="dim">Skips the request. Leave the owner empty to own it yourself.</p>
+        <h3>Staff: make one for someone else</h3>
+        <p class="dim">The owner needs a Foundation account.</p>
         <form class="stack" id="createform">
           <label>Arena name <input type="text" id="crname" maxlength="15" required autocomplete="off"></label>
           <label>Owner (a Foundation account) <input type="text" id="crowner" maxlength="24" autocomplete="off"></label>

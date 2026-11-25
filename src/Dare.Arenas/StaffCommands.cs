@@ -197,7 +197,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         Description = """
             Creates a player-owned arena at once, without a request: arenas/<name>/ is copied from
             the template and you (or the named player, who must have a Foundation account) become
-            its owner. Same name rules as ?requestarena. Public in ?arenalog.
+            its owner. Same name rules as ?makearena. Public in ?arenalog.
             """)]
     private void Command_createarena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {

@@ -162,6 +162,50 @@ public sealed class ArenaStore : IDisposable
         return Ok($"Created '{arena}' for {owner}.");
     });
 
+    /// <summary>
+    /// A player launches an arena themselves (no staff approval): they own it at once. The limits are
+    /// the ones a request had: one arena per player, a free name, no other player's pending request
+    /// for it (staff decide those first). The player's own pending request, if any, is closed: approved
+    /// when it is for this name, withdrawn (declined by themselves) otherwise. The launch is recorded
+    /// as an approved request (decided by the player) so it shows in the public list, plus a
+    /// <c>launch</c> event. <paramref name="createFolder"/> runs inside the transaction after every
+    /// check passed; on error nothing changes.
+    /// </summary>
+    public Result Launch(string arena, string player, string pitch, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
+    {
+        if (string.IsNullOrWhiteSpace(player) || string.IsNullOrWhiteSpace(arena))
+            return Fail("Player and arena name are required.");
+        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", player)) > 0)
+            return Fail("You already own an arena.");
+        if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' is already taken.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending' AND player <> $p",
+                ("$a", arena), ("$p", player)) > 0)
+            return Fail($"Someone already asked for '{arena}'; pick another name.");
+        if (folderExists(arena))
+            return Fail($"A folder named '{arena}' already exists on the server; pick another name.");
+        var folderError = createFolder();
+        if (folderError is not null)
+            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
+
+        var now = Now();
+        pitch ??= "";
+        var ownRequest = Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending' AND arena = $a",
+            ("$p", player), ("$a", arena)) > 0;
+        Run("UPDATE requests SET status='Declined', decided_by=$p, reason=$r WHERE player = $p AND status = 'Pending' AND arena <> $a",
+            ("$p", player), ("$a", arena), ("$r", $"withdrawn: launched {arena}"));
+        if (ownRequest)
+            Run("UPDATE requests SET status='Approved', decided_by=$p WHERE player = $p AND status = 'Pending' AND arena = $a",
+                ("$p", player), ("$a", arena));
+        else
+            Run("INSERT INTO requests(arena, player, pitch, status, decided_by, at) VALUES($a,$p,$pitch,'Approved',$p,$at)",
+                ("$a", arena), ("$p", player), ("$pitch", pitch), ("$at", now));
+        Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
+            ("$a", arena), ("$o", player), ("$t", now));
+        AddEvent(now, arena, player, "launch", pitch);
+        return Ok($"Launched '{arena}'. It's yours.");
+    });
+
     public Result Decline(string arena, string staff, string reason) => Tx(() =>
     {
         if (string.IsNullOrWhiteSpace(reason)) return Fail("A reason is required to decline a request.");

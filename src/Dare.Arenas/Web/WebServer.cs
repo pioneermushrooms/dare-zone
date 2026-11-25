@@ -307,15 +307,11 @@ public sealed partial class ArenaOwnership
             : "Nobody is in the arena; the new map loads when someone enters.");
     }
 
-    internal Result WebRequest(string player, string arena, string pitch)
+    internal Result WebLaunch(string player, string arena, string pitch)
     {
-        var result = SubmitRequest(player, arena, pitch);
-        if (result.Ok)
-        {
-            var online = _playerData.FindPlayer(player);
-            if (online is not null)
-                Reply(online, $"Your web request for arena '{arena.Trim().ToLowerInvariant()}' was submitted. See ?arenarequests.");
-        }
+        var (result, name) = LaunchArena(player, arena, pitch);
+        if (result.Ok && _playerData.FindPlayer(player) is { } online)
+            Reply(online, $"You launched arena '{name}' on the web. Type ?go {name} to enter it.");
         return result;
     }
 }
@@ -717,7 +713,7 @@ internal sealed partial class WebServer : IDisposable
         if (body is null) return error!;
         var arena = Str(body, "arena") ?? "";
         var pitch = Str(body, "pitch") ?? "";
-        var result = await OnMain(() => _m.WebRequest(player, arena, pitch)).ConfigureAwait(false);
+        var result = await OnMain(() => _m.WebLaunch(player, arena, pitch)).ConfigureAwait(false);
         return ResultReply(result);
     }
 

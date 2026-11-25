@@ -55,13 +55,20 @@ async function publicPage() {
       el("b", { class: "name", text: a.name }), " ", el("span", { class: "tag " + a.status, text: a.status }),
       el("div", { class: "dim", text: `owner ${a.owner}` + (a.coMods.length ? ` · co-mods ${a.coMods.join(", ")}` : "")
         + (a.status === "Active" ? ` · ${a.players} playing` : "") })), "No player-owned arenas yet. Make the first one.");
+  // Arenas launch without approval now; requests from before that stay listed until staff decide.
+  $("pendingpanel").hidden = !body.pending.length;
   fill($("pending"), body.pending, (r) => el("li", null,
       el("b", { class: "name", text: r.arena }), ` by ${r.player} · ${when(r.at)}`,
       el("div", { text: r.pitch })), "Nothing waiting.");
-  fill($("decisions"), body.decisions, (r) => el("li", null,
-      el("b", { class: "name", text: r.arena }), " ", el("span", { class: "tag " + r.status, text: r.status }),
-      ` ${r.player} · by ${r.decidedBy || "?"}`, r.reason ? el("div", { class: "dim", text: r.reason }) : null),
-      "No decisions yet.");
+  fill($("decisions"), body.decisions, (r) => {
+    const launched = r.status === "Approved" && r.decidedBy && r.decidedBy.toLowerCase() === r.player.toLowerCase();
+    return el("li", null,
+      el("b", { class: "name", text: r.arena }), " ",
+      el("span", { class: "tag " + r.status, text: launched ? "Launched" : r.status }),
+      launched ? ` by ${r.player} · ${when(r.at)}` : ` ${r.player} · by ${r.decidedBy || "?"}`,
+      r.pitch && launched ? el("div", { text: r.pitch }) : null,
+      r.reason ? el("div", { class: "dim", text: r.reason }) : null);
+  }, "No arenas yet.");
   fill($("events"), body.events, eventItem, "No events yet.");
 }
 
@@ -102,10 +109,14 @@ function route() {
 }
 
 function renderNoArena(body) {
-  $("makeinfo").textContent = body.pendingRequest
-    ? `Your request for '${body.pendingRequest.arena}' is waiting for staff (${when(body.pendingRequest.at)}). You'll get the arena as soon as it's approved.`
-    : "Staff approve requests in public. Then it's yours: map, graphics, rules and crew.";
-  $("requestform").hidden = !!body.pendingRequest;
+  $("maketitle").textContent = "Name it. Launch it.";
+  $("makeinfo").textContent = "It's yours at once: map, graphics, rules and crew. One arena per player.";
+  $("requestform").hidden = false;
+  // an old request (from before arenas launched without approval): offer the same name
+  if (body.pendingRequest && !$("reqname").value) {
+    $("reqname").value = body.pendingRequest.arena;
+    $("reqpitch").value = body.pendingRequest.pitch || "";
+  }
 }
 
 function renderArena(body) {
@@ -124,9 +135,8 @@ function renderArena(body) {
     return o;
   }));
   // make: one arena per player; owners see their request form hidden
-  $("requestform").hidden = true;
   $("maketitle").textContent = owner ? "You already own an arena" : "Make your own arena";
-  $("makeinfo").textContent = owner ? "One arena per player. Everything you need is in the menu." : "Staff approve requests in public.";
+  $("makeinfo").textContent = owner ? "One arena per player. Everything you need is in the menu." : "It's yours at once. One arena per player.";
   $("requestform").hidden = owner;
 
   // map
@@ -278,7 +288,7 @@ function wireHub() {
     e.preventDefault();
     const { body } = await postJson("/request", { arena: $("reqname").value, pitch: $("reqpitch").value });
     msg($("reqmsg"), body.message, body.ok);
-    if (body.ok) mePage();
+    if (body.ok) { location.hash = "#overview"; mePage(); }
   });
   $("createform").addEventListener("submit", (e) => {
     e.preventDefault();

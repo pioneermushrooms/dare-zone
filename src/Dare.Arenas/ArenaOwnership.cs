@@ -10,7 +10,7 @@ namespace Dare.Arenas;
 /// Player-owned arenas for Foundation: requests, public staff decisions, arena-scoped ownership grants.
 /// All rules live in <see cref="Dare.Arenas.Core"/>; this module wires them to the server.
 /// </summary>
-[ModuleInfo("Player-owned arenas: ?requestarena, staff ?approvearena/?declinearena, arena-scoped owner and co-mod groups.")]
+[ModuleInfo("Player-owned arenas: ?makearena (no approval), staff ?createarena/?arenaadmin, arena-scoped owner and co-mod groups.")]
 public sealed partial class ArenaOwnership : IModule
 {
     public const string ModuleName = "Dare.Arenas";
