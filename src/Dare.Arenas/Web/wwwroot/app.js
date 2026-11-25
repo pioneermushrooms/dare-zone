@@ -55,8 +55,8 @@ async function publicPage() {
       el("b", { class: "name", text: a.name }), " ", el("span", { class: "tag " + a.status, text: a.status }),
       el("div", { class: "dim", text: `owner ${a.owner}` + (a.coMods.length ? ` · co-mods ${a.coMods.join(", ")}` : "")
         + (a.status === "Active" ? ` · ${a.players} playing` : "") })), "No player-owned arenas yet. Make the first one.");
-  // Arenas launch without approval now; requests from before that stay listed until staff decide.
-  $("pendingpanel").hidden = !body.pending.length;
+  // Arenas launch without approval now; a request only waits when it could not go live.
+  if ($("pendingpanel")) $("pendingpanel").hidden = !body.pending.length;
   fill($("pending"), body.pending, (r) => el("li", null,
       el("b", { class: "name", text: r.arena }), ` by ${r.player} · ${when(r.at)}`,
       el("div", { text: r.pitch })), "Nothing waiting.");
@@ -134,10 +134,15 @@ function renderArena(body) {
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
-  // make: one arena per player; owners see their request form hidden
-  $("maketitle").textContent = owner ? "You already own an arena" : "Make your own arena";
-  $("makeinfo").textContent = owner ? "One arena per player. Everything you need is in the menu." : "It's yours at once. One arena per player.";
-  $("requestform").hidden = owner;
+  // make: up to maxPerPilot public arenas per pilot (drafts, named #..., don't count)
+  const max = body.maxPerPilot || 3;
+  const owned = body.arenas.filter((a) => a.role === "owner" && !a.name.startsWith("#")).length;
+  const full = owned >= max;
+  $("maketitle").textContent = full ? `You own ${max} arenas` : "Name it. Launch it.";
+  $("makeinfo").textContent = full
+    ? `That's the most per pilot. Everything for them is in the menu.`
+    : `It goes public at once and it's yours, with a private draft to keep building in. You own ${owned} of ${max}.`;
+  $("requestform").hidden = full;
 
   // map
   $("maptitle").textContent = body.map || "No map yet";
@@ -296,71 +301,9 @@ function wireHub() {
   });
 }
 
-// ---- staff view ---------------------------------------------------------------------------------
-let staff = null;
-
-async function staffPage() {
-  const { status, body } = await getJson(API + "/staff");
-  if (status !== 200 || !body) {
-    $("denied").hidden = false; $("hub").hidden = true;
-    if (status === 403) $("deniedmsg").textContent = (body && body.message) || "This page is for zone staff.";
-    return;
-  }
-  staff = body;
-  $("denied").hidden = true; $("hub").hidden = false;
-  $("who").textContent = `${body.player} · staff`;
-  $("pendingcount").textContent = body.pending.length ? String(body.pending.length) : "";
-  $("createform").hidden = !body.can.create;
-  $("createonly").hidden = body.can.create;
-
-  const host = $("requests");
-  host.replaceChildren(...(body.pending.length ? body.pending.map(requestCard)
-    : [el("p", { class: "dim", text: "Nothing waiting." })]));
-
-  $("arenarows").replaceChildren(...body.arenas.map((a) => el("tr", null,
-    el("td", null, el("b", { class: "name", text: a.name })),
-    el("td", null, el("span", { class: "tag " + a.status, text: a.status })),
-    el("td", { text: a.owner }), el("td", { class: "wrap", text: a.coMods.join(", ") || "–" }),
-    el("td", { text: String(a.players) }), el("td", { class: "dim", text: when(a.lastEntered) }))));
-  fill($("events"), body.events, eventItem, "No events yet.");
-  showView(location.hash.slice(1), "requests");
-}
-
-function requestCard(r) {
-  const reason = el("input", { type: "text", maxlength: String(staff.maxReason), placeholder: "reason (public, required to decline)", "aria-label": `Reason for ${r.arena}` });
-  const approve = el("button", { type: "button", text: "Approve" });
-  const decline = el("button", { type: "button", class: "danger", text: "Decline" });
-  approve.hidden = !staff.can.approve;
-  decline.hidden = !staff.can.decline;
-  reason.hidden = !staff.can.decline;
-  approve.addEventListener("click", () => decide(r.arena, true, "", [approve, decline]));
-  decline.addEventListener("click", () => decide(r.arena, false, reason.value, [approve, decline]));
-  return el("div", { class: "card" },
-    el("div", { class: "head" }, el("b", { text: r.arena }), el("span", { class: "dim", text: `${r.player} · ${when(r.at)}` })),
-    el("div", { text: r.pitch }),
-    el("div", { class: "row actions" }, approve, reason, decline));
-}
-
-async function decide(arena, approve, reason, buttons) {
-  if (!approve && !reason.trim()) { msg($("decmsg"), "Write a reason first; it is public.", false); return; }
-  for (const b of buttons) b.disabled = true;
-  const { body } = await postJson(approve ? "/staff/approve" : "/staff/decline", { arena, reason });
-  msg($("decmsg"), body.message, body.ok);
-  for (const b of buttons) b.disabled = false;
-  if (body.ok) staffPage();
-}
-
-function wireStaff() {
-  window.addEventListener("hashchange", () => staff && showView(location.hash.slice(1), "requests"));
-  $("createform").addEventListener("submit", (e) => {
-    e.preventDefault();
-    createArena(e.target, $("crname"), $("crowner"), $("crmsg"), staffPage);
-  });
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
-  if (page === "me") { wireHub(); mePage(); }
-  else if (page === "staff") { wireStaff(); staffPage(); }
+  // /arena/me?arena=%23name (from the builder page) opens that arena, e.g. your draft
+  if (page === "me") { wireHub(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
   else publicPage();
 });

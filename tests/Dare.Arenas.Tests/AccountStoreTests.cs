@@ -105,7 +105,7 @@ public sealed class AccountStoreTests : IDisposable
     }
 
     [Fact]
-    public void taken_name_or_email_returns_ok_with_empty_code()
+    public void taken_name_returns_ok_with_empty_code()
     {
         var s = Open();
         SignUp(s, "Big Chris", "chris@example.com");
@@ -114,10 +114,42 @@ public sealed class AccountStoreTests : IDisposable
         var takenName = s.StartSignup("BIG CHRIS", Pw, "other@example.com", out var c1);
         Assert.True(takenName.Ok);
         Assert.Equal("", c1);
-        var takenEmail = s.StartSignup("Other", Pw, "CHRIS@example.com", out var c2);
-        Assert.True(takenEmail.Ok);
-        Assert.Equal("", c2);
         Assert.Equal(fresh.Message.Replace("someone@example.com", "X"), takenName.Message.Replace("other@example.com", "X"));
+    }
+
+    [Fact]
+    public void one_email_can_have_several_pilot_names()
+    {
+        var s = Open();
+        SignUp(s, "Big Chris", "chris@example.com");
+        var second = SignUp(s, "Second", "CHRIS@example.com");
+        Assert.Equal("chris@example.com", second.Email);
+        Assert.True(second.EmailVerified);
+    }
+
+    [Fact]
+    public void an_email_holds_at_most_ten_pilot_names()
+    {
+        var s = Open();
+        for (var i = 0; i < AccountStore.MaxAccountsPerEmail; i++) SignUp(s, $"Pilot{i}", "many@example.com");
+        Assert.True(s.StartSignup("Eleventh", Pw, "many@example.com", out var code).Ok);
+        Assert.Equal("", code);
+        s.ImportLegacy(new[] { ("OldTimer", PasswordHasher.LegacyHash("OldTimer", "oldpassword")) });
+        var old = s.Find("OldTimer")!;
+        var add = s.StartAddEmail(old.Id, "many@example.com", out var addCode);
+        Assert.False(add.Ok);
+        Assert.Equal("", addCode);
+    }
+
+    [Fact]
+    public void an_old_database_with_one_email_per_account_is_upgraded()
+    {
+        var s = Open();
+        SignUp(s, "Big Chris", "chris@example.com");
+        Sql("DROP INDEX IF EXISTS ix_accounts_email; CREATE UNIQUE INDEX ux_accounts_email ON accounts(recovery_email COLLATE NOCASE);");
+        var again = Open();
+        SignUp(again, "Second", "chris@example.com");
+        Assert.NotNull(again.Find("Second"));
     }
 
     [Fact]
@@ -357,14 +389,51 @@ public sealed class AccountStoreTests : IDisposable
     }
 
     [Fact]
-    public void add_email_taken_by_other_account_sends_nothing()
+    public void add_email_already_on_another_pilot_is_sent_and_works()
     {
         var s = Open();
         SignUp(s, "Big Chris", "chris@example.com");
         s.ImportLegacy(new[] { ("OldTimer", PasswordHasher.LegacyHash("OldTimer", "oldpassword")) });
         var a = s.Find("OldTimer")!;
         Assert.True(s.StartAddEmail(a.Id, "chris@example.com", out var code).Ok);
-        Assert.Equal("", code);
+        Assert.NotEqual("", code);
+        Assert.True(s.VerifyAddEmail(a.Id, code).Ok);
+        Assert.Equal("chris@example.com", s.Get(a.Id)!.Email);
+    }
+
+    [Fact]
+    public void recovery_with_a_shared_email_resets_only_the_named_pilot()
+    {
+        var s = Open();
+        SignUp(s, "Big Chris", "chris@example.com");
+        SignUp(s, "Second", "chris@example.com");
+        Assert.True(s.StartRecovery("chris@example.com", out var code, out var names, out var count).Ok);
+        Assert.Equal("Big Chris or Second", names);
+        Assert.Equal(2, count);
+
+        // no name, or a name not on this email: refused, and the code still works afterwards
+        var noName = s.CompleteRecovery("chris@example.com", code, "brandnewpw", null, out var changed);
+        Assert.False(noName.Ok);
+        Assert.Contains("pilot name", noName.Message);
+        Assert.Null(changed);
+        Assert.False(s.CompleteRecovery("chris@example.com", code, "brandnewpw", "Stranger", out _).Ok);
+
+        Assert.True(s.CompleteRecovery("chris@example.com", code, "brandnewpw", "second", out changed).Ok);
+        Assert.Equal("Second", changed);
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Second", "brandnewpw", out _));
+        Assert.Equal(LoginResult.Ok, s.CheckLogin("Big Chris", Pw, out _)); // untouched
+        Assert.Equal(LoginResult.BadPassword, s.CheckLogin("Big Chris", "brandnewpw", out _));
+    }
+
+    [Fact]
+    public void recovery_with_one_pilot_needs_no_name_and_checks_a_given_one()
+    {
+        var s = Open();
+        SignUp(s);
+        Assert.True(s.StartRecovery("chris@example.com", out var code, out _).Ok);
+        Assert.False(s.CompleteRecovery("chris@example.com", code, "brandnewpw", "Someone Else", out _).Ok);
+        Assert.True(s.CompleteRecovery("chris@example.com", code, "brandnewpw", null, out var changed).Ok);
+        Assert.Equal("Big Chris", changed);
     }
 
     [Fact]
@@ -563,7 +632,7 @@ public sealed class AccountStoreTests : IDisposable
         Assert.True(s.CompleteRecovery("other@example.com", oc, "newpassword1").Ok);
         // a sign-up code for the same (blocked) email is a different purpose
         Assert.True(s.StartSignup("Third", Pw, "chris@example.com", out var sc).Ok);
-        Assert.Equal("", sc); // email taken: nothing sent
+        Assert.NotEqual("", sc); // a second pilot on this email: its own code, not blocked
     }
 
     [Fact]

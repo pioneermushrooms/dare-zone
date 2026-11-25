@@ -19,8 +19,8 @@ public sealed partial class ArenaOwnership
     private void RegisterCommands()
     {
         // players
-        Add("makearena", Command_makearena);
-        Add("requestarena", Command_makearena); // the old name; same thing now
+        Add("makearena", Command_requestarena);
+        Add("requestarena", Command_requestarena); // the old name; same thing now
         Add("arenarequests", Command_arenarequests);
         Add("arenalog", Command_arenalog);
         Add("myarena", Command_myarena);
@@ -34,13 +34,16 @@ public sealed partial class ArenaOwnership
         Add("rmlvz", Command_rmlvz);
         Add("weblogin", Command_weblogin);
 
+        // drafts (any signed-in pilot)
+        RegisterDraftCommands();
+
         // staff (mod and up)
         Add("approvearena", Command_approvearena);
         Add("declinearena", Command_declinearena);
+        Add("createarena", Command_createarena);
 
         // staff overrides (smod and up: cmd_arenaadmin)
         Add("arenaadmin", Command_arenaadmin);
-        Add("createarena", Command_createarena);
     }
 
     private void Add(string name, CommandDelegate handler)
@@ -58,6 +61,10 @@ public sealed partial class ArenaOwnership
 
     private void Reply(Player player, string message) => _chat.SendMessage(player, message);
 
+    /// <summary>Names with a pending request, longest-waiting first.</summary>
+    private List<string> PendingNames() =>
+        Store.PendingRequestsOldestFirst(200).Select(r => r.Arena).ToList();
+
     private static (string First, string Remainder) SplitFirst(ReadOnlySpan<char> parameters)
     {
         var s = parameters.Trim();
@@ -73,12 +80,12 @@ public sealed partial class ArenaOwnership
         Targets = CommandTarget.None,
         Args = "<name> [what it's for]",
         Description = """
-            Makes a new arena that you own, right away (no approval). Names are 3-15 letters and
-            digits (a-z, 0-9), start with a letter and do not end in a digit. One arena per player.
-            The optional line (up to 120 characters) says what it's for; it is public in ?arenalog.
-            ?requestarena does the same.
+            Makes a new public arena that you own, right away (no approval), with its private
+            draft #<name> to keep building in. Names are 3-15 letters and digits (a-z, 0-9),
+            start with a letter and do not end in a digit. The optional line (up to 120
+            characters) says what it's for; it is public. ?makearena and ?requestarena are the same.
             """)]
-    private void Command_makearena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    private void Command_requestarena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null) return;
 
@@ -95,56 +102,70 @@ public sealed partial class ArenaOwnership
             return;
         }
 
-        var (result, name) = LaunchArena(player.Name, rawName, pitch);
-        Reply(player, result.Ok ? $"{result.Message} Type ?go {name}, then ?myarena." : result.Message);
+        Reply(player, SubmitRequest(player.Name, rawName, pitch).Message);
     }
 
     /// <summary>
     /// The shared launch path for ?makearena/?requestarena and the web form (caller has checked the
-    /// name is authenticated / signed in): line length, name rules and store limits; creates the
-    /// folder inside the store transaction, recycles a running arena of that name, logs and tells
-    /// staff. Mainloop.
+    /// name is authenticated): pitch length, name rules and store limits, then the request is
+    /// approved at once by the player themselves (<see cref="GoLive"/>). Mainloop.
     /// </summary>
-    internal (Result Result, string Name) LaunchArena(string playerName, string rawName, string pitch)
+    internal Result SubmitRequest(string playerName, string rawName, string pitch)
     {
         rawName = rawName.Trim();
         pitch = pitch.Trim();
         if (rawName.Length == 0)
-            return (new Result(false, "An arena name is required."), "");
+            return new Result(false, "An arena name is required.");
 
         if (pitch.Length > MaxPitchLength)
-            return (new Result(false, $"That line is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer."), "");
+            return new Result(false, $"Your pitch is {pitch.Length} characters; keep it to {MaxPitchLength} or fewer.");
         if (pitch.Any(char.IsControl))
-            return (new Result(false, "What it's for must be a single line of text."), "");
+            return new Result(false, "The pitch must be a single line of text.");
 
         if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
-            return (new Result(false, $"Can't make '{rawName}': {error}"), "");
+            return new Result(false, $"Can't make '{rawName}': {error}");
 
-        var result = Store.Launch(name, playerName, pitch, ArenaFolderExists, () => TryCreateArenaFolder(name));
-        if (!result.Ok) return (result, name);
+        var result = Store.Request(playerName, name, pitch);
+        if (result.Ok) return GoLive(playerName, name, pitch);
+        // their own request from before arenas launched without approval: launch it now
+        return OwnPendingRequest(playerName, name) ? GoLive(playerName, name, "") : result;
+    }
 
-        Log(LogLevel.Info, $"{playerName} launched arena '{name}'{(pitch.Length > 0 ? ": " + pitch : "")}");
-        _chat.SendModMessage($"[Dare.Arenas] {playerName} launched arena '{name}'{(pitch.Length > 0 ? ": " + pitch : "")}");
+    private bool OwnPendingRequest(string player, string name) =>
+        Store.Requests(pendingOnly: true, 1000).Any(r =>
+            string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(r.Player, player, StringComparison.OrdinalIgnoreCase));
 
-        var message = result.Message;
-        var (recycled, notRecycled) = RecycleRunning(name);
-        if (recycled.Count > 0)
-            message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
-        if (notRecycled.Count > 0)
+    /// <summary>
+    /// Arenas need no staff approval (Chris, 2026-11-25): the player's own pending request for
+    /// <paramref name="name"/> (just made, by ?makearena, the web form or a draft's go-public) is
+    /// approved by the player themselves through the normal approve path (folders, draft, recycle,
+    /// public event). If that fails the request stays pending for staff. Mainloop.
+    /// </summary>
+    internal Result GoLive(string player, string name, string pitch)
+    {
+        var approved = ApproveArena(player, name);
+        var line = pitch.Length > 0 ? ": " + pitch : "";
+        if (!approved.Ok)
         {
-            message += $" {string.Join(", ", notRecycled)} is running and could not be recycled; type ?recyclearena there so it uses your settings.";
-            Log(LogLevel.Warn, $"Arena '{name}' launched while {string.Join(", ", notRecycled)} was running and could not be recycled.");
+            Log(LogLevel.Warn, $"{player}'s arena '{name}' could not go live ({approved.Message}); the request waits for staff.");
+            _chat.SendModMessage($"[Dare.Arenas] {player}'s arena '{name}' could not go live: {approved.Message} (?approvearena {name} / ?declinearena {name} <reason>)");
+            return new Result(false, $"Your arena '{name}' could not go live yet ({approved.Message}). It waits for staff now; see ?arenarequests.");
         }
-        return (new Result(true, message), name);
+        Log(LogLevel.Info, $"{player} launched arena '{name}'{line}");
+        _chat.SendModMessage($"[Dare.Arenas] {player} launched arena '{name}'{line}");
+        var message = $"'{name}' is live and yours. Type ?go {name}. Keep building in your draft #{name}; ?publish copies it to the live arena.";
+        var recycleNote = approved.Message.IndexOf(" Could not recycle", StringComparison.Ordinal);
+        if (recycleNote >= 0) message += approved.Message[recycleNote..];
+        return new Result(true, message);
     }
 
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = null,
-        Description = "Lists the newest arenas, and any requests still waiting from before arenas launched without approval.")]
+        Description = "Lists the newest arenas, and any requests still waiting for staff (an arena that could not go live, or one from before arenas launched without approval).")]
     private void Command_arenarequests(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        // Arenas launch without approval now; old requests stay listed until staff decide them.
         var pending = Store.PendingRequestsOldestFirst(PendingListMax);
         if (pending.Count > 0)
         {
@@ -164,13 +185,17 @@ public sealed partial class ArenaOwnership
             Reply(player, "Newest arenas:");
             foreach (var r in decided)
             {
-                var launched = r.Status == RequestStatus.Approved && string.Equals(r.DecidedBy, r.Player, StringComparison.OrdinalIgnoreCase);
-                if (launched)
+                if (r.Status == RequestStatus.Approved && string.Equals(r.DecidedBy, r.Player, StringComparison.OrdinalIgnoreCase))
                 {
                     Reply(player, $"  {r.Arena} - launched by {r.Player} ({When(r.At)}){(string.IsNullOrEmpty(r.Pitch) ? "" : ": " + r.Pitch)}");
                     continue;
                 }
-                var verdict = r.Status == RequestStatus.Approved ? "approved" : "declined";
+                var verdict = r.Status switch
+                {
+                    RequestStatus.Approved => "approved",
+                    RequestStatus.Withdrawn => "withdrawn",
+                    _ => "declined",
+                };
                 var reason = string.IsNullOrEmpty(r.Reason) ? "" : $": {r.Reason}";
                 Reply(player, $"  {r.Arena} - {r.Player}: {verdict} by {r.DecidedBy}{reason}");
             }
@@ -208,21 +233,23 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var owned = Store.OwnedBy(player.Name);
-        if (owned is null)
+        var owned = Store.OwnedArenas(player.Name);
+        var pending = Store.Requests(pendingOnly: true, 1000)
+            .Where(r => string.Equals(r.Player, player.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (owned.Count == 0 && pending.Count == 0)
         {
-            var pending = Store.Requests(pendingOnly: true, 1000)
-                .FirstOrDefault(r => string.Equals(r.Player, player.Name, StringComparison.OrdinalIgnoreCase));
-            Reply(player, pending is not null
-                ? $"Your request for '{pending.Arena}' is pending ({When(pending.At)}). See ?arenarequests."
-                : "You don't own an arena. Make one with ?makearena <name>.");
+            Reply(player, "You don't own an arena. Build one with ?draft <name> (or at subspacefoundation.com/build.html).");
             return;
         }
-
-        Reply(player, $"Your arena: {owned.Name} ({owned.Status})");
-        Reply(player, $"  Co-mods ({owned.CoMods.Count}/{ArenaStore.MaxCoMods}): {(owned.CoMods.Count == 0 ? "none" : string.Join(", ", owned.CoMods))}");
-        Reply(player, $"  Last entered: {When(owned.LastEntered)}   Created: {When(owned.Created)}");
-        Reply(player, "  Type ?weblogin for the web page");
+        foreach (var a in owned)
+        {
+            Reply(player, $"Your arena: {a.Name} ({a.Status}){(Store.IsLiveWithDraft(a.Name) ? $"; build in #{a.Name}, then ?publish" : "")}");
+            Reply(player, $"  Co-mods ({a.CoMods.Count}/{ArenaStore.MaxCoMods}): {(a.CoMods.Count == 0 ? "none" : string.Join(", ", a.CoMods))}");
+            Reply(player, $"  Last entered: {When(a.LastEntered)}   Created: {When(a.Created)}");
+        }
+        foreach (var r in pending)
+            Reply(player, $"Waiting for staff: '{r.Arena}' ({When(r.At)}). Take it back with ?withdrawrequest {r.Arena}.");
+        Reply(player, "Your drafts: ?draft. The web page: ?weblogin or subspacefoundation.com/build.html.");
     }
 
     // ---- staff ----------------------------------------------------------------------
@@ -238,31 +265,40 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var (raw, _) = SplitFirst(parameters);
-        if (raw.Length == 0)
+        var typed = parameters.ToString().Trim();
+        if (typed.Length == 0)
         {
             Reply(player, "Usage: ?approvearena <name>   (see ?arenarequests)");
             return;
         }
 
-        var result = ApproveArena(player.Name, raw);
-        Reply(player, result.Message);
+        // Forgiving about spaces, quotes, capitals and the server's ' ' -> 'x' (see RequestNames).
+        var pending = PendingNames();
+        var name = RequestNames.Find(typed, pending);
+        if (name is null)
+        {
+            Reply(player, RequestNames.NotFound(typed, pending));
+            return;
+        }
+        Reply(player, ApproveArena(player.Name, name).Message);
     }
 
     /// <summary>
-    /// The shared approve path for ?approvearena and the web staff view (caller checked
-    /// cmd_approvearena): approves, creates the folder inside the store transaction, recycles a
-    /// running arena of that name and tells the requester. One combined message. Mainloop.
+    /// Approves the pending request for <paramref name="name"/> (an exact pending name) for
+    /// <paramref name="staff"/>: folders inside the approval, recycle, tell the requester. Shared by
+    /// ?approvearena and the staff page; the caller has checked the capability. Mainloop.
     /// </summary>
-    internal Result ApproveArena(string staff, string raw)
+    internal Result ApproveArena(string staff, string name)
     {
-        var name = raw.Trim().ToLowerInvariant();
         // The folder is created inside the approval: if that fails, nothing is approved.
-        var result = Store.Approve(name, staff, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        var fromDraft = Store.IsDraftRequest(name);
+        var result = Store.Approve(name, staff, ArenaFolderExists, () => CreateApprovalFolders(name));
         if (!result.Ok) return result;
 
         Log(LogLevel.Info, $"{staff} approved arena '{name}'.");
-        var message = $"{result.Message} Folder arenas/{name}/ created from the template.";
+        var message = fromDraft
+            ? $"{result.Message} Folder arenas/{name}/ copied from the draft #{name}."
+            : $"{result.Message} Folder arenas/{name}/ created from the template, with its draft #{name}.";
 
         // Someone may already be in an arena of that name; it opened a shared fallback config
         // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players
@@ -272,13 +308,13 @@ public sealed partial class ArenaOwnership
             message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
         if (notRecycled.Count > 0)
         {
-            message += $" Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings; the owner's powers start on their next entry.";
+            message += $" Could not recycle {string.Join(", ", notRecycled)} (e.g. bots inside): go there and type ?recyclearena so it uses its own settings.";
             Log(LogLevel.Warn, $"Arena '{name}' approved while {string.Join(", ", notRecycled)} was running and could not be recycled.");
         }
 
         var owner = Store.Get(name)?.Owner;
         var requester = owner is null ? null : _playerData.FindPlayer(owner);
-        if (requester is not null)
+        if (requester is not null && !string.Equals(owner, staff, StringComparison.OrdinalIgnoreCase))
             Reply(requester, $"Your arena request '{name}' was approved by {staff}! Type ?go {name} to enter it, then ?myarena.");
         return new Result(true, message);
     }
@@ -324,23 +360,28 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var (raw, reason) = SplitFirst(parameters);
-        if (raw.Length == 0 || reason.Length == 0)
+        var pending = PendingNames();
+        var (name, reason) = RequestNames.SplitNameAndReason(parameters.ToString(), pending);
+        if (name.Length == 0 || reason.Length == 0)
         {
             Reply(player, "Usage: ?declinearena <name> <reason>");
             return;
         }
-
-        Reply(player, DeclineArena(player.Name, raw, reason).Message);
+        if (!pending.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            Reply(player, RequestNames.NotFound(name, pending));
+            return;
+        }
+        Reply(player, DeclineArena(player.Name, name, reason).Message);
     }
 
-    /// <summary>The shared decline path for ?declinearena and the web staff view (caller checked cmd_declinearena). Mainloop.</summary>
-    internal Result DeclineArena(string staff, string raw, string reason)
+    /// <summary>Declines the pending request for <paramref name="name"/>; tells the requester. Shared with the staff page. Mainloop.</summary>
+    internal Result DeclineArena(string staff, string name, string reason)
     {
         reason = reason.Trim();
-        if (reason.Length == 0 || reason.Length > MaxPitchLength || reason.Any(char.IsControl))
-            return new Result(false, $"A reason is required: one line, up to {MaxPitchLength} characters.");
-        var name = raw.Trim().ToLowerInvariant();
+        if (reason.Length == 0) return new Result(false, "A reason is required to decline a request.");
+        if (reason.Length > MaxPitchLength || reason.Any(char.IsControl))
+            return new Result(false, $"Keep the reason to one line of up to {MaxPitchLength} characters.");
         var requesterName = Store.Requests(pendingOnly: true, 1000)
             .FirstOrDefault(r => string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase))?.Player;
 
@@ -349,7 +390,7 @@ public sealed partial class ArenaOwnership
 
         Log(LogLevel.Info, $"{staff} declined arena '{name}': {reason}");
         var requester = requesterName is null ? null : _playerData.FindPlayer(requesterName);
-        if (requester is not null)
+        if (requester is not null && !string.Equals(requesterName, staff, StringComparison.OrdinalIgnoreCase))
             Reply(requester, $"Your arena request '{name}' was declined by {staff}: {reason}");
         return result;
     }
@@ -385,7 +426,7 @@ public sealed partial class ArenaOwnership
         }
 
         var current = player.Arena;
-        var owned = current is null ? null : Store.Get(current.BaseName.ToLowerInvariant());
+        var owned = current is null ? null : Store.OwnedOrDraft(current.BaseName.ToLowerInvariant());
         if (current is null || owned is null)
         {
             Reply(player, "Use this in your own arena (see ?myarena).");
@@ -463,7 +504,7 @@ public sealed partial class ArenaOwnership
         action = action.ToLowerInvariant();
         if (action.Length == 0)
         {
-            var coMods = Store.Get(arenaName)?.CoMods ?? Array.Empty<string>();
+            var coMods = Store.OwnedOrDraft(arenaName)?.CoMods ?? Array.Empty<string>();
             Reply(player, $"Co-mods of {arenaName} ({coMods.Count}/{ArenaStore.MaxCoMods}): {(coMods.Count == 0 ? "none" : string.Join(", ", coMods))}");
             Reply(player, "Usage: ?comod add <player> / ?comod remove <player>");
             return;
@@ -507,7 +548,7 @@ public sealed partial class ArenaOwnership
         else
         {
             if (online?.Name is not null) name = online.Name; // canonical spelling
-            else if (Store.Get(arenaName)?.CoMods.FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)) is { } stored)
+            else if (Store.OwnedOrDraft(arenaName)?.CoMods.FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)) is { } stored)
                 name = stored;
         }
         if (online is not null && !string.Equals(online.Name, name, StringComparison.OrdinalIgnoreCase))

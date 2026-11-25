@@ -15,7 +15,6 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 {
     internal const string ArchiveDir = "_archive";
     internal const string AdminCapability = "cmd_arenaadmin";
-    internal const string CreateCapability = "cmd_createarena";
     internal static readonly TimeSpan IdleBeforeArchive = TimeSpan.FromDays(30);
     private const int ArchiveCheckIntervalMs = 24 * 60 * 60 * 1000;
     private const int ArchiveFirstCheckMs = 5 * 60 * 1000;
@@ -39,7 +38,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name>",
+        Args = "suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name> | rollback <name> | revivedraft <name>",
         Description = """
             Staff overrides for player-owned arenas; each is public in ?arenalog.
             suspend: closes the arena to players (reason required). revive: reopens a suspended or
@@ -47,13 +46,14 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             the arena to another player (a claimed name: a Foundation account). archive: closes it; its folder
             moves to arenas/_archive/ at the next server restart. To take an arena from its owner,
             transfer or suspend it here: removing the owner's group with ?rmgroup does not last (it
-            is granted again on their next entry).
+            is granted again on their next entry). rollback: puts back the arena's previous published
+            version (repeatable, up to 3 steps). revivedraft: reopens an archived draft #<name>.
             """)]
     private void Command_arenaadmin(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null) return;
 
-        const string usage = "Usage: ?arenaadmin suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name>";
+        const string usage = "Usage: ?arenaadmin suspend <name> <reason> | revive <name> | transfer <name> <player> | archive <name> | rollback <name> | revivedraft <name>";
         var (action, rest) = SplitFirst(parameters);
         var (rawName, arg) = SplitFirst(rest);
         action = action.ToLowerInvariant();
@@ -63,7 +63,12 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             return;
         }
 
-        var name = rawName.ToLowerInvariant();
+        var name = DraftRules.PublicOf(rawName.ToLowerInvariant());
+        if (action == "revivedraft")
+        {
+            AdminReviveDraft(player, name);
+            return;
+        }
         var owned = Store.Get(name);
         if (owned is null)
         {
@@ -100,10 +105,51 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                 AdminArchive(player, name);
                 break;
 
+            case "rollback":
+                AdminRollback(player, name);
+                break;
+
             default:
                 Reply(player, usage);
                 break;
         }
+    }
+
+    private void AdminRollback(Player staff, string name)
+    {
+        if (!Store.IsLiveWithDraft(name))
+        {
+            Reply(staff, $"'{name}' is not published from a draft.");
+            return;
+        }
+        var error = DraftFiles.Rollback(ArenasDir, name);
+        if (error is not null)
+        {
+            Reply(staff, $"Can't roll '{name}' back: {error}");
+            return;
+        }
+        var result = Store.RolledBack(name, staff.Name!);
+        Log(LogLevel.Info, $"{staff.Name} rolled [{name}] back to its previous published version.");
+        var (recycled, notRecycled) = RecycleRunning(name);
+        Reply(staff, result.Message + (notRecycled.Count > 0 ? " Type ?recyclearena there for it to take effect." : ""));
+    }
+
+    private void AdminReviveDraft(Player staff, string name)
+    {
+        var draft = DraftRules.DraftOf(name);
+        var result = Store.ReviveDraft(name, staff.Name!, () =>
+        {
+            if (ArenaConfigFile.OwnPath(ArenasDir, draft) is not null) return null; // move still pending
+            if (ArenaFolderExists(draft))
+                return $"arenas/{draft}/ has no {ArenaConfigFile.FileName}; restore it by hand first.";
+            if (RestoreFromArchive(draft) is null)
+                return $"arenas/{draft}/ is missing and no archived copy was found in arenas/{ArchiveDir}/.";
+            return ArenaConfigFile.OwnPath(ArenasDir, draft) is null
+                ? $"the restored folder has no {ArenaConfigFile.FileName}."
+                : null;
+        });
+        Reply(staff, result.Message);
+        if (result.Ok) Log(LogLevel.Info, $"{staff.Name} revived draft {draft}.");
     }
 
     private void AdminSuspend(Player staff, string name, string reason)
@@ -187,63 +233,59 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             Reply(online, $"Staff ({staff.Name}) made you the owner of arena '{name}'. Type ?go {name}, then ?myarena.");
 
         RefreshGrantsIn(name);
+        RefreshDraftAfterTransfer(name); // the old owner and their invited pilots leave the draft
+
     }
 
-    // ---- ?createarena -------------------------------------------------------------------
+    // ---- ?createarena (mod and up: groupdef.dir/arenastaff) -------------------------------
+
+    internal const string CreateCapability = "cmd_createarena";
 
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = "<name> [owner]",
         Description = """
-            Creates a player-owned arena at once, without a request: arenas/<name>/ is copied from
-            the template and you (or the named player, who must have a Foundation account) become
-            its owner. Same name rules as ?makearena. Public in ?arenalog.
+            Creates a public player-owned arena at once, without a request: arenas/<name>/ from the
+            template, with its draft #<name>. You (or the named player, who must have a Foundation
+            account) own it. Same name rules as ?requestarena. Public in ?arenalog.
             """)]
     private void Command_createarena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null) return;
-
-        // The command manager checked cmd_createarena (smod/sysop through groupdef.dir/arenaadmin);
-        // staff.conf groups only apply to authenticated names, but say so plainly if not.
         if (!player.Flags.Authenticated)
         {
             Reply(player, "Your name is not authenticated; log in with your password.");
             return;
         }
-
-        var (rawName, ownerRaw) = SplitFirst(parameters);
-        if (rawName.Length == 0) // the owner is the rest of the line: names may contain spaces
+        var (rawName, ownerRaw) = SplitFirst(parameters); // the owner is the rest of the line: names may contain spaces
+        if (rawName.Length == 0)
         {
             Reply(player, "Usage: ?createarena <name> [owner]   e.g. ?createarena skyrace Racer");
             return;
         }
-
         var (result, name, owner) = CreateArena(player.Name, rawName, ownerRaw.Length == 0 ? null : ownerRaw);
         Reply(player, result.Message);
         if (!result.Ok) return;
-
         var self = string.Equals(owner, player.Name, StringComparison.OrdinalIgnoreCase);
-        Reply(player, self ? $"Type ?go {name}, then ?myarena." : $"Tell {owner} to type ?go {name}, then ?myarena.");
+        Reply(player, self ? $"Type ?go {name}; build in ?go #{name}, then ?publish." : $"Tell {owner} to type ?go #{name} to start building.");
     }
 
     /// <summary>
-    /// The shared create path for ?createarena and the web staff view: validates the name, resolves
-    /// the owner (null: <paramref name="staff"/> themselves) to a claimed name, creates the folder
-    /// inside the store transaction, recycles a running arena of that name and tells the owner.
-    /// The caller has checked that <paramref name="staff"/> holds cmd_createarena. Mainloop.
+    /// The shared create path for ?createarena and the staff page: validates the name, resolves the
+    /// owner (null: <paramref name="staff"/>) to a claimed name, creates both folders inside the
+    /// store transaction, recycles a running arena of that name and tells the owner. The caller has
+    /// checked the capability. Mainloop.
     /// </summary>
     internal (Result Result, string Name, string Owner) CreateArena(string staff, string rawName, string? ownerRaw)
     {
         rawName = rawName.Trim();
-        if (!ArenaName.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
+        if (!DraftRules.TryValidate(rawName, ExistingArenaFolders(), out var name, out var error))
             return (new Result(false, $"Can't create '{rawName}': {error}"), "", "");
 
         string owner;
         Player? online = null;
         if (string.IsNullOrWhiteSpace(ownerRaw))
-        {
             owner = staff;
-        }
         else
         {
             ownerRaw = ownerRaw.Trim();
@@ -259,23 +301,115 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                 online = null;
         }
 
-        var result = Store.Create(name, staff, owner, ArenaFolderExists, () => TryCreateArenaFolder(name));
+        var result = Store.Create(name, staff, owner, ArenaFolderExists, () => CreateApprovalFolders(name));
         if (!result.Ok) return (result, name, owner);
 
         Log(LogLevel.Info, $"{staff} created arena '{name}' for {owner}.");
         var (recycled, notRecycled) = RecycleRunning(name);
-        var message = $"{result.Message} Folder arenas/{name}/ created from the template.";
+        var message = $"{result.Message} Folders arenas/{name}/ and its draft #{name} made from the template.";
         if (recycled.Count > 0) message += $" Recycled {string.Join(", ", recycled)} so it loads its new settings.";
         if (notRecycled.Count > 0)
-        {
             message += $" Could not recycle {string.Join(", ", notRecycled)}: type ?recyclearena there so it uses its own settings.";
-            Log(LogLevel.Warn, $"Arena '{name}' created while {string.Join(", ", notRecycled)} was running and could not be recycled.");
-        }
 
         online ??= _playerData.FindPlayer(owner);
         if (online is not null && !string.Equals(online.Name, staff, StringComparison.OrdinalIgnoreCase))
-            Reply(online, $"Staff ({staff}) created arena '{name}' for you! Type ?go {name} to enter it, then ?myarena.");
+            Reply(online, $"Staff ({staff}) created arena '{name}' for you! Build it in ?go #{name}, then ?publish.");
         return (new Result(true, message), name, owner);
+    }
+
+    // ---- staff page (web) -----------------------------------------------------------------
+
+    internal const string ApproveCapability = "cmd_approvearena";
+    internal const string DeclineCapability = "cmd_declinearena";
+
+    /// <summary>
+    /// Whether the signed-in web name holds staff capability <paramref name="capability"/>: the
+    /// server's check by name (its staff.conf [(global)] group; arena groups never count). Mainloop.
+    /// </summary>
+    private bool WebStaffCan(string player, string capability) =>
+        _capabilityManager.HasCapability(player, capability);
+
+    /// <summary>What the signed-in name may do as staff (by its [(global)] group), for the hub's links. Mainloop.</summary>
+    internal object StaffFlags(string player) => new
+    {
+        approve = WebStaffCan(player, ApproveCapability),
+        decline = WebStaffCan(player, DeclineCapability),
+        create = WebStaffCan(player, CreateCapability),
+    };
+
+    /// <summary>The staff page: waiting requests and every arena; null for non-staff. Mainloop.</summary>
+    internal object? StaffData(string player)
+    {
+        bool approve = WebStaffCan(player, ApproveCapability), decline = WebStaffCan(player, DeclineCapability),
+             create = WebStaffCan(player, CreateCapability);
+        if (!approve && !decline && !create) return null;
+        var counts = PlayerCounts();
+        return new
+        {
+            player,
+            can = new { approve, decline, create },
+            pending = Store.PendingRequestsOldestFirst(200).Select(r => new
+            {
+                arena = r.Arena, player = r.Player, pitch = r.Pitch, at = r.At,
+                fromDraft = Store.IsDraftRequest(r.Arena),
+            }),
+            arenas = Store.Arenas().Select(a => new
+            {
+                name = a.Name, owner = a.Owner, status = a.Status.ToString(), lastEntered = a.LastEntered,
+                players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
+            }),
+            maxReason = MaxPitchLength,
+        };
+    }
+
+    /// <summary>
+    /// The pending request the staff page showed: <paramref name="arena"/> and, when given, its
+    /// requester, so a stale page can't decide a newer request for the same name.
+    /// </summary>
+    private string? PendingAsShown(string arena, string? requester, out string? why)
+    {
+        why = null;
+        var name = RequestNames.Find(arena, PendingNames());
+        if (name is null)
+        {
+            why = RequestNames.NotFound(arena, PendingNames());
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(requester)
+            && !Store.PendingRequestsOldestFirst(200).Any(r =>
+                string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(r.Player, requester.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            why = $"The request for '{name}' changed since this page loaded; reload it.";
+            return null;
+        }
+        return name;
+    }
+
+    internal Result? WebStaffApprove(string player, string arena, string? requester)
+    {
+        if (!WebStaffCan(player, ApproveCapability)) return null;
+        var name = PendingAsShown(arena, requester, out var why);
+        var result = name is null ? new Result(false, why!) : ApproveArena(player, name);
+        Log(LogLevel.Info, $"(web) {player} approve '{arena}': {(result.Ok ? "done" : "refused: " + result.Message)}");
+        return result;
+    }
+
+    internal Result? WebStaffDecline(string player, string arena, string reason, string? requester)
+    {
+        if (!WebStaffCan(player, DeclineCapability)) return null;
+        var name = PendingAsShown(arena, requester, out var why);
+        var result = name is null ? new Result(false, why!) : DeclineArena(player, name, reason);
+        Log(LogLevel.Info, $"(web) {player} decline '{arena}': {(result.Ok ? "done" : "refused: " + result.Message)}");
+        return result;
+    }
+
+    internal Result? WebStaffCreate(string player, string arena, string? owner)
+    {
+        if (!WebStaffCan(player, CreateCapability)) return null;
+        var (result, _, _) = CreateArena(player, arena, string.IsNullOrWhiteSpace(owner) ? null : owner);
+        Log(LogLevel.Info, $"(web) {player} create '{arena}': {(result.Ok ? "created" : "refused: " + result.Message)}");
+        return result;
     }
 
     // ---- daily idle archive ---------------------------------------------------------------
@@ -289,6 +423,8 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             // when someone has stayed inside since).
             var occupied = PlayerCounts();
             var archived = Store.ArchiveIdle(IdleBeforeArchive, name => occupied.GetValueOrDefault(name) > 0);
+            foreach (var draft in Store.ArchiveIdleDrafts(IdleBeforeArchive, name => occupied.GetValueOrDefault(name) > 0))
+                Log(LogLevel.Info, $"Archived idle draft [{draft}] (untouched for {(int)IdleBeforeArchive.TotalDays} days); its folder moves to arenas/{ArchiveDir}/ at the next start.");
             foreach (var name in archived)
             {
                 SendPlayersOut(name, $"Arena '{name}' was archived after {(int)IdleBeforeArchive.TotalDays} days without visitors.");
@@ -500,7 +636,13 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         OwnedArena? owned;
         try
         {
-            owned = _store.Get(arena.BaseName.ToLowerInvariant());
+            owned = _store.OwnedOrDraft(arena.BaseName.ToLowerInvariant());
+            // a draft: only its owner, co-mods, invited pilots and staff get in at all
+            if (owned is not null && DraftRules.IsDraft(arena.BaseName) && !MayEnterDraft(player, arena.BaseName))
+            {
+                errorMessage?.Append(DraftEntryRefused);
+                return false;
+            }
         }
         catch (Exception ex)
         {

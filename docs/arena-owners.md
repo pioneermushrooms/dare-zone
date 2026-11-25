@@ -37,13 +37,15 @@ Type, in any arena:
     ?makearena <name> [what the arena is for]
 
 for example `?makearena skyrace Fast racing laps for warbirds`. Or use *Make an arena* in your
-hub on the site. There is no approval: the arena is yours at once.
+hub on the site. There is no approval: the arena is public and yours at once, with a private
+draft `#name` to keep building in (`?publish` copies it to the live arena). To build in private
+first, use the arena builder (`/build.html`, or `?draft <name>`) and go public when ready.
 
 - The name is 3 to 15 characters of lowercase letters and digits. It must start with a letter
   and must not end in a digit. Names already in use (and `public`, `2v2pub`, `3v3pub`, `4v4pub`,
   `duel`) are taken.
 - The description is optional, up to 120 characters. Everyone can read it.
-- You can own one arena at a time. `?requestarena` still works and does the same thing.
+- You can own up to 3 arenas. `?requestarena` still works and does the same thing.
 
 Then go to your arena with `?go <name>`. Staff can still suspend an arena that breaks the rules.
 
@@ -66,7 +68,7 @@ For everyone:
 | Command | What it does |
 | --- | --- |
 | `?makearena <name> [pitch]` | Make an arena of your own, right away (needs a password, see above). |
-| `?arenarequests` | Lists the newest arenas (and any requests from before arenas launched without approval). |
+| `?arenarequests` | Lists the newest arenas (and any request still waiting for staff). |
 | `?arenalog [name]` | The last 10 public events (requests, decisions, co-mod changes, …), for all arenas or one. |
 | `?myarena` | Shows the arena you own: status, co-mods, when someone last entered it. |
 | `?weblogin` | Sends you a one-time link to the arena web page (valid 10 minutes, works once). |
@@ -92,8 +94,8 @@ Staff:
 
 | Command | What it does |
 | --- | --- |
-| `?approvearena <name>` | Approves a request: creates the arena and makes the asker its owner (moderators and up). |
-| `?declinearena <name> <reason>` | Declines a request; the reason (one line, up to 120 characters) is public (moderators and up). Nobody can approve or decline their own request. |
+| `?approvearena <name>` | Approves a request that could not go live on its own: creates the arena and makes the asker its owner (moderators and up). |
+| `?declinearena <name> <reason>` | Declines a request; the reason (one line, up to 120 characters) is public (moderators and up). |
 | `?createarena <name> [owner]` | Creates an arena at once, without a request; you (or the named player, who needs a Foundation account) own it. Public in `?arenalog` (super moderators and sysops). |
 | `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
 | `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
@@ -137,7 +139,7 @@ one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/ar
 
 ## Limits
 
-- One arena per player, and one waiting request per player.
+- Up to 3 arenas, 3 drafts and 3 waiting requests per pilot.
 - Up to 5 co-mods per arena.
 - Map: one `.lvl` per arena, at most 2 MB.
 - Graphics: `.lvz` files of at most 5 MB each, at most 10 per arena. Replacing a file keeps its

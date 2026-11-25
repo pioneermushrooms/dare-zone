@@ -214,17 +214,17 @@ internal sealed partial class WebServer
     /// and the answer is the same). A failed send cancels the code so it can't be used and holds nothing,
     /// and is answered exactly like a success (the failure is only logged).
     /// </summary>
-    private async Task<Reply> SendCodeAsync(CodePurpose purpose, string email, string code, string? name, long? accountId, Result started, Stopwatch timer)
+    private async Task<Reply> SendCodeAsync(CodePurpose purpose, string email, string code, string? name, long? accountId, Result started, Stopwatch timer, int pilots = 1)
     {
         Reply reply;
         if (code.Length == 0)
         {
-            _m.Log(LogLevel.Info, $"{purpose} code for {EmailMessages.Mask(email)} not sent (name/email taken or unknown).");
+            _m.Log(LogLevel.Info, $"{purpose} code for {EmailMessages.Mask(email)} not sent (name taken, email unknown, or email at its pilot limit).");
             reply = JsonReply(200, new { ok = true, message = started.Message });
         }
         else
         {
-            var (subject, text, html) = EmailMessages.Code(purpose, code, name);
+            var (subject, text, html) = EmailMessages.Code(purpose, code, name, pilots);
             bool sent;
             try
             {
@@ -352,21 +352,22 @@ internal sealed partial class WebServer
         if (TakeSendLimits(e, ClientIp(req)) is { } limited) return limited;
 
         var timer = Stopwatch.StartNew();
-        var started = _m.Accounts.StartRecovery(e, out var code, out var name);
+        var started = _m.Accounts.StartRecovery(e, out var code, out var name, out var pilots);
         if (!started.Ok) return Bad(started.Message);
-        return await SendCodeAsync(CodePurpose.Recovery, e, code, name, null, started, timer).ConfigureAwait(false);
+        return await SendCodeAsync(CodePurpose.Recovery, e, code, name, null, started, timer, pilots).ConfigureAwait(false);
     }
 
     private Reply Reset(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         if (!_m.ResetPerIp.TryTake("reset:ip:" + ClientIp(req))) return Bad(TooMany, 429);
         var email = Str(body, "email") ?? "";
-        var r = _m.Accounts.CompleteRecovery(email, Str(body, "code") ?? "", Str(body, "password") ?? "");
+        var r = _m.Accounts.CompleteRecovery(email, Str(body, "code") ?? "", Str(body, "password") ?? "",
+            Str(body, "name"), out var changed);
         if (!r.Ok) return Bad(r.Message);
-        if (_m.Accounts.FindByEmail(email) is { } account)
+        if (changed is not null)
         {
-            _m.WebAuth.RevokeAllFor(account.Name); // a reset signs out every web session of that name
-            _m.Log(LogLevel.Info, $"Password reset by email for '{account.Name}'.");
+            _m.WebAuth.RevokeAllFor(changed); // a reset signs out every web session of that pilot only
+            _m.Log(LogLevel.Info, $"Password reset by email for '{changed}'.");
         }
         return Ok(r.Message);
     }

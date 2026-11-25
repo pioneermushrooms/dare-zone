@@ -20,6 +20,11 @@ public sealed partial class ArenaOwnership
 {
     internal const string DefaultDirectories =
         "sscentral.trenchwars.org:4990 sscentral.sscuservers.net:4990 directory.poid.be:4990 subspace.gamespec.org:4990";
+    /// <summary>Zones the browser client can join (through the Foundation web gateway): Foundation only.</summary>
+    internal static readonly string[] BrowserZones = ["5.161.238.245:5000"];
+
+    internal static bool PlaysInBrowser(string address) => BrowserZones.Contains(address, StringComparer.Ordinal);
+
     private static readonly TimeSpan ZoneListTtl = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan DirectoryTimeout = TimeSpan.FromSeconds(8);
 

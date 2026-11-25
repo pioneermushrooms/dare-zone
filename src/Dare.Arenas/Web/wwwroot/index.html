@@ -3,27 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Arenas · SubSpace Foundation</title>
+<title>Arena dashboard — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="public">
-<header class="top">
-  <a class="brand" href="/">FOUNDATION</a>
-  <nav><a href="/arena/" aria-current="page">Arenas</a><a href="/#zones">Zones</a><a class="cta" href="/arena/me">Your hub</a></nav>
-</header>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<div class="page-head"><p class="eyebrow">PLAYER-OWNED ARENAS</p><h1>Arena dashboard</h1></div>
 
-<section class="wrap pagehead">
-  <p class="kicker">Player-owned arenas</p>
-  <div class="row spread">
-    <h2 class="big">Made by players. Live in a minute.</h2>
-    <a class="btn hot" href="/arena/me#make">Make an arena</a>
-  </div>
+<section class="panel">
+  <p>Any logged-in pilot can launch an arena, no approval needed: type <b>?makearena &lt;name&gt;</b> in game,
+  or <a href="/arena/me#make">make one in your arena tools</a>. Want to build in private first? Use the <a href="/build.html">arena builder</a>. Zone staff: <a href="/arena/staff">staff desk</a>.</p>
 </section>
 
-<div class="grid gap-top">
+<div class="grid">
   <section class="panel"><h2>Arenas</h2><ul class="list" id="arenas"><li class="dim">Loading…</li></ul></section>
-  <section class="panel" id="pendingpanel" hidden><h2>Older requests</h2><ul class="list" id="pending"><li class="dim">Loading…</li></ul></section>
+  <section class="panel" id="pendingpanel" hidden><h2>Waiting for staff</h2><ul class="list" id="pending"><li class="dim">Loading…</li></ul></section>
   <section class="panel"><h2>New arenas</h2><ul class="list" id="decisions"><li class="dim">Loading…</li></ul></section>
   <section class="panel"><h2>Event log</h2><ul class="list" id="events"><li class="dim">Loading…</li></ul></section>
 </div>

@@ -2,77 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SubSpace Foundation</title>
-<meta name="description" content="Make your own SubSpace arena: draw the map, add graphics, set the rules, pick your crew. Every zone listed side by side.">
-<link rel="stylesheet" href="/style.css">
-<script src="/home.js" defer></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Play SubSpace in your browser and build your own arena in the shared Foundation zone.">
+<title>SubSpace Foundation — Play and build together</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="home.css">
+<script src="portal.js" defer></script>
 </head>
-<body>
-<div class="hero">
-  <img class="px" src="/img/hero.png" alt="">
-  <header class="top">
-    <a class="brand" href="/">FOUNDATION</a>
-    <nav>
-      <a href="/arena/">Arenas</a>
-      <a href="#zones">Zones</a>
-      <a class="cta" href="/arena/me">Your hub</a>
-    </nav>
-  </header>
-  <div class="pitch">
-    <p class="kicker">Player-owned arenas</p>
-    <h1>Draw it.<br>Fly it tonight.</h1>
-    <p class="lede">Your own arena on Foundation: map, graphics, rules and crew.</p>
-    <div class="actions">
-      <a class="btn hot" href="/arena/me#make">Make an arena</a>
-      <a class="btn ghost" href="#play">Play: 5.161.238.245:5000</a>
+<body><header><nav aria-label="Main navigation"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="#play">Play</a><a href="/build.html">Create an arena</a><a href="arenas.html">Arena directory</a></div><a class="outline" href="pilot.html">Claim your name</a></nav></header>
+<main>
+<section class="wrap arrival" id="play">
+  <div class="arrival-copy">
+    <p class="eyebrow">MULTIPLAYER SPACE COMBAT</p>
+    <h1>A shared zone.<br><em>Room to innovate.</em></h1>
+    <p class="intro">Fly with other pilots in your browser. Find an arena you love, or create one with your own map, graphics, and rules.</p>
+  </div>
+  <div class="portal">
+    <a class="portal-launch" href="/play/" aria-label="Play SubSpace Foundation now in your browser">
+      <picture><img src="jump.webp" alt="" width="1672" height="941" fetchpriority="high"></picture>
+      <span class="tunnel-motion" aria-hidden="true"><img src="jump.webp" alt="" width="1672" height="941"></span>
+      <span class="portal-action"><span class="play-icon" aria-hidden="true"></span><span><strong>Play now</strong><small>Fly in your browser</small></span></span>
+    </a>
+    <div class="portal-footer">
+      <span><strong>First time flying?</strong> <a href="pilot.html">Claim a pilot name</a> and use it to sign in.</span>
+      <button class="motion-toggle" type="button" aria-pressed="false" hidden>Pause animation</button>
     </div>
   </div>
-</div>
-
-<main>
-  <section class="band wrap">
-    <div class="steps">
-      <div><b>Map</b><span>Draw it in the browser</span></div>
-      <div><b>Graphics</b><span>Drop in .lvz files</span></div>
-      <div><b>Rules</b><span>Tune every ship</span></div>
-      <div><b>Crew</b><span>Up to 5 co-mods</span></div>
-    </div>
-  </section>
-
-  <section class="band wrap">
-    <p class="kicker">Maps on Foundation</p>
-    <div class="maps">
-      <figure><img class="px" src="/img/tactical2.png" alt="Map of the turf arena" loading="lazy"><figcaption><b>turf</b><span class="dim">tactical2.lvl</span></figcaption></figure>
-      <figure><img class="px" src="/img/teamversus.png" alt="Map of the king arena" loading="lazy"><figcaption><b>king</b><span class="dim">teamversus.lvl</span></figcaption></figure>
-      <figure><img class="px" src="/img/pbg3d.png" alt="Map of the powerball arena" loading="lazy"><figcaption><b>pb</b><span class="dim">pbg3d.lvl</span></figcaption></figure>
-    </div>
-  </section>
-
-  <section class="band wrap" id="play">
-    <p class="kicker">Play</p>
-    <h2>One name for the game and this site</h2>
-    <p class="dim">Claim it, then log in with Continuum or Dare to <b class="name">5.161.238.245:5000</b>.</p>
-    <div class="actions"><a class="btn" href="/account/signup">Claim your name</a><a class="btn ghost" href="/arena-owners.html">How arenas work</a></div>
-  </section>
-
-  <section class="band wrap" id="zones">
-    <p class="kicker">Every zone · live from the directory servers · A to Z</p>
-    <div class="zonebox">
-      <table class="zones">
-        <thead><tr><th scope="col">Zone</th><th scope="col" class="desc">About</th><th scope="col" class="addr">Address</th><th scope="col" class="num">Players</th></tr></thead>
-        <tbody id="zonerows"><tr><td colspan="4" class="dim">Loading the zone list…</td></tr></tbody>
-      </table>
-    </div>
-    <p class="dim" id="zonenote"></p>
-  </section>
-</main>
-
-<footer class="site">
-  <span>SubSpace Foundation</span>
-  <a href="/arena/">Player-owned arenas</a>
-  <a href="/arena-owners.html">Owner guide</a>
-  <a href="/account/">Account</a>
-</footer>
-</body>
-</html>
+</section>
+<section class="lab" id="create"><div class="wrap section"><div><p class="eyebrow">PLAYER-OWNED ARENAS</p><h2>Make a place people want to play.</h2><p>Give a racing circuit, a duel format, or a new team game a home inside Foundation. Set the rules, upload your map and graphics, and invite up to five co-mods to help run it.</p><div class="actions"><a class="primary" href="/build.html">+ Create an arena</a><a class="outline" href="arena-owners.html">Read the arena owner guide</a></div></div><div class="panel"><h3>From idea to arena</h3><ol><li><strong>Name it.</strong> Pick a name and launch it. It’s public at once, no approval needed.</li><li><strong>Build it.</strong> Draw the map in your browser, set the rules, upload graphics. Or build in a private draft first.</li><li><strong>Fly it.</strong> Invite friends, pick up to five co-mods, and publish updates whenever you like.</li></ol></div></div></section>
+<section class="wrap section" id="future"><div><p class="eyebrow">WHAT’S NEXT</p><h2>Build and publish from your browser.</h2><p>The map editor is here: open your arena’s map in your browser, draw, and publish. Tile and ship editing come next.</p></div><div class="panel"><h3>A client you can make your own</h3><p>Explore the minimum gameplay standard and a proposal for shareable color themes.</p><a class="outline" href="client-standard.html">Read the client standard</a></div></section>
+</main><footer><div class="wrap"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><span>Built with <a href="https://github.com/DangerMouseUK/oss-client">Open SubSpace</a> and <a href="https://github.com/gigamon-dev/SubspaceServer">SubspaceServer .NET</a>.</span></div></footer></body></html>
