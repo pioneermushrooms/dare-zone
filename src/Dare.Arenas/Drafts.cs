@@ -307,7 +307,7 @@ public sealed partial class ArenaOwnership
     [CommandHelp(
         Targets = CommandTarget.None,
         Args = "add|remove <player>",
-        Description = "Lets a pilot into your draft (up to 5), or takes that back.")]
+        Description = "Lets a pilot into your draft (up to 5), or takes that back. Acts on the draft you're in, or your only one.")]
     private void Command_draftinvite(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null || !player.Flags.Authenticated) return;
@@ -323,18 +323,25 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "<pitch>",
-        Description = "Asks staff to make your draft public. They can fly in it before they decide.")]
+        Args = "[draft] <pitch>",
+        Description = "Asks staff to make your draft public (the one named, the one you're in, or your only one). They can fly in it before they decide.")]
     private void Command_requestpublic(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null || !player.Flags.Authenticated) return;
-        Reply(player, RequestPublicFor(player.Name, null, parameters.ToString(), player).Message);
+        // "?requestpublic <draft> <pitch>" when the first word names one of your drafts; else the
+        // draft you're in (or your only one) and the whole line is the pitch.
+        var (first, rest) = SplitFirst(parameters);
+        var named = rest.Length > 0 && Store.DraftsOwnedBy(player.Name)
+            .Any(d => string.Equals(d.Name, DraftRules.PublicOf(first), StringComparison.OrdinalIgnoreCase));
+        Reply(player, named
+            ? RequestPublicFor(player.Name, first, rest, player).Message
+            : RequestPublicFor(player.Name, null, parameters.ToString(), player).Message);
     }
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = null,
-        Description = "Copies your draft over your public arena (settings, map and graphics) and restarts it.")]
+        Args = "[name]",
+        Description = "Copies your draft (the one named, the one you're in, or your only one) over its public arena: settings, map and graphics. Restarts it.")]
     private void Command_publish(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (player.Name is null || !player.Flags.Authenticated) return;

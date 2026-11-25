@@ -367,9 +367,9 @@ internal sealed partial class WebServer : IDisposable
             case "/staff.js": return Get(method, () => Static("staff.js"));
             case "/api/staff": return method == "GET" ? await StaffDataAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/approve":
-                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffApprove(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffApprove(p, Str(b, "arena") ?? "", Str(b, "player"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/decline":
-                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffDecline(p, Str(b, "arena") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffDecline(p, Str(b, "arena") ?? "", Str(b, "reason") ?? "", Str(b, "player"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/create":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));

@@ -39,7 +39,7 @@ function requestRow(r, can, maxReason) {
     const approve = el("button", { type: "button", textContent: "Approve" });
     approve.addEventListener("click", async () => {
       approve.disabled = true;
-      const { body } = await call("/staff/approve", { arena: r.arena });
+      const { body } = await call("/staff/approve", { arena: r.arena, player: r.player });
       approve.disabled = false;
       say(msg, body);
       if (body?.ok) setTimeout(load, 1200);
@@ -52,7 +52,7 @@ function requestRow(r, can, maxReason) {
     const decline = el("button", { type: "button", className: "hot", textContent: "Decline" });
     decline.addEventListener("click", async () => {
       decline.disabled = true;
-      const { body } = await call("/staff/decline", { arena: r.arena, reason: reason.value });
+      const { body } = await call("/staff/decline", { arena: r.arena, reason: reason.value, player: r.player });
       decline.disabled = false;
       say(msg, body);
       if (body?.ok) setTimeout(load, 1200);

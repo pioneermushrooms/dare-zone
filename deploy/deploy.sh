@@ -24,6 +24,9 @@
 #   sqlite3 /opt/subspace/zone/data/dare-arenas.db "UPDATE accounts SET recovery_email=NULL, email_verified=0
 #     WHERE recovery_email IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM accounts
 #     WHERE recovery_email IS NOT NULL GROUP BY recovery_email COLLATE NOCASE);"
+# Requests withdrawn by their pilot have status 'Withdrawn', which builds before ?withdrawrequest
+# can't read (their request lists fail). Before rolling back past it, with subspace stopped:
+#   sqlite3 /opt/subspace/zone/data/dare-arenas.db "UPDATE requests SET status='Declined', reason='withdrawn' WHERE status='Withdrawn';"
 #
 # Rollback: remote-install.sh rolls back by itself when the new build does not come up (previous
 # plugin folder on a re-deploy; Modules.config and groupdef.dir/default from the backup, so AuthFile is

@@ -354,20 +354,44 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         };
     }
 
-    internal Result? WebStaffApprove(string player, string arena)
+    /// <summary>
+    /// The pending request the staff page showed: <paramref name="arena"/> and, when given, its
+    /// requester, so a stale page can't decide a newer request for the same name.
+    /// </summary>
+    private string? PendingAsShown(string arena, string? requester, out string? why)
+    {
+        why = null;
+        var name = RequestNames.Find(arena, PendingNames());
+        if (name is null)
+        {
+            why = RequestNames.NotFound(arena, PendingNames());
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(requester)
+            && !Store.PendingRequestsOldestFirst(200).Any(r =>
+                string.Equals(r.Arena, name, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(r.Player, requester.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            why = $"The request for '{name}' changed since this page loaded; reload it.";
+            return null;
+        }
+        return name;
+    }
+
+    internal Result? WebStaffApprove(string player, string arena, string? requester)
     {
         if (!WebStaffCan(player, ApproveCapability)) return null;
-        var name = RequestNames.Find(arena, PendingNames());
-        var result = name is null ? new Result(false, RequestNames.NotFound(arena, PendingNames())) : ApproveArena(player, name);
+        var name = PendingAsShown(arena, requester, out var why);
+        var result = name is null ? new Result(false, why!) : ApproveArena(player, name);
         Log(LogLevel.Info, $"(web) {player} approve '{arena}': {(result.Ok ? "done" : "refused: " + result.Message)}");
         return result;
     }
 
-    internal Result? WebStaffDecline(string player, string arena, string reason)
+    internal Result? WebStaffDecline(string player, string arena, string reason, string? requester)
     {
         if (!WebStaffCan(player, DeclineCapability)) return null;
-        var name = RequestNames.Find(arena, PendingNames());
-        var result = name is null ? new Result(false, RequestNames.NotFound(arena, PendingNames())) : DeclineArena(player, name, reason);
+        var name = PendingAsShown(arena, requester, out var why);
+        var result = name is null ? new Result(false, why!) : DeclineArena(player, name, reason);
         Log(LogLevel.Info, $"(web) {player} decline '{arena}': {(result.Ok ? "done" : "refused: " + result.Message)}");
         return result;
     }

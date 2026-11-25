@@ -56,7 +56,7 @@ public sealed class ArenaStoreTests : IDisposable
         var s = Owned();
         Assert.Equal("Big Chris", s.Get("BIGARENA")!.Owner);
         Assert.Equal("owner", s.RoleIn("bigarena", "big chris"));
-        Assert.Equal("bigarena", s.OwnedBy("BIG CHRIS")!.Name);
+        Assert.Equal("bigarena", s.OwnedArenas("BIG CHRIS").Single().Name);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public sealed class ArenaStoreTests : IDisposable
         Assert.Equal(before.Created, a.Created);
         Assert.Equal(before.Status, a.Status);
         Assert.Equal(new[] { "m", "n" }, a.CoMods.OrderBy(x => x));
-        Assert.Null(s.OwnedBy("a"));
+        Assert.Empty(s.OwnedArenas("a"));
     }
 
     [Fact]

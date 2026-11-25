@@ -234,7 +234,7 @@ public sealed partial class ArenaStore
             using var cmd = Cmd("""
                 SELECT a.name, a.owner FROM arenas a
                 WHERE a.status <> 'Archived'
-                  AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.name = a.name OR (d.owner = a.owner AND d.status <> 'Archived'))
+                  AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.name = a.name)
                 ORDER BY a.name
                 """);
             using var r = cmd.ExecuteReader();
@@ -244,7 +244,7 @@ public sealed partial class ArenaStore
         {
             var res = Tx(() =>
             {
-                if (Scalar("SELECT COUNT(*) FROM drafts WHERE name = $n OR (owner = $o AND status <> 'Archived')", ("$n", name), ("$o", owner)) > 0)
+                if (Scalar("SELECT COUNT(*) FROM drafts WHERE name = $n", ("$n", name)) > 0)
                     return Fail("already has a draft");
                 var error = copyFiles(name);
                 if (error is not null) return Fail(error);
@@ -357,6 +357,10 @@ public sealed partial class ArenaStore
 
     private bool IsDraftRequestId(long id) =>
         Scalar("SELECT COALESCE(draft, 0) FROM requests WHERE id = $id", ("$id", id)) == 1;
+
+    /// <summary>A live arena and its draft share fate: archiving the arena archives its draft too.</summary>
+    private void ArchiveLiveDraft(string arena) =>
+        Run("UPDATE drafts SET status='Archived' WHERE name=$a AND live=1", ("$a", arena));
 
     // An archived draft keeps its name but frees its slot.
     private long DraftCount(string player) =>

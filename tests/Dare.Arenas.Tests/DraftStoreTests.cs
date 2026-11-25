@@ -397,4 +397,45 @@ public sealed class DraftStoreTests : IDisposable
         Open(); // a second start leaves it as it is
         Assert.Equal(2, Open().OwnedArenas("OWNER").Count);
     }
+
+    [Fact]
+    public void reviving_an_arena_respects_the_limit_of_three()
+    {
+        var s = Open();
+        foreach (var n in new[] { "aaa", "bbb", "ccc" })
+        {
+            Assert.True(s.Request("Pilot", n, "p").Ok);
+            Assert.True(s.Approve(n, "staff", NoFolder).Ok);
+        }
+        Assert.True(s.Archive("aaa", "staff").Ok);
+        Assert.True(s.Request("Pilot", "ddd", "p").Ok);
+        Assert.True(s.Approve("ddd", "staff", NoFolder).Ok);
+        var revive = s.Revive("aaa", "staff");
+        Assert.False(revive.Ok);
+        Assert.Contains("3", revive.Message);
+    }
+
+    [Fact]
+    public void backfill_gives_each_arena_its_draft_even_when_the_owner_has_other_drafts()
+    {
+        var s = Open();
+        Assert.True(s.Request("Owner", "bigarena", "pitch").Ok);
+        Assert.True(s.Approve("bigarena", "staff", NoFolder).Ok);
+        ForgetDraft("bigarena");
+        Assert.True(s.CreateDraft("owner", "sidething", NoFolder, Made).Ok);
+        Assert.Equal(new[] { "bigarena" }, s.BackfillDrafts(_ => null));
+    }
+
+    [Fact]
+    public void archiving_an_arena_archives_its_draft_and_reviving_restores_it()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "skyrace", "p").Ok);
+        Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
+        Assert.True(s.Archive("skyrace", "staff").Ok);
+        Assert.Equal(DraftStatus.Archived, s.Draft("skyrace")!.Status);
+        Assert.Empty(s.DraftsOwnedBy("pilot"));
+        Assert.True(s.Revive("skyrace", "staff").Ok);
+        Assert.Equal(DraftStatus.Published, s.Draft("skyrace")!.Status);
+    }
 }

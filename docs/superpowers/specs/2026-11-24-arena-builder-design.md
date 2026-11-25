@@ -70,7 +70,7 @@ Approaches considered:
    "Publish update" copies the draft's files to the live `<name>` and recycles it. Staff
    approve only the first publish. Every publish is in the public event log. Staff can roll
    back the last publish or suspend the arena, as today.
-6. **Guardrails.** One draft per pilot. Same upload size limits. A draft untouched (not
+6. **Guardrails.** Up to 3 drafts, 3 public arenas and 3 waiting requests per pilot (Chris, 2026-11-25; was one). Same upload size limits. A draft untouched (not
    edited, not entered) for 30 days is archived, not deleted (as with public arenas, and
    revivable on request).
 

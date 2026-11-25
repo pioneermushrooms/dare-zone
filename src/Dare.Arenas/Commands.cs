@@ -202,21 +202,23 @@ public sealed partial class ArenaOwnership
     {
         if (player.Name is null) return;
 
-        var owned = Store.OwnedBy(player.Name);
-        if (owned is null)
+        var owned = Store.OwnedArenas(player.Name);
+        var pending = Store.Requests(pendingOnly: true, 1000)
+            .Where(r => string.Equals(r.Player, player.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (owned.Count == 0 && pending.Count == 0)
         {
-            var pending = Store.Requests(pendingOnly: true, 1000)
-                .FirstOrDefault(r => string.Equals(r.Player, player.Name, StringComparison.OrdinalIgnoreCase));
-            Reply(player, pending is not null
-                ? $"Your request for '{pending.Arena}' is pending ({When(pending.At)}). See ?arenarequests."
-                : "You don't own an arena. Request one with ?requestarena <name> <pitch>.");
+            Reply(player, "You don't own an arena. Build one with ?draft <name> (or at subspacefoundation.com/build.html).");
             return;
         }
-
-        Reply(player, $"Your arena: {owned.Name} ({owned.Status})");
-        Reply(player, $"  Co-mods ({owned.CoMods.Count}/{ArenaStore.MaxCoMods}): {(owned.CoMods.Count == 0 ? "none" : string.Join(", ", owned.CoMods))}");
-        Reply(player, $"  Last entered: {When(owned.LastEntered)}   Created: {When(owned.Created)}");
-        Reply(player, "  Type ?weblogin for the web page");
+        foreach (var a in owned)
+        {
+            Reply(player, $"Your arena: {a.Name} ({a.Status}){(Store.IsLiveWithDraft(a.Name) ? $"; build in #{a.Name}, then ?publish" : "")}");
+            Reply(player, $"  Co-mods ({a.CoMods.Count}/{ArenaStore.MaxCoMods}): {(a.CoMods.Count == 0 ? "none" : string.Join(", ", a.CoMods))}");
+            Reply(player, $"  Last entered: {When(a.LastEntered)}   Created: {When(a.Created)}");
+        }
+        foreach (var r in pending)
+            Reply(player, $"Waiting for staff: '{r.Arena}' ({When(r.At)}). Take it back with ?withdrawrequest {r.Arena}.");
+        Reply(player, "Your drafts: ?draft. The web page: ?weblogin or subspacefoundation.com/build.html.");
     }
 
     // ---- staff ----------------------------------------------------------------------

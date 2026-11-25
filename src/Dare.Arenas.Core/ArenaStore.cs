@@ -115,7 +115,7 @@ public sealed partial class ArenaStore : IDisposable
             return Fail($"Arena '{arena}' already has a pending request.");
         if (LoadDraft(arena) is { } d)
             return Fail(Same(d.Owner, player)
-                ? $"That's your draft #{d.Name}; ask with ?requestpublic {d.Name} <pitch>."
+                ? $"That's your draft #{d.Name}; ask with ?requestpublic {d.Name} <what it's for>."
                 : $"Arena '{arena}' is already taken.");
         var now = Now();
         Run("INSERT INTO requests(arena, player, pitch, status, at) VALUES($a,$p,$pitch,'Pending',$at)",
@@ -233,12 +233,16 @@ public sealed partial class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (a.Status == ArenaStatus.Active) return Fail($"Arena '{arena}' is already active.");
+        if (a.Status == ArenaStatus.Archived && OwnedCount(a.Owner) >= MaxPerPilot)
+            return Fail($"{a.Owner} already owns {MaxPerPilot} other arenas; transfer or archive one first.");
         var folderError = ensureFolder();
         if (folderError is not null)
             return Fail($"Can't revive '{arena}': {folderError}");
         Run("DELETE FROM pending_archive_moves WHERE arena=$a", ("$a", arena));
         var now = Now();
         Run("UPDATE arenas SET status='Active', last_entered=$t WHERE name=$a", ("$t", now), ("$a", arena));
+        // its live draft comes back with it
+        Run("UPDATE drafts SET status='Published', last_touched=$t WHERE name=$a AND live=1 AND status='Archived'", ("$t", now), ("$a", arena));
         AddEvent(now, arena, staff, "revive", $"was {a.Status}");
         return Ok($"Revived '{arena}'.");
     });
@@ -271,6 +275,7 @@ public sealed partial class ArenaStore : IDisposable
         if (a.Status == ArenaStatus.Archived) return Fail($"Arena '{arena}' is already archived.");
         var now = Now();
         Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", arena));
+        ArchiveLiveDraft(arena);
         AddPendingMove(arena, now);
         AddEvent(now, arena, staff, "archive", $"by staff (was {a.Status})");
         return Ok($"Archived '{arena}'.");
@@ -300,6 +305,7 @@ public sealed partial class ArenaStore : IDisposable
             {
                 if (skip(n)) continue;
                 Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", n));
+                ArchiveLiveDraft(n);
                 AddPendingMove(n, now);
                 AddEvent(now, n, "system", "archive", $"idle more than {(int)idle.TotalDays} days");
                 archived.Add(n);
@@ -327,16 +333,6 @@ public sealed partial class ArenaStore : IDisposable
     public OwnedArena? Get(string arena)
     {
         lock (_gate) return Load(arena);
-    }
-
-    public OwnedArena? OwnedBy(string player)
-    {
-        lock (_gate)
-        {
-            using var cmd = Cmd("SELECT name FROM arenas WHERE owner = $p", ("$p", player));
-            var name = cmd.ExecuteScalar() as string;
-            return name is null ? null : Load(name);
-        }
     }
 
     public string? RoleIn(string arena, string player)
