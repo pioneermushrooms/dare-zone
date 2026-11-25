@@ -3,20 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>New password · SubSpace Foundation</title>
+<title>New password — SubSpace Foundation</title>
 <link rel="stylesheet" href="/account/style.css">
 <script src="/account/account.js" defer></script>
 </head>
 <body data-page="reset">
-<header class="top">
-  <a class="brand" href="/">FOUNDATION</a>
-  <nav><a href="/arena/">Arenas</a><a href="/#zones">Zones</a><a class="cta" href="/arena/me">Your hub</a></nav>
-</header>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
 <main class="panel narrow">
   <h2>Set a new password</h2>
   <p class="dim" id="sent">Enter the code we emailed you (valid 10 minutes).</p>
   <form method="post" class="stack" id="form">
     <label>Recovery email <input name="email" type="email" maxlength="254" autocomplete="email" required></label>
+    <label>Pilot name <input name="name" maxlength="20" autocomplete="username">
+      <span class="hint">Only needed when this email has more than one pilot; the email lists them.</span></label>
     <label>Code <input name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
     <label>New password <input name="password" type="password" minlength="8" maxlength="31" autocomplete="new-password" required>
       <span class="hint">8–31 characters.</span></label>

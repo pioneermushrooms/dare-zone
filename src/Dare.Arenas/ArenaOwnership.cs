@@ -114,6 +114,7 @@ public sealed partial class ArenaOwnership : IModule
 
         // Archived arenas' folders move now, before any arena with that name can be created.
         ProcessPendingArchiveMoves();
+        BackfillDrafts();
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();
@@ -158,6 +159,15 @@ public sealed partial class ArenaOwnership : IModule
         try
         {
             var baseName = arena.BaseName;
+            if (DraftRules.IsDraft(baseName))
+            {
+                // a plain private arena (?go #anything) is nobody's: leave it alone
+                if (_store.Draft(baseName) is null || !DraftEntryAllowed(player, arena))
+                    return;
+                ApplyGrant(player, arena);
+                _store.TouchDraft(baseName);
+                return;
+            }
             if (_store.Get(baseName) is null)
                 return;
 

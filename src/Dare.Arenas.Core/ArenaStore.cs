@@ -11,9 +11,11 @@ namespace Dare.Arenas.Core;
 /// ArchiveMoveDone is bookkeeping and appends none). Archiving records a pending folder move
 /// (table pending_archive_moves) that the module carries out at its next start.
 /// </summary>
-public sealed class ArenaStore : IDisposable
+public sealed partial class ArenaStore : IDisposable
 {
     public const int MaxCoMods = 5;
+    /// <summary>Public arenas one pilot may own, drafts they may keep (not archived), and requests they may have waiting.</summary>
+    public const int MaxPerPilot = 3;
 
     private readonly SqliteConnection _conn;
     private readonly Func<DateTimeOffset> _clock;
@@ -46,7 +48,7 @@ public sealed class ArenaStore : IDisposable
             );
             CREATE TABLE IF NOT EXISTS arenas (
               name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
-              owner TEXT NOT NULL UNIQUE COLLATE NOCASE,
+              owner TEXT NOT NULL COLLATE NOCASE,
               status TEXT NOT NULL,
               created TEXT NOT NULL,
               last_entered TEXT NOT NULL
@@ -71,7 +73,25 @@ public sealed class ArenaStore : IDisposable
             CREATE INDEX IF NOT EXISTS ix_requests_player ON requests(player, status);
             CREATE INDEX IF NOT EXISTS ix_requests_arena ON requests(arena, status);
             CREATE INDEX IF NOT EXISTS ix_events_arena ON events(arena, id);
+            CREATE TABLE IF NOT EXISTS drafts (
+              name TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+              owner TEXT NOT NULL COLLATE NOCASE,
+              status TEXT NOT NULL,
+              live INTEGER NOT NULL DEFAULT 0,
+              created TEXT NOT NULL,
+              last_touched TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_drafts_owner ON drafts(owner, status);
+            CREATE TABLE IF NOT EXISTS draft_invites (
+              name TEXT NOT NULL COLLATE NOCASE,
+              player TEXT NOT NULL COLLATE NOCASE,
+              PRIMARY KEY (name, player)
+            );
             """);
+        if (Scalar("SELECT COUNT(*) FROM pragma_table_info('requests') WHERE name = 'draft'") == 0)
+            Exec("ALTER TABLE requests ADD COLUMN draft INTEGER NULL;");
+        AllowSeveralArenasPerOwner();
+        Exec("CREATE INDEX IF NOT EXISTS ix_arenas_owner ON arenas(owner);");
     }
 
     public void Dispose()
@@ -85,14 +105,18 @@ public sealed class ArenaStore : IDisposable
     {
         if (string.IsNullOrWhiteSpace(player) || string.IsNullOrWhiteSpace(arena))
             return Fail("Player and arena name are required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", player)) > 0)
-            return Fail("You already own an arena.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", player)) > 0)
-            return Fail("You already have a pending arena request.");
+        if (OwnedCount(player) >= MaxPerPilot)
+            return Fail($"You already own {MaxPerPilot} arenas.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", player)) >= MaxPerPilot)
+            return Fail($"You already have {MaxPerPilot} arena requests waiting; withdraw one with ?withdrawrequest.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
         if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' already has a pending request.");
+        if (LoadDraft(arena) is { } d)
+            return Fail(Same(d.Owner, player)
+                ? $"That's your draft #{d.Name}; ask with ?requestpublic {d.Name} <what it's for>."
+                : $"Arena '{arena}' is already taken.");
         var now = Now();
         Run("INSERT INTO requests(arena, player, pitch, status, at) VALUES($a,$p,$pitch,'Pending',$at)",
             ("$a", arena), ("$p", player), ("$pitch", pitch ?? ""), ("$at", now));
@@ -112,14 +136,16 @@ public sealed class ArenaStore : IDisposable
     {
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
-        if (Same(req.Player, staff))
-            return Fail("You can't decide your own request; another staff member must.");
         if (folderExists(arena))
             return Fail($"A folder named '{arena}' already exists on the server; cannot approve.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", req.Player)) > 0)
-            return Fail($"{req.Player} already owns an arena.");
+        if (OwnedCount(req.Player) >= MaxPerPilot)
+            return Fail($"{req.Player} already owns {MaxPerPilot} arenas.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
+        var fromDraft = IsDraftRequestId(req.Id);
+        var existingDraft = LoadDraft(arena);
+        if (!fromDraft && existingDraft is null && DraftCount(req.Player) >= MaxPerPilot)
+            return Fail($"{req.Player} already has {MaxPerPilot} drafts; the arena would have none.");
         var folderError = createFolder();
         if (folderError is not null)
             return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was approved and the request is still pending.");
@@ -127,83 +153,18 @@ public sealed class ArenaStore : IDisposable
         Run("UPDATE requests SET status='Approved', decided_by=$s WHERE id=$id", ("$s", staff), ("$id", req.Id));
         Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
             ("$a", arena), ("$o", req.Player), ("$t", now));
-        AddEvent(now, arena, staff, "approve", $"owner: {req.Player}");
-        return Ok($"Approved '{arena}' for {req.Player}.");
-    });
-
-    /// <summary>
-    /// Staff create an arena directly (no request): <paramref name="owner"/> owns it at once. Same
-    /// checks as <see cref="Approve(string, string, Func{string, bool}, Func{string?})"/> on the
-    /// owner and the name, and refuses a name someone has a pending request for (decide that first)
-    /// and an owner with a pending request (approving it later would fail). <paramref name="createFolder"/>
-    /// runs inside the transaction after every check passed; on error nothing is created.
-    /// </summary>
-    public Result Create(string arena, string staff, string owner, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
-    {
-        if (string.IsNullOrWhiteSpace(arena) || string.IsNullOrWhiteSpace(staff) || string.IsNullOrWhiteSpace(owner))
-            return Fail("Arena name, staff and owner are required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
-            return Fail($"Arena '{arena}' is already taken.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
-            return Fail($"Arena '{arena}' has a pending request; approve or decline it instead.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", owner)) > 0)
-            return Fail($"{owner} already owns an arena.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", owner)) > 0)
-            return Fail($"{owner} has a pending arena request; approve or decline it first.");
-        if (folderExists(arena))
-            return Fail($"A folder named '{arena}' already exists on the server; cannot create.");
-        var folderError = createFolder();
-        if (folderError is not null)
-            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
-        var now = Now();
-        Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
-            ("$a", arena), ("$o", owner), ("$t", now));
-        AddEvent(now, arena, staff, "create", $"owner: {owner}");
-        return Ok($"Created '{arena}' for {owner}.");
-    });
-
-    /// <summary>
-    /// A player launches an arena themselves (no staff approval): they own it at once. The limits are
-    /// the ones a request had: one arena per player, a free name, no other player's pending request
-    /// for it (staff decide those first). The player's own pending request, if any, is closed: approved
-    /// when it is for this name, withdrawn (declined by themselves) otherwise. The launch is recorded
-    /// as an approved request (decided by the player) so it shows in the public list, plus a
-    /// <c>launch</c> event. <paramref name="createFolder"/> runs inside the transaction after every
-    /// check passed; on error nothing changes.
-    /// </summary>
-    public Result Launch(string arena, string player, string pitch, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
-    {
-        if (string.IsNullOrWhiteSpace(player) || string.IsNullOrWhiteSpace(arena))
-            return Fail("Player and arena name are required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", player)) > 0)
-            return Fail("You already own an arena.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
-            return Fail($"Arena '{arena}' is already taken.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending' AND player <> $p",
-                ("$a", arena), ("$p", player)) > 0)
-            return Fail($"Someone already asked for '{arena}'; pick another name.");
-        if (folderExists(arena))
-            return Fail($"A folder named '{arena}' already exists on the server; pick another name.");
-        var folderError = createFolder();
-        if (folderError is not null)
-            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
-
-        var now = Now();
-        pitch ??= "";
-        var ownRequest = Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending' AND arena = $a",
-            ("$p", player), ("$a", arena)) > 0;
-        Run("UPDATE requests SET status='Declined', decided_by=$p, reason=$r WHERE player = $p AND status = 'Pending' AND arena <> $a",
-            ("$p", player), ("$a", arena), ("$r", $"withdrawn: launched {arena}"));
-        if (ownRequest)
-            Run("UPDATE requests SET status='Approved', decided_by=$p WHERE player = $p AND status = 'Pending' AND arena = $a",
-                ("$p", player), ("$a", arena));
+        if (existingDraft is null)
+            Run("INSERT INTO drafts(name, owner, status, live, created, last_touched) VALUES($a,$o,'Published',1,$t,$t)",
+                ("$a", arena), ("$o", req.Player), ("$t", now));
         else
-            Run("INSERT INTO requests(arena, player, pitch, status, decided_by, at) VALUES($a,$p,$pitch,'Approved',$p,$at)",
-                ("$a", arena), ("$p", player), ("$pitch", pitch), ("$at", now));
-        Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
-            ("$a", arena), ("$o", player), ("$t", now));
-        AddEvent(now, arena, player, "launch", pitch);
-        return Ok($"Launched '{arena}'. It's yours.");
+        {
+            Run("UPDATE drafts SET status='Published', live=1, last_touched=$t WHERE name=$a", ("$t", now), ("$a", arena));
+            // the draft's co-mods help run the live arena too
+            Run("INSERT OR IGNORE INTO comods(arena, player) SELECT $a, player FROM comods WHERE arena = $d",
+                ("$a", arena), ("$d", DraftRules.DraftOf(arena)));
+        }
+        AddEvent(now, arena, staff, "approve", $"owner: {req.Player}{(fromDraft ? " (from draft)" : "")}");
+        return Ok($"Approved '{arena}' for {req.Player}.");
     });
 
     public Result Decline(string arena, string staff, string reason) => Tx(() =>
@@ -211,18 +172,18 @@ public sealed class ArenaStore : IDisposable
         if (string.IsNullOrWhiteSpace(reason)) return Fail("A reason is required to decline a request.");
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
-        if (Same(req.Player, staff))
-            return Fail("You can't decide your own request; another staff member must.");
         var now = Now();
         Run("UPDATE requests SET status='Declined', decided_by=$s, reason=$r WHERE id=$id",
             ("$s", staff), ("$r", reason), ("$id", req.Id));
+        if (IsDraftRequestId(req.Id))
+            Run("UPDATE drafts SET status='Active' WHERE name=$a AND status='Requested'", ("$a", arena));
         AddEvent(now, arena, staff, "decline", $"{req.Player}: {reason}");
         return Ok($"Declined '{arena}'.");
     });
 
     public Result AddCoMod(string arena, string owner, string player) => Tx(() =>
     {
-        var a = Load(arena);
+        var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (!Same(a.Owner, owner)) return Fail("Only the arena owner can add co-mods.");
         if (string.IsNullOrWhiteSpace(player)) return Fail("Player name is required.");
@@ -230,17 +191,21 @@ public sealed class ArenaStore : IDisposable
         if (a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is already a co-mod.");
         if (a.CoMods.Count >= MaxCoMods) return Fail($"An arena can have at most {MaxCoMods} co-mods.");
         Run("INSERT INTO comods(arena, player) VALUES($a,$p)", ("$a", arena), ("$p", player));
+        if (MirrorOf(arena) is { } other)
+            Run("INSERT OR IGNORE INTO comods(arena, player) VALUES($a,$p)", ("$a", other), ("$p", player));
         AddEvent(Now(), arena, owner, "comod-add", player);
         return Ok($"{player} is now a co-mod of '{arena}'.");
     });
 
     public Result RemoveCoMod(string arena, string owner, string player) => Tx(() =>
     {
-        var a = Load(arena);
+        var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (!Same(a.Owner, owner)) return Fail("Only the arena owner can remove co-mods.");
         if (!a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is not a co-mod.");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", player));
+        if (MirrorOf(arena) is { } other)
+            Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", other), ("$p", player));
         AddEvent(Now(), arena, owner, "comod-remove", player);
         return Ok($"{player} is no longer a co-mod of '{arena}'.");
     });
@@ -268,12 +233,16 @@ public sealed class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (a.Status == ArenaStatus.Active) return Fail($"Arena '{arena}' is already active.");
+        if (a.Status == ArenaStatus.Archived && OwnedCount(a.Owner) >= MaxPerPilot)
+            return Fail($"{a.Owner} already owns {MaxPerPilot} other arenas; transfer or archive one first.");
         var folderError = ensureFolder();
         if (folderError is not null)
             return Fail($"Can't revive '{arena}': {folderError}");
         Run("DELETE FROM pending_archive_moves WHERE arena=$a", ("$a", arena));
         var now = Now();
         Run("UPDATE arenas SET status='Active', last_entered=$t WHERE name=$a", ("$t", now), ("$a", arena));
+        // its live draft comes back with it
+        Run("UPDATE drafts SET status='Published', last_touched=$t WHERE name=$a AND live=1 AND status='Archived'", ("$t", now), ("$a", arena));
         AddEvent(now, arena, staff, "revive", $"was {a.Status}");
         return Ok($"Revived '{arena}'.");
     });
@@ -283,10 +252,17 @@ public sealed class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (string.IsNullOrWhiteSpace(newOwner)) return Fail("New owner is required.");
-        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", newOwner)) > 0)
-            return Fail($"{newOwner} already owns an arena.");
+        if (OwnedCount(newOwner) >= MaxPerPilot)
+            return Fail($"{newOwner} already owns {MaxPerPilot} arenas.");
+        if (LoadDraft(arena) is { Status: not DraftStatus.Archived } && DraftCount(newOwner) >= MaxPerPilot)
+            return Fail($"{newOwner} already has {MaxPerPilot} drafts.");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", newOwner));
         Run("UPDATE arenas SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
+        // the draft goes with the arena; the old owner's invites go with the old owner
+        var draft = DraftRules.DraftOf(arena);
+        Run("DELETE FROM comods WHERE arena=$d AND player=$p", ("$d", draft), ("$p", newOwner));
+        Run("UPDATE drafts SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
+        Run("DELETE FROM draft_invites WHERE name=$a", ("$a", arena));
         AddEvent(Now(), arena, staff, "transfer", $"{a.Owner} -> {newOwner}");
         return Ok($"Transferred '{arena}' to {newOwner}.");
     });
@@ -299,6 +275,7 @@ public sealed class ArenaStore : IDisposable
         if (a.Status == ArenaStatus.Archived) return Fail($"Arena '{arena}' is already archived.");
         var now = Now();
         Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", arena));
+        ArchiveLiveDraft(arena);
         AddPendingMove(arena, now);
         AddEvent(now, arena, staff, "archive", $"by staff (was {a.Status})");
         return Ok($"Archived '{arena}'.");
@@ -328,6 +305,7 @@ public sealed class ArenaStore : IDisposable
             {
                 if (skip(n)) continue;
                 Run("UPDATE arenas SET status='Archived' WHERE name=$a", ("$a", n));
+                ArchiveLiveDraft(n);
                 AddPendingMove(n, now);
                 AddEvent(now, n, "system", "archive", $"idle more than {(int)idle.TotalDays} days");
                 archived.Add(n);
@@ -357,19 +335,9 @@ public sealed class ArenaStore : IDisposable
         lock (_gate) return Load(arena);
     }
 
-    public OwnedArena? OwnedBy(string player)
-    {
-        lock (_gate)
-        {
-            using var cmd = Cmd("SELECT name FROM arenas WHERE owner = $p", ("$p", player));
-            var name = cmd.ExecuteScalar() as string;
-            return name is null ? null : Load(name);
-        }
-    }
-
     public string? RoleIn(string arena, string player)
     {
-        var a = Get(arena);
+        var a = DraftRules.IsDraft(arena) ? DraftAsArena(arena) : Get(arena);
         if (a is null || a.Status != ArenaStatus.Active) return null;
         if (Same(a.Owner, player)) return "owner";
         return a.CoMods.Any(c => Same(c, player)) ? "comod" : null;
@@ -381,10 +349,17 @@ public sealed class ArenaStore : IDisposable
         lock (_gate)
         {
             using var cmd = Cmd("""
-                SELECT name, 'owner' AS role, 0 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
+                SELECT name, 'owner' AS role, 1 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
                 UNION ALL
-                SELECT a.name, 'comod', 1 FROM comods c JOIN arenas a ON a.name = c.arena
+                SELECT a.name, 'comod', 3 FROM comods c JOIN arenas a ON a.name = c.arena
                   WHERE c.player = $p AND a.status = 'Active'
+                UNION ALL
+                SELECT '#' || d.name, 'owner', 0 FROM drafts d WHERE d.owner = $p AND d.status <> 'Archived'
+                  AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
+                UNION ALL
+                SELECT '#' || d.name, 'comod', 2 FROM comods c JOIN drafts d ON c.arena = '#' || d.name
+                  WHERE c.player = $p AND d.status <> 'Archived'
+                  AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
                 ORDER BY ord, name
                 """, ("$p", player));
             using var r = cmd.ExecuteReader();

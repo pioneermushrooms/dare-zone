@@ -3,16 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your hub · SubSpace Foundation</title>
+<title>Your arena — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="me">
-<header class="top">
-  <a class="brand" href="/">FOUNDATION</a>
-  <nav><a href="/arena/">Arenas</a><a href="/#zones">Zones</a><a href="/account/">Account</a></nav>
-</header>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<div class="page-head"><p class="eyebrow">YOUR ARENA</p><h1>Arena tools</h1></div>
 
 <main class="panel narrow" id="signin" hidden>
   <h2>Sign in to make stuff</h2>
@@ -32,7 +30,7 @@
     <a href="#make" data-view="make">Make an arena</a>
     <hr>
     <a href="/account/">Account</a>
-    <a href="/arena/staff" id="stafflink" hidden>Staff</a>
+    <a href="/arena/staff" id="stafflink" hidden>Staff desk</a>
   </nav>
 
   <div class="content">
@@ -40,7 +38,7 @@
     <section data-view="make" hidden>
       <p class="kicker">Make an arena</p>
       <h2 id="maketitle">Name it. Launch it.</h2>
-      <p class="dim" id="makeinfo">It's yours at once: map, graphics, rules and crew. One arena per player.</p>
+      <p class="dim" id="makeinfo">It goes public at once and it's yours: map, graphics, rules and crew. You also get a private draft #name to keep building in. Up to 3 arenas per pilot.</p>
       <form class="stack" id="requestform">
         <label>Arena name <input type="text" id="reqname" maxlength="15" pattern="[A-Za-z][A-Za-z0-9]{1,13}[A-Za-z]" title="3-15 letters and digits (a-z, 0-9); start with a letter, do not end in a digit" required autocomplete="off">
           <span class="hint">3–15 letters and digits; starts with a letter, doesn't end in a digit.</span></label>
@@ -49,6 +47,7 @@
         <button type="submit" class="hot">Launch arena</button>
       </form>
       <p class="msg" id="reqmsg"></p>
+      <p class="dim">Rather build in private first? Use the <a href="/build.html">arena builder</a>: a draft only you and your invited pilots can enter, public when you say so.</p>
       <div id="staffcreate" hidden>
         <h3>Staff: make one for someone else</h3>
         <p class="dim">The owner needs a Foundation account.</p>

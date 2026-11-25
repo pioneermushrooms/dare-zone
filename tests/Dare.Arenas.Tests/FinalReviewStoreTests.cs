@@ -76,18 +76,14 @@ public sealed class FinalReviewStoreTests : IDisposable
     // ---- self-approval ----------------------------------------------------------------------------
 
     [Fact]
-    public void staff_cannot_approve_or_decline_their_own_request()
+    public void staff_may_decide_their_own_request()
     {
+        // only staff can decide at all (cmd_approvearena); Chris: staff need no second approver
         var s = Open();
         s.Request("Moddy", "moddyland", "x");
-        var a = s.Approve("moddyland", "moddy", NoFolder);
-        Assert.False(a.Ok);
-        Assert.Contains("own request", a.Message);
-        var d = s.Decline("moddyland", "MODDY", "changed my mind");
-        Assert.False(d.Ok);
-        Assert.Contains("own request", d.Message);
-        Assert.Single(s.Requests(true, 10));
-        Assert.True(s.Approve("moddyland", "Tester", NoFolder).Ok);
+        Assert.True(s.Approve("moddyland", "moddy", NoFolder).Ok);
+        s.Request("Other", "otherland", "x");
+        Assert.True(s.Decline("otherland", "OTHER", "changed my mind").Ok);
     }
 
     // ---- revive needs a folder --------------------------------------------------------------------

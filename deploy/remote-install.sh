@@ -5,7 +5,7 @@
 #   remote-install.sh <stageDir> [--sysop <name>] [--no-restart] [--force]
 #
 # <stageDir> holds deploy/ (this folder from the repo), plugin/ (the Release build of
-# Dare.Arenas) and site/ (index.html, arena-owners.html, home.js, style.css, img/).
+# Dare.Arenas) and site/ (index.html, arena-owners.html).
 #
 # What it does, in order:
 #  0. preflight: the zone's server must be SubspaceServer v4.0.0 with the Microsoft.Data.Sqlite /
@@ -14,7 +14,7 @@
 #  1. backs up every file it may change to /root/backup-arena-ownership-<utc timestamp>/
 #     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
 #     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
-#  2. copies site/ (pages, home.js, style.css, img/) to /var/www/foundation
+#  2. copies static site files to /var/www/foundation
 #  3. adds deploy/Caddyfile.snippet (/arena/* and /account/*) to the subspacefoundation.com block of
 #     /etc/caddy/Caddyfile (each part once), validates and reloads Caddy; a config that does not validate is not installed
 #     (steps 2-3 come first so a failure there leaves the zone untouched)
@@ -167,7 +167,15 @@ rollback() {
   else
     echo "!!!! could not validate/reload the restored Caddyfile - check $CADDYFILE by hand" >&2
   fi
-  if [ -d "$BACKUP/site" ]; then cp -a "$BACKUP/site/." "$SITE/"; echo "restored the static site" >&2; fi
+  if [ -d "$BACKUP/site" ]; then
+    for path in "$STAGE/site/"*; do
+      [ -f "$path" ] && [ ! -L "$path" ] || continue
+      f=${path##*/}
+      if [ ! -e "$BACKUP/site/$f" ]; then rm -f -- "$SITE/$f"; fi
+    done
+    cp -a "$BACKUP/site/." "$SITE/"
+    echo "restored the static site" >&2
+  fi
   since=$(date '+%Y-%m-%d %H:%M:%S')
   systemctl restart subspace
   if wait_healthy "$since" "$expect"; then
@@ -192,7 +200,7 @@ for f in Microsoft.Data.Sqlite.dll SQLitePCLRaw.core.dll SQLitePCLRaw.batteries_
 done
 [ -f "$STAGE/plugin/Dare.Arenas.dll" ] || die "$STAGE/plugin has no Dare.Arenas.dll"
 if compgen -G "$STAGE/plugin/*[sS][qQ][lL][iI][tT][eE]*" >/dev/null; then die "plugin folder carries its own sqlite files; it must use the server's"; fi
-for f in index.html arena-owners.html home.js style.css img/hero.png; do [ -f "$STAGE/site/$f" ] || die "$STAGE/site is incomplete (no $f)"; done
+[ -f "$STAGE/site/index.html" ] && [ -f "$STAGE/site/arena-owners.html" ] || die "$STAGE/site is incomplete"
 if [ -f "$ZONE/data/dare-arenas.db" ]; then
   if command -v sqlite3 >/dev/null 2>&1; then echo "store backup: sqlite3"
   elif python3 -c 'import sqlite3' 2>/dev/null; then echo "store backup: python3 sqlite3 (no sqlite3 CLI)"
@@ -233,9 +241,11 @@ find "$BACKUP" | sed 's/^/  /'
 
 # ---- 2. static site -----------------------------------------------------------------------
 step "site ($SITE)"
-mkdir -p "$SITE" "$SITE/img"
-for f in index.html arena-owners.html home.js style.css $(cd "$STAGE/site" && ls img/*.png); do
-  if cmp -s "$STAGE/site/$f" "$SITE/$f"; then echo "$f unchanged"; else install -m 644 "$STAGE/site/$f" "$SITE/$f"; echo "$f installed"; fi
+mkdir -p "$SITE"
+for path in "$STAGE/site/"*; do
+  [ -f "$path" ] && [ ! -L "$path" ] || continue
+  f=${path##*/}
+  if cmp -s "$path" "$SITE/$f"; then echo "$f unchanged"; else install -m 644 "$path" "$SITE/$f"; echo "$f installed"; fi
 done
 
 # ---- 3. caddy -----------------------------------------------------------------------------

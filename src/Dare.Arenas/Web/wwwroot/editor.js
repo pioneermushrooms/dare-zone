@@ -1,5 +1,8 @@
 // Map editor (/arena/map?arena=<name>): opens the arena's current map, edits it in the browser,
-// and Publish sends it through the upload API (owner only) and recycles the arena.
+// and Publish sends it through the upload API (owner only). A public arena that has a draft changes
+// only by publishing (the live-edit lock): the editor edits the draft #name, and Publish saves the
+// map there and then publishes the draft to the live arena (/drafts/publish). A draft or an arena
+// without a draft is saved and recycled directly.
 // Text goes in with textContent only.
 "use strict";
 
@@ -11,6 +14,7 @@
   let grid = new Uint8Array(N * N), prefix = null, mapTileset = null, ownTileset = null;
   let arena = new URLSearchParams(location.search).get("arena") || "";
   let role = null, tool = "pencil", cur = 1, dirty = false;
+  let liveName = null; // set when editing the draft of a live arena: Publish also publishes it
   const cam = { x: 512 * TS, y: 512 * TS, z: 0.5 };
   const undoStack = [], redoStack = [];
   const tileset = () => ownTileset || mapTileset;
@@ -25,6 +29,11 @@
     const body = await me.json().catch(() => null);
     if (!me.ok || !body || !body.arena) { say((body && body.message) || "You don't own or co-mod an arena yet.", false); return; }
     arena = body.arena; role = body.role;
+    // a live arena with a draft: edit the draft (#name) and publish from it
+    if (!arena.startsWith("#") && role === "owner") {
+      const d = await fetch(API + "/drafts/mine", { credentials: "same-origin" }).then((x) => x.ok ? x.json() : null).catch(() => null);
+      if (d && (d.drafts || []).some((x) => x.name.toLowerCase() === arena.toLowerCase() && x.live)) { liveName = arena; arena = "#" + arena; }
+    }
     $("edname").textContent = `${arena} · ${body.map || "no map"}`;
     document.title = `${arena} map · SubSpace Foundation`;
     if (role !== "owner") say("You can look and download; only the owner can publish.", false);
@@ -253,19 +262,25 @@
     const bytes = Lvl.serialize(grid, prefix);
     if (bytes.length === 0) { say("The map is empty; draw something first.", false); return; }
     if (bytes.length > 2 * 1024 * 1024) { say("Maps must be 2 MB or smaller.", false); return; }
-    if (!confirm(`Publish this map to ${arena}? Players inside are sent back in with the new map.`)) return;
+    const target = liveName || arena;
+    if (!confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`)) return;
     $("publish").disabled = true;
     say("Publishing…", true);
     const hdr = { "X-Requested-With": "dare-arena" };
-    const url = `${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(arena + ".lvl")}`;
+    const fileName = arena.replace(/^#/, "") + ".lvl";
+    const url = `${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(fileName)}`;
     const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/octet-stream" }, hdr), body: bytes });
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
     if (!j.ok) { say(j.message, false); setDirty(true); return; }
-    const rr = await fetch(API + "/recycle", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena }) });
+    // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
+    // otherwise restart this arena so the new map loads
+    const rr = liveName
+      ? await fetch(API + "/drafts/publish", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ name: liveName }) })
+      : await fetch(API + "/recycle", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena }) });
     const jj = await rr.json().catch(() => ({ ok: false, message: "HTTP " + rr.status }));
     setDirty(false);
-    say(jj.ok ? `Published. ${jj.message}` : `Published, but: ${jj.message}`, jj.ok);
-    $("edname").textContent = `${arena} · ${arena}.lvl`;
+    say(jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`, jj.ok);
+    $("edname").textContent = `${arena} · ${fileName}`;
   });
 
   window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });

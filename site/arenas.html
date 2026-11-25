@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Find live player-owned arenas in SubSpace Foundation."><title>Arena directory — SubSpace Foundation</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="home.css"><script src="arenas.js" defer></script></head>
+<body><header><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/play/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html" aria-current="page">Arena directory</a></div><a class="outline" href="/pilot.html">Pilot account</a></nav></header>
+<main class="wrap directory">
+<section class="destination"><p class="eyebrow">FOUNDATION ZONE</p><h1>Find an arena.</h1><p class="intro">See what players have built and who’s flying. Then head into the shared zone.</p><div class="actions"><a href="/play/" class="primary">Play now</a><a href="/arena/" class="outline">Manage your arena</a></div></section>
+<section class="panel directory-panel" aria-labelledby="arenas-heading">
+<div class="directory-heading"><h2 id="arenas-heading">Player arenas</h2><button type="button" class="outline" id="refresh">Refresh</button></div>
+<p id="directory-status" role="status">Loading arenas…</p>
+<div id="arena-list" class="arena-list"></div>
+<noscript><p><a href="/arena/">Open the arena dashboard</a> to see current listings.</p></noscript>
+</section>
+<section class="directory-activity" aria-label="Arena requests and decisions">
+<div class="panel"><h3>Pending requests</h3><ul class="arena-activity" id="pending"></ul></div>
+<div class="panel"><h3>Recent decisions</h3><ul class="arena-activity" id="decisions"></ul></div>
+</section>
+</main>
+<footer><div class="wrap"><a class="brand" href="/">SUBSPACE FOUNDATION</a><a href="/client-standard.html">Client standard</a></div></footer></body></html>

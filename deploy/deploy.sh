@@ -16,6 +16,18 @@
 # imports passwd.conf [Users] once on first load), removes cmd_passwd and adds the /account/* Caddy
 # route. After the first deploy, run deploy/set-resend-key.sh from your Mac so codes go out by email.
 #
+# Accounts (shared recovery emails): from this build one email may serve up to 10 pilots, so
+# the old one-account-per-email index is dropped at start. An OLDER build recreates that unique
+# index at start and fails once two accounts share an email. Before rolling the plugin back past
+# this change, make every recovery email unique again (the first pilot on each email keeps it;
+# the others lose their recovery email until they add one), with subspace stopped:
+#   sqlite3 /opt/subspace/zone/data/dare-arenas.db "UPDATE accounts SET recovery_email=NULL, email_verified=0
+#     WHERE recovery_email IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM accounts
+#     WHERE recovery_email IS NOT NULL GROUP BY recovery_email COLLATE NOCASE);"
+# Requests withdrawn by their pilot have status 'Withdrawn', which builds before ?withdrawrequest
+# can't read (their request lists fail). Before rolling back past it, with subspace stopped:
+#   sqlite3 /opt/subspace/zone/data/dare-arenas.db "UPDATE requests SET status='Declined', reason='withdrawn' WHERE status='Withdrawn';"
+#
 # Rollback: remote-install.sh rolls back by itself when the new build does not come up (previous
 # plugin folder on a re-deploy; Modules.config and groupdef.dir/default from the backup, so AuthFile is
 # the login module again; Caddyfile and site too). By hand, on the server,
@@ -54,9 +66,7 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/plugin" "$STAGE/site"
 cp -R "$REPO/deploy" "$STAGE/deploy"
 cp "$PLUGIN"/* "$STAGE/plugin/"
-cp "$REPO/site/index.html" "$REPO/site/arena-owners.html" "$REPO/site/home.js" "$STAGE/site/"
-cp "$REPO/src/Dare.Arenas/Web/wwwroot/style.css" "$STAGE/site/style.css"  # the home page shares the plugin's stylesheet
-mkdir -p "$STAGE/site/img" && cp "$REPO"/site/img/*.png "$STAGE/site/img/"
+cp "$REPO/site/"* "$STAGE/site/"
 
 TS=$(date -u +%Y%m%d-%H%M%S)
 REMOTE=/root/dare-arenas-deploy-$TS

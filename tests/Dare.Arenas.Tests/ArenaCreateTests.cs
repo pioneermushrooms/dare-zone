@@ -57,12 +57,31 @@ public sealed class ArenaCreateTests : IDisposable
     }
 
     [Fact]
-    public void refuses_owner_who_already_owns_one()
+    public void refuses_owner_who_already_owns_three()
     {
-        Assert.True(_s.Create("one", "S", "Racer", NoFolder, FolderOk).Ok);
-        var r = _s.Create("two", "S", "RACER", NoFolder, FolderOk);
+        foreach (var n in new[] { "one", "two", "three" })
+            Assert.True(_s.Create(n, "S", "Racer", NoFolder, FolderOk).Ok);
+        var r = _s.Create("four", "S", "RACER", NoFolder, FolderOk);
         Assert.False(r.Ok);
-        Assert.Null(_s.Get("two"));
+        Assert.Contains("3", r.Message);
+    }
+
+    [Fact]
+    public void a_created_arena_gets_its_live_draft()
+    {
+        Assert.True(_s.Create("skyrace", "S", "Racer", NoFolder, FolderOk).Ok);
+        var d = _s.Draft("skyrace")!;
+        Assert.True(d.Live);
+        Assert.Equal("Racer", d.Owner);
+        Assert.Equal("owner", _s.RoleIn("#skyrace", "racer"));
+        Assert.True(_s.IsLiveWithDraft("skyrace"));
+    }
+
+    [Fact]
+    public void refuses_a_name_held_by_a_draft()
+    {
+        Assert.True(_s.CreateDraft("Pilot", "skyrace", NoFolder, FolderOk).Ok);
+        Assert.False(_s.Create("skyrace", "S", "Other", NoFolder, FolderOk).Ok);
     }
 
     [Fact]
@@ -73,14 +92,6 @@ public sealed class ArenaCreateTests : IDisposable
         Assert.False(r.Ok);
         Assert.Contains("pending request", r.Message);
         Assert.Null(_s.Get("wanted"));
-    }
-
-    [Fact]
-    public void refuses_owner_with_pending_request()
-    {
-        Assert.True(_s.Request("Asker", "wanted", "pitch").Ok);
-        Assert.False(_s.Create("other", "S", "asker", NoFolder, FolderOk).Ok);
-        Assert.Null(_s.Get("other"));
     }
 
     [Fact]
@@ -106,9 +117,10 @@ public sealed class ArenaCreateTests : IDisposable
     [Fact]
     public void checks_run_before_folder_is_created()
     {
-        Assert.True(_s.Create("one", "S", "A", NoFolder, FolderOk).Ok);
+        foreach (var n in new[] { "one", "two", "three" })
+            Assert.True(_s.Create(n, "S", "A", NoFolder, FolderOk).Ok);
         var ran = false;
-        Assert.False(_s.Create("two", "S", "A", NoFolder, () => { ran = true; return null; }).Ok);
+        Assert.False(_s.Create("four", "S", "A", NoFolder, () => { ran = true; return null; }).Ok);
         Assert.False(ran); // owner check failed first: no orphan folder
     }
 
@@ -125,7 +137,7 @@ public sealed class ArenaCreateTests : IDisposable
         Assert.True(_s.Create("skyrace", "S", "Racer", NoFolder, FolderOk).Ok);
         Assert.True(_s.AddCoMod("skyrace", "Racer", "Helper").Ok);
         Assert.Equal("comod", _s.RoleIn("skyrace", "helper"));
-        Assert.False(_s.Request("Racer", "another", "x").Ok); // still one arena per player
+        Assert.True(_s.Request("Racer", "another", "x").Ok); // up to three per player
         Assert.Contains(("skyrace", "owner"), _s.RolesFor("racer"));
     }
 }

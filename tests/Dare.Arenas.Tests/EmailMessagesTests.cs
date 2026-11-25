@@ -65,4 +65,16 @@ public sealed class EmailMessagesTests
     {
         Assert.Equal(expected, EmailMessages.Mask(email));
     }
+
+    [Fact]
+    public void recovery_for_several_pilots_says_to_type_the_name()
+    {
+        var (_, text, html) = EmailMessages.Code(CodePurpose.Recovery, "123456", "dare or daretest", pilots: 2);
+        Assert.Contains("for dare or daretest", text);
+        Assert.Contains("type the pilot name", text);
+        Assert.Contains("type the pilot name", html);
+        Assert.DoesNotContain("type the pilot name", EmailMessages.Code(CodePurpose.Recovery, "123456", "dare").Text);
+        // one pilot whose name happens to contain " or "
+        Assert.DoesNotContain("type the pilot name", EmailMessages.Code(CodePurpose.Recovery, "123456", "Rock or Bust", pilots: 1).Text);
+    }
 }

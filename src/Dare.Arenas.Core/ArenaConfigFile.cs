@@ -15,7 +15,8 @@ public static class ArenaConfigFile
     /// <summary>
     /// The full path of <c>arenas/&lt;arenaName&gt;/arena.conf</c> if it exists as a regular file (not a
     /// symlink), else null. Never a fallback. <paramref name="arenaName"/> must be a plain arena
-    /// name (a-z, 0-9 and '-', starting with a letter or digit); anything else has no target.
+    /// name (a-z, 0-9 and '-', starting with a letter or digit), optionally a draft's leading '#';
+    /// anything else has no target.
     /// </summary>
     public static string? OwnPath(string arenasRoot, string arenaName)
     {
@@ -33,6 +34,8 @@ public static class ArenaConfigFile
 
     private static bool IsPlainName(string? name)
     {
+        // a draft (#name) is its own arena with its own folder; '#' only as the first character
+        if (!string.IsNullOrEmpty(name) && DraftRules.IsDraft(name)) name = name[1..];
         if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength) return false;
         if (!(char.IsAsciiLetterLower(name[0]) || char.IsAsciiDigit(name[0]))) return false;
         foreach (var c in name)
