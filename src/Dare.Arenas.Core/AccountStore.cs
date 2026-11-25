@@ -248,10 +248,15 @@ public sealed class AccountStore : IDisposable
     /// empty <paramref name="code"/> and null <paramref name="name"/>. A newer request replaces the
     /// earlier code.
     /// </summary>
-    public Result StartRecovery(string email, out string code, out string? name)
+    public Result StartRecovery(string email, out string code, out string? name) =>
+        StartRecovery(email, out code, out name, out _);
+
+    /// <param name="pilots">How many pilots use the email (the code email lists them all).</param>
+    public Result StartRecovery(string email, out string code, out string? name, out int pilots)
     {
         code = "";
         name = null;
+        pilots = 0;
         if (!AccountRules.TryEmail(email, out var e, out var err)) return Fail(err);
         var sent = SentMessage(e);
         string issued = "";
@@ -266,6 +271,7 @@ public sealed class AccountStore : IDisposable
         code = issued;
         // the email names every pilot on it; the reset page asks which one
         name = found.Count == 0 ? null : string.Join(" or ", found);
+        pilots = found.Count;
         return res;
     }
 
@@ -660,7 +666,7 @@ public sealed class AccountStore : IDisposable
             catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // SQLITE_CONSTRAINT: a UNIQUE index caught a race
             {
                 try { Exec("ROLLBACK"); } catch { }
-                return Fail("That name or email is already taken.");
+                return Fail("That name is already taken.");
             }
             catch
             {

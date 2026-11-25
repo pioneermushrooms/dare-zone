@@ -407,8 +407,9 @@ public sealed class AccountStoreTests : IDisposable
         var s = Open();
         SignUp(s, "Big Chris", "chris@example.com");
         SignUp(s, "Second", "chris@example.com");
-        Assert.True(s.StartRecovery("chris@example.com", out var code, out var names).Ok);
+        Assert.True(s.StartRecovery("chris@example.com", out var code, out var names, out var count).Ok);
         Assert.Equal("Big Chris or Second", names);
+        Assert.Equal(2, count);
 
         // no name, or a name not on this email: refused, and the code still works afterwards
         var noName = s.CompleteRecovery("chris@example.com", code, "brandnewpw", null, out var changed);

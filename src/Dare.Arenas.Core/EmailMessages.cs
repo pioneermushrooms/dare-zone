@@ -10,7 +10,8 @@ public static class EmailMessages
 {
     public const string Site = "subspacefoundation.com";
 
-    public static (string Subject, string Text, string Html) Code(CodePurpose purpose, string code, string? name)
+    /// <param name="pilots">How many pilots <paramref name="name"/> lists (recovery: all the pilots on the email).</param>
+    public static (string Subject, string Text, string Html) Code(CodePurpose purpose, string code, string? name, int pilots = 1)
     {
         var (subject, lead) = purpose switch
         {
@@ -23,7 +24,7 @@ public static class EmailMessages
             _ => throw new ArgumentOutOfRangeException(nameof(purpose)),
         };
         // several pilots share this email: the reset page asks which one
-        if (purpose == CodePurpose.Recovery && name is not null && name.Contains(" or ", StringComparison.Ordinal))
+        if (purpose == CodePurpose.Recovery && pilots > 1)
             lead += " On the page, type the pilot name you want to reset.";
         const string tail = "It is valid for 10 minutes and works once. If you didn't ask for it, ignore this email.";
 
