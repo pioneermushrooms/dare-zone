@@ -80,18 +80,41 @@ async function load() {
   $("desk").hidden = false;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();
   const pending = body.pending ?? [];
-  $("pending").replaceChildren(...(pending.length
-    ? pending.map((r) => requestRow(r, body.can, body.maxReason ?? 120))
-    : [el("p", { className: "dim", textContent: "Nothing is waiting." })]));
+  $("pendingpanel").hidden = pending.length === 0;
+  $("pending").replaceChildren(...pending.map((r) => requestRow(r, body.can, body.maxReason ?? 120)));
   $("createpanel").hidden = !body.can.create;
   const arenas = body.arenas ?? [];
   $("arenas").replaceChildren(...(arenas.length
     ? arenas.map((a) => el("tr", {},
         el("td", {}, el("b", { className: "name", textContent: a.name })),
-        el("td", { textContent: a.owner }),
+        el("td", { textContent: a.owner.startsWith("~deleted:") ? "(name deleted)" : a.owner }),
         el("td", {}, el("span", { className: "tag " + a.status, textContent: a.status })),
-        el("td", { textContent: String(a.players) })))
-    : [el("tr", {}, el("td", { colSpan: 4, className: "dim", textContent: "No player-owned arenas yet." }))]));
+        el("td", { className: "dim", textContent: a.status === "Active" ? (a.private ? "private" : "public") : "" }),
+        el("td", { textContent: String(a.players) }),
+        el("td", {}, ...(body.can.admin ? arenaActions(a) : []))))
+    : [el("tr", {}, el("td", { colSpan: 6, className: "dim", textContent: "No player-owned arenas yet." }))]));
+}
+
+// Staff (smod and up): suspend with a reason, revive, archive.
+function arenaActions(a) {
+  const act = (label, action, ask) => {
+    const b = el("button", { type: "button", className: "small", textContent: label });
+    b.addEventListener("click", async () => {
+      let reason = "";
+      if (ask) {
+        reason = prompt(`Why suspend ${a.name}? (shown to players)`) ?? "";
+        if (!reason.trim()) return;
+      } else if (!confirm(`${label} ${a.name}?`)) return;
+      b.disabled = true;
+      const { body } = await call("/staff/arena", { arena: a.name, action, reason });
+      b.disabled = false;
+      say($("arenamsg"), body);
+      if (body?.ok) load();
+    });
+    return b;
+  };
+  if (a.status === "Active") return [act("Suspend", "suspend", true), act("Archive", "archive", false)];
+  return [act("Revive", "revive", false)];
 }
 
 $("createform").addEventListener("submit", async (event) => {

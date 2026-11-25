@@ -66,6 +66,12 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/plugin" "$STAGE/site"
 cp -R "$REPO/deploy" "$STAGE/deploy"
 cp "$PLUGIN"/* "$STAGE/plugin/"
+# The server's native SQLite comes from SQLitePCLRaw.lib.e_sqlite3 at the version the plugin builds
+# against (2.1.10, which the server shipped with, has a known high-severity flaw); same C API.
+SQLITE_VER=$(sed -n 's/.*SQLitePCLRaw.lib.e_sqlite3" Version="\([0-9.]*\)".*/\1/p' "$REPO/src/Dare.Arenas/Dare.Arenas.csproj" | head -1)
+NATIVE="${NUGET_PACKAGES:-$HOME/.nuget/packages}/sqlitepclraw.lib.e_sqlite3/$SQLITE_VER/runtimes/linux-x64/native/libe_sqlite3.so"
+[ -f "$NATIVE" ] || { echo "no $NATIVE (restore the solution first)" >&2; exit 1; }
+mkdir -p "$STAGE/native" && cp "$NATIVE" "$STAGE/native/libe_sqlite3.so"
 cp "$REPO/site/"* "$STAGE/site/"
 
 TS=$(date -u +%Y%m%d-%H%M%S)

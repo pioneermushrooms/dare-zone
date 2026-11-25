@@ -114,6 +114,7 @@ public sealed partial class ArenaOwnership : IModule
 
         // Archived arenas' folders move now, before any arena with that name can be created.
         ProcessPendingArchiveMoves();
+        PromoteDrafts();
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();

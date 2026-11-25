@@ -294,7 +294,7 @@ function renderKeys() {
       if (got) { keys[a].push(got); renderKeys(); }
     });
     cells.append(add);
-    return el("tr", null, el("td", { textContent: label }), cells, el("td"));
+    return el("tr", null, el("td", { textContent: label }), cells);
   }));
 }
 

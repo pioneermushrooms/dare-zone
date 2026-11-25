@@ -177,11 +177,18 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         Reply(staff, $"{result.Message} Its folder moves to arenas/{ArchiveDir}/ at the next server restart.{(moved > 0 ? $" {moved} player(s) moved out." : "")}");
     }
 
-    private void AdminRevive(Player staff, string name, ArenaStatus wasStatus)
+    private void AdminRevive(Player staff, string name, ArenaStatus wasStatus) =>
+        Reply(staff, ReviveArena(staff.Name!, name, wasStatus).Message);
+
+    /// <summary>
+    /// Reopens a suspended or archived arena (its folder back from the archive if needed) and
+    /// tells the owner. Shared by ?arenaadmin revive and the staff desk. Mainloop.
+    /// </summary>
+    internal Result ReviveArena(string staff, string name, ArenaStatus wasStatus)
     {
         // The folder must be there (or come back from the archive) before the arena is Active again.
         string? restored = null;
-        var result = Store.Revive(name, staff.Name!, () =>
+        var result = Store.Revive(name, staff, () =>
         {
             if (ArenaConfigFile.OwnPath(ArenasDir, name) is not null) return null; // incl. archived, move still pending
             if (ArenaFolderExists(name))
@@ -193,21 +200,48 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                 return $"the restored folder has no {ArenaConfigFile.FileName}; fix arenas/{name}/ by hand first.";
             return null;
         });
-        if (!result.Ok)
-        {
-            Reply(staff, result.Message);
-            return;
-        }
+        if (!result.Ok) return result;
 
-        Log(LogLevel.Info, $"{staff.Name} revived [{name}] (was {wasStatus}).");
-        Reply(staff, restored is null
-            ? result.Message
-            : $"{result.Message} Folder arenas/{ArchiveDir}/{restored}/ moved back to arenas/{name}/.");
-
+        Log(LogLevel.Info, $"{staff} revived [{name}] (was {wasStatus}).");
         var owner = Store.Get(name)?.Owner;
-        var online = owner is null ? null : _playerData.FindPlayer(owner);
-        if (online is not null)
-            Reply(online, $"Your arena '{name}' was reopened by {staff.Name}. Type ?go {name}.");
+        if (owner is not null && _playerData.FindPlayer(owner) is { } online)
+            Reply(online, $"Your arena '{name}' was reopened by {staff}. Type ?go {name}.");
+        return restored is null
+            ? result
+            : new Result(true, $"{result.Message} Folder arenas/{ArchiveDir}/{restored}/ moved back to arenas/{name}/.");
+    }
+
+    /// <summary>
+    /// The staff desk's arena actions (cmd_arenaadmin, smod and up): suspend (with a reason),
+    /// revive, archive. Null when the name lacks the capability. Mainloop.
+    /// </summary>
+    internal Result? WebStaffArena(string player, string arena, string action, string reason)
+    {
+        if (!WebStaffCan(player, AdminCapability)) return null;
+        var owned = Store.Get(arena);
+        if (owned is null) return new Result(false, $"No player-owned arena '{arena}'.");
+        Result result;
+        switch (action)
+        {
+            case "suspend":
+                reason = (reason ?? "").Trim();
+                if (reason.Length == 0 || reason.Length > MaxPitchLength || reason.Any(char.IsControl))
+                    return new Result(false, $"Give a reason: one line, up to {MaxPitchLength} characters.");
+                result = Store.Suspend(arena, player, reason);
+                if (result.Ok) SendPlayersOut(arena, $"Arena '{arena}' was suspended by staff: {reason}");
+                break;
+            case "archive":
+                result = Store.Archive(arena, player);
+                if (result.Ok) SendPlayersOut(arena, $"Arena '{arena}' was archived by staff.");
+                break;
+            case "revive":
+                result = ReviveArena(player, arena, owned.Status);
+                break;
+            default:
+                return new Result(false, "Unknown action.");
+        }
+        Log(LogLevel.Info, $"(web) {player} {action} [{arena}]: {(result.Ok ? "done" : "refused: " + result.Message)}");
+        return result;
     }
 
     private void AdminTransfer(Player staff, string name, string oldOwner, string newOwnerRaw)
@@ -341,13 +375,14 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
     internal object? StaffData(string player)
     {
         bool approve = WebStaffCan(player, ApproveCapability), decline = WebStaffCan(player, DeclineCapability),
-             create = WebStaffCan(player, CreateCapability);
-        if (!approve && !decline && !create) return null;
+             create = WebStaffCan(player, CreateCapability), admin = WebStaffCan(player, AdminCapability);
+        if (!approve && !decline && !create && !admin) return null;
+        var hidden = Store.PrivateArenas();
         var counts = PlayerCounts();
         return new
         {
             player,
-            can = new { approve, decline, create },
+            can = new { approve, decline, create, admin },
             pending = Store.PendingRequestsOldestFirst(200).Select(r => new
             {
                 arena = r.Arena, player = r.Player, pitch = r.Pitch, at = r.At,
@@ -356,6 +391,7 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
             arenas = Store.Arenas().Select(a => new
             {
                 name = a.Name, owner = a.Owner, status = a.Status.ToString(), lastEntered = a.LastEntered,
+                @private = hidden.Contains(a.Name),
                 players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
             }),
             maxReason = MaxPitchLength,

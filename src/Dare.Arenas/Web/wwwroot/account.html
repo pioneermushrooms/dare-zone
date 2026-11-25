@@ -8,7 +8,7 @@
 <script src="/account/account.js" defer></script>
 </head>
 <body data-page="profile">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Your arenas</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
 <main class="panel narrow" id="loading"><p class="dim">Loading…</p></main>
 
 <main class="panel narrow" id="profile" hidden>
@@ -42,20 +42,6 @@
   <p class="msg" id="pilotsmsg"></p>
 </main>
 
-<main class="panel" id="keysbox" hidden>
-  <h2>Keys and macros</h2>
-  <div class="row"><label class="inline">For <select id="keysname" aria-label="Pilot name"></select></label>
-    <span class="dim">They apply the next time you enter as that name.</span></div>
-  <p class="hint">Click a key, then press the new one. Hold Shift or Ctrl while pressing to need it; press Esc to cancel, Backspace to remove.</p>
-  <table class="keys"><thead><tr><th>Action</th><th>Keys</th><th></th></tr></thead><tbody id="keysbody"></tbody></table>
-  <h3>Macros</h3>
-  <p class="hint">A key that sends a chat line, e.g. <code>'need help at base</code> (team) or <code>;2;hello</code> (channel 2).</p>
-  <ul class="list" id="macrolist"></ul>
-  <div class="row"><button type="button" class="small" id="macroadd">Add a macro</button></div>
-  <div class="row gap"><button type="button" id="keyssave">Save</button><button type="button" class="ghost" id="keysdefault">Back to defaults</button></div>
-  <p class="msg" id="keysmsg"></p>
-</main>
-
 <main class="panel narrow" id="emailbox" hidden>
   <h2 id="emailtitle">Recovery email</h2>
   <p class="dim" id="emailnote"></p>
@@ -79,6 +65,19 @@
     <button type="submit">Change password</button>
   </form>
   <p class="msg" id="pwmsg"></p>
+</main>
+<main class="panel narrow" id="keysbox" hidden>
+  <h2>Keys and macros</h2>
+  <div class="row"><label class="inline">For <select id="keysname" aria-label="Pilot name"></select></label>
+    <span class="dim">They apply the next time you enter as that name.</span></div>
+  <p class="hint">Click a key, then press the new one. Hold Shift or Ctrl while pressing to need it; press Esc to cancel, Backspace to remove.</p>
+  <table class="keys"><thead><tr><th>Action</th><th>Keys</th></tr></thead><tbody id="keysbody"></tbody></table>
+  <h3>Macros</h3>
+  <p class="hint">A key that sends a chat line, e.g. <code>'need help at base</code> (team) or <code>;2;hello</code> (channel 2).</p>
+  <ul class="list" id="macrolist"></ul>
+  <div class="row"><button type="button" class="small" id="macroadd">Add a macro</button></div>
+  <div class="row gap"><button type="button" id="keyssave">Save</button><button type="button" class="ghost" id="keysdefault">Back to defaults</button></div>
+  <p class="msg" id="keysmsg"></p>
 </main>
 </body>
 </html>

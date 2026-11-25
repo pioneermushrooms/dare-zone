@@ -7,11 +7,11 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=6">
+<link rel="stylesheet" href="/play.css?v=7">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=6"></script>
-<script type="module" src="/chat.js?v=6"></script>
+<script type="module" src="/play/start.mjs?v=7"></script>
+<script type="module" src="/chat.js?v=7"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 setTimeout(function () {
@@ -71,8 +71,7 @@ setTimeout(function () {
   </aside>
 
   <nav class="cards" aria-label="Site">
-    <a class="card" href="/arena/me"><b>Your arenas</b><span>Make one; set its rules, graphics and crew.</span></a>
-    <a class="card" href="/arena/me#map"><b>Map editor</b><span>Draw your arena's map in the browser.</span></a>
+    <a class="card" href="/arena/me#overview"><b>Arena Editor</b><span>Make an arena; draw its map, set its rules, graphics and crew.</span></a>
     <a class="card" href="/account/#pilots"><b>Pilot account</b><span>Your names, keys and macros, password and email.</span></a>
   </nav>
 </div>

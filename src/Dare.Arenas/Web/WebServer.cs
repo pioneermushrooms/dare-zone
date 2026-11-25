@@ -397,6 +397,8 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffApprove(p, Str(b, "arena") ?? "", Str(b, "player"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/decline":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffDecline(p, Str(b, "arena") ?? "", Str(b, "reason") ?? "", Str(b, "player"))).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/arena":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffArena(p, Str(b, "arena") ?? "", Str(b, "action") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/create":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));

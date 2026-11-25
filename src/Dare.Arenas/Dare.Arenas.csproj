@@ -33,17 +33,19 @@
   </ItemGroup>
 
   <!--
-    The server already ships Microsoft.Data.Sqlite 9.0.3 / SQLitePCLRaw 2.1.10 (managed + native) in its bin/.
+    The server ships Microsoft.Data.Sqlite 9.0.3 / SQLitePCLRaw (managed + native) in its bin/.
     Exclude their runtime/native assets so the plugin folder carries no copy and the server's are used.
-    Versions must match what Dare.Arenas.Core references and what the server ships.
+    SQLitePCLRaw is 2.1.14: 2.1.10's native SQLite has a known high-severity flaw (GHSA-2m69-gcr7-jv3q);
+    deploy/remote-install.sh puts 2.1.14's native libe_sqlite3.so in the server's bin/ (same C API).
+    Versions must match what Dare.Arenas.Core references.
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.3" ExcludeAssets="runtime;native" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.3" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <PackageReference Include="SQLitePCLRaw.core" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <PackageReference Include="SQLitePCLRaw.provider.e_sqlite3" Version="2.1.10" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.core" Version="2.1.14" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="SQLitePCLRaw.provider.e_sqlite3" Version="2.1.14" ExcludeAssets="runtime;native" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

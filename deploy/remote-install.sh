@@ -154,6 +154,10 @@ rollback() {
   else
     expect=0
   fi
+  if [ -f "$BACKUP/zone-bin-libe_sqlite3.so" ] && ! cmp -s "$BACKUP/zone-bin-libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so"; then
+    cp -a "$BACKUP/zone-bin-libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so"
+    echo "restored the previous native SQLite from $BACKUP" >&2
+  fi
   # the login module: put Modules.config and groupdef.dir/default back as they were, so AuthFile
   # (or whatever was active before this run) is the login module again and cmd_passwd works again
   cat "$BACKUP/conf/Modules.config" > "$ZONE/conf/Modules.config"
@@ -231,6 +235,7 @@ cp -a "$ZONE/conf/Modules.config" "$ZONE/conf/groupdef.conf" "$ZONE/conf/groupde
 cp -a "$CADDYFILE" "$BACKUP/Caddyfile"
 if [ -d "$SITE" ]; then cp -a "$SITE" "$BACKUP/site"; fi
 if [ -d "$ZONE/bin/modules/Dare.Arenas" ]; then cp -a "$ZONE/bin/modules/Dare.Arenas" "$BACKUP/zone-bin-modules/"; fi
+if [ -f "$ZONE/bin/libe_sqlite3.so" ]; then cp -a "$ZONE/bin/libe_sqlite3.so" "$BACKUP/zone-bin-libe_sqlite3.so"; fi
 if [ -d "$ZONE/arenas/_template" ]; then cp -a "$ZONE/arenas/_template" "$BACKUP/zone-arenas/"; fi
 if [ -f "$ZONE/data/dare-arenas.db" ]; then
   mkdir -p "$BACKUP/data"
@@ -286,6 +291,13 @@ trap 'on_err $LINENO' ERR
 step "zone files ($ZONE)"
 bash "$STAGE/deploy/apply-local.sh" "$ZONE" "$STAGE/plugin"
 chown -R "$OWNER" "$ZONE/bin/modules/Dare.Arenas" "$ZONE/arenas/_template"
+# the server's native SQLite (the version the plugin builds against; same C API as before)
+if [ -f "$STAGE/native/libe_sqlite3.so" ] && ! cmp -s "$STAGE/native/libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so"; then
+  install -m 0755 "$STAGE/native/libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so.new"
+  chown "$OWNER" "$ZONE/bin/libe_sqlite3.so.new"
+  mv -f "$ZONE/bin/libe_sqlite3.so.new" "$ZONE/bin/libe_sqlite3.so"
+  echo "native SQLite updated in bin/ (previous one in $BACKUP)"
+fi
 for f in arenaowner arenamod arenacaps arenastaff arenaadmin; do chown "$OWNER" "$ZONE/conf/groupdef.dir/$f"; done
 
 if [ "$SYSOP_SET" = 1 ]; then

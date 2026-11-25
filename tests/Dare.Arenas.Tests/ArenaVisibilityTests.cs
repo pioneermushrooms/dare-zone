@@ -54,4 +54,33 @@ public sealed class ArenaVisibilityTests : IDisposable
         Assert.False(_s.SetPrivate("skyrace", "Racer", true).Ok);
         Assert.Null(_s.RoleIn("skyrace", "racer"));
     }
+
+    [Fact]
+    public void leftover_drafts_become_private_arenas_the_owner_can_discard()
+    {
+        Assert.True(_s.CreateDraft("dare", "test", _ => false, () => null).Ok);
+        Assert.True(_s.AddCoMod("#test", "dare", "helper").Ok);
+        var moved = new List<string>();
+        var promoted = _s.PromoteDrafts(n => { moved.Add(n); return null; });
+        Assert.Equal(new[] { "test" }, promoted);
+        Assert.Equal(new[] { "test" }, moved);
+        var a = _s.Get("test")!;
+        Assert.Equal("dare", a.Owner);
+        Assert.Equal(ArenaStatus.Active, a.Status);
+        Assert.True(_s.IsPrivate("test"));
+        Assert.Contains("helper", a.CoMods);
+        Assert.Equal(DraftStatus.Archived, _s.Draft("test")!.Status);
+        Assert.DoesNotContain(_s.RolesFor("dare"), r => r.Arena.StartsWith('#'));
+        Assert.Empty(_s.PromoteDrafts(_ => null)); // once
+        Assert.True(_s.Discard("test", "dare").Ok);
+    }
+
+    [Fact]
+    public void a_draft_that_cannot_move_stays_a_draft()
+    {
+        Assert.True(_s.CreateDraft("dare", "stuck", _ => false, () => null).Ok);
+        Assert.Empty(_s.PromoteDrafts(_ => "folder in the way"));
+        Assert.Null(_s.Get("stuck"));
+        Assert.NotEqual(DraftStatus.Archived, _s.Draft("stuck")!.Status);
+    }
 }

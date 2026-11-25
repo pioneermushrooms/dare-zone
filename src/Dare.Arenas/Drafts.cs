@@ -168,6 +168,32 @@ public sealed partial class ArenaOwnership
         return TryCreateArenaFolder(name);
     }
 
+    /// <summary>
+    /// Once at load: leftover drafts become private arenas (their folder <c>arenas/#name</c> moves
+    /// to <c>arenas/name</c>). One that can't move is left as it was and logged.
+    /// </summary>
+    private void PromoteDrafts()
+    {
+        try
+        {
+            var promoted = Store.PromoteDrafts(name =>
+            {
+                var from = Path.Combine(ArenasDir, DraftRules.DraftOf(name));
+                var to = Path.Combine(ArenasDir, name);
+                if (Directory.Exists(to)) return $"a folder named '{name}' already exists";
+                if (!Directory.Exists(from)) return TryCreateArenaFolder(name); // no files kept: start from the template
+                try { Directory.Move(from, to); return null; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return ex.Message; }
+            });
+            if (promoted.Count > 0)
+                Log(LogLevel.Info, $"Drafts became private arenas: {string.Join(", ", promoted)}.");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Turning drafts into arenas failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Once at load: every owned arena without a draft gets one, copied from its live files.</summary>
     private void BackfillDrafts()
     {

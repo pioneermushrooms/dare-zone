@@ -70,7 +70,7 @@ h1 em { font-style: normal; color: var(--cyan); }
 #status.error { color: var(--warn); }
 .newhere { margin: 6px 0 0; color: var(--muted); font-size: .9rem; }
 
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 980px; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 720px; }
 .card { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; min-height: 96px; text-decoration: none; color: var(--ink);
   background: var(--panel); border: 1px solid var(--line); border-top-color: #537a92; border-radius: 3px; backdrop-filter: blur(6px); }
 .card b { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase; font-size: 1.35rem; letter-spacing: .02em; line-height: 1.1; }

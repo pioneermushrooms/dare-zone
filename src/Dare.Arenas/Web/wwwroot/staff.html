@@ -8,19 +8,20 @@
 <script src="/arena/staff.js" defer></script>
 </head>
 <body class="staff">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Your arenas</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
 <div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Staff desk</h1><p class="sub" id="who"></p></div>
 
 <section class="panel" id="gate" hidden><p id="gatemsg"></p></section>
 
 <div id="desk" hidden>
-<section class="panel">
-  <h2>Waiting for a decision</h2>
-  <div id="pending"><p class="dim">Loading…</p></div>
+<section class="panel" id="pendingpanel" hidden>
+  <h2>Stuck requests</h2>
+  <p class="dim">Arenas launch on their own now. These couldn't (a folder problem, say): approve to make them, or decline.</p>
+  <div id="pending"></div>
 </section>
 <section class="panel" id="createpanel" hidden>
-  <h2>Create an arena</h2>
-  <p class="dim">Makes a public arena and its draft at once, no request. Leave the owner empty to own it yourself.</p>
+  <h2>Make an arena for someone</h2>
+  <p class="dim">The owner needs a pilot account. Leave it empty to own it yourself.</p>
   <form class="row" id="createform">
     <input type="text" id="newname" placeholder="name (3-14 letters and digits)" maxlength="15" required autocomplete="off" aria-label="Arena name">
     <input type="text" id="newowner" placeholder="owner (optional)" maxlength="24" autocomplete="off" aria-label="Owner">
@@ -30,7 +31,8 @@
 </section>
 <section class="panel">
   <h2>Player-owned arenas</h2>
-  <table><thead><tr><th>Arena</th><th>Owner</th><th>Status</th><th>Pilots</th></tr></thead><tbody id="arenas"></tbody></table>
+  <table><thead><tr><th>Arena</th><th>Owner</th><th>Status</th><th>Listed</th><th>Pilots</th><th></th></tr></thead><tbody id="arenas"></tbody></table>
+  <p class="msg" id="arenamsg" role="status"></p>
 </section>
 </div>
 </body>

@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.3" />
+    <!-- the native SQLite of 2.1.10 (what Microsoft.Data.Sqlite 9.0.3 brings) has a known high-severity flaw -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
   </ItemGroup>
 
 </Project>
