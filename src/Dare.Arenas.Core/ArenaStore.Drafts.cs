@@ -90,6 +90,23 @@ public sealed partial class ArenaStore
         return Ok($"Asked staff to make #{d.Name} public as '{d.Name}'.");
     });
 
+    /// <summary>
+    /// <paramref name="player"/> takes back their pending request for <paramref name="arena"/>; a
+    /// request from a draft returns the draft to editing.
+    /// </summary>
+    public Result Withdraw(string player, string arena) => Tx(() =>
+    {
+        arena = DraftRules.PublicOf((arena ?? "").Trim());
+        var req = PendingRequest(arena, out var err);
+        if (req is null) return Fail(err!.StartsWith("No request", StringComparison.Ordinal) ? $"You have no pending request for '{arena}'." : err);
+        if (!Same(req.Player, player)) return Fail($"You have no pending request for '{arena}'.");
+        Run("UPDATE requests SET status='Withdrawn', decided_by=$p WHERE id=$id", ("$p", player), ("$id", req.Id));
+        if (IsDraftRequestId(req.Id))
+            Run("UPDATE drafts SET status='Active' WHERE name=$a AND status='Requested'", ("$a", arena));
+        AddEvent(Now(), arena, player, "withdraw", "request withdrawn");
+        return Ok($"Withdrew your request for '{arena}'.");
+    });
+
     /// <summary>Records a publish of the draft into its live arena (the files were already copied).</summary>
     public Result Published(string name, string owner) => Tx(() =>
     {

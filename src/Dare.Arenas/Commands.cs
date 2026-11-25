@@ -158,7 +158,12 @@ public sealed partial class ArenaOwnership
             Reply(player, "Recent decisions:");
             foreach (var r in decided)
             {
-                var verdict = r.Status == RequestStatus.Approved ? "approved" : "declined";
+                var verdict = r.Status switch
+                {
+                    RequestStatus.Approved => "approved",
+                    RequestStatus.Withdrawn => "withdrawn",
+                    _ => "declined",
+                };
                 var reason = string.IsNullOrEmpty(r.Reason) ? "" : $": {r.Reason}";
                 Reply(player, $"  {r.Arena} - {r.Player}: {verdict} by {r.DecidedBy}{reason}");
             }

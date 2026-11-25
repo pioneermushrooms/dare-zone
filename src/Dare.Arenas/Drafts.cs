@@ -20,6 +20,31 @@ public sealed partial class ArenaOwnership
         Add("draftinvite", Command_draftinvite);
         Add("requestpublic", Command_requestpublic);
         Add("publish", Command_publish);
+        Add("withdrawrequest", Command_withdrawrequest);
+    }
+
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "[name]",
+        Description = "Takes back your pending arena request (a draft's request returns it to editing).")]
+    private void Command_withdrawrequest(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+    {
+        if (player.Name is null || !player.Flags.Authenticated) return;
+        Reply(player, WithdrawFor(player.Name, parameters.ToString()).Message);
+    }
+
+    /// <summary>Withdraws the player's pending request: the named one, or their only one.</summary>
+    internal Result WithdrawFor(string player, string arena)
+    {
+        arena = arena.Trim();
+        if (arena.Length == 0)
+        {
+            var mine = Store.PendingRequestsOldestFirst(200).Where(r => string.Equals(r.Player, player, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (mine.Count == 0) return new Result(false, "You have no pending request.");
+            if (mine.Count > 1) return new Result(false, $"Which one? ?withdrawrequest <name> ({string.Join(", ", mine.Select(r => r.Arena))}).");
+            arena = mine[0].Arena;
+        }
+        return Store.Withdraw(player, arena.ToLowerInvariant());
     }
 
     // ---- shared with the web ---------------------------------------------------------------

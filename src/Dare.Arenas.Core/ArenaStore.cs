@@ -132,8 +132,6 @@ public sealed partial class ArenaStore : IDisposable
     {
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
-        if (Same(req.Player, staff))
-            return Fail("You can't decide your own request; another staff member must.");
         if (folderExists(arena))
             return Fail($"A folder named '{arena}' already exists on the server; cannot approve.");
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", req.Player)) > 0)
@@ -170,8 +168,6 @@ public sealed partial class ArenaStore : IDisposable
         if (string.IsNullOrWhiteSpace(reason)) return Fail("A reason is required to decline a request.");
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!);
-        if (Same(req.Player, staff))
-            return Fail("You can't decide your own request; another staff member must.");
         var now = Now();
         Run("UPDATE requests SET status='Declined', decided_by=$s, reason=$r WHERE id=$id",
             ("$s", staff), ("$r", reason), ("$id", req.Id));

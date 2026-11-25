@@ -1,7 +1,7 @@
 namespace Dare.Arenas.Core;
 
 public enum ArenaStatus { Active, Suspended, Archived }
-public enum RequestStatus { Pending, Approved, Declined }
+public enum RequestStatus { Pending, Approved, Declined, Withdrawn }
 
 public sealed record ArenaRequest(long Id, string Arena, string Player, string Pitch, RequestStatus Status, string? DecidedBy, string? Reason, DateTimeOffset At);
 public sealed record OwnedArena(string Name, string Owner, ArenaStatus Status, DateTimeOffset Created, DateTimeOffset LastEntered, IReadOnlyList<string> CoMods);

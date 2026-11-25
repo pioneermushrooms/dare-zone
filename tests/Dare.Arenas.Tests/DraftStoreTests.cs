@@ -330,4 +330,27 @@ public sealed class DraftStoreTests : IDisposable
         Assert.True(s.Approve("skyrace", "staff", NoFolder).Ok);
         Assert.Equal(("#skyrace", "owner"), s.RolesFor("pilot")[0]);
     }
+
+    [Fact]
+    public void a_pilot_withdraws_their_pending_request()
+    {
+        var s = Open();
+        Assert.True(s.Request("Pilot", "skyrace", "pitch").Ok);
+        Assert.False(s.Withdraw("someone", "skyrace").Ok);
+        Assert.True(s.Withdraw("PILOT", "skyrace").Ok);
+        Assert.Empty(s.Requests(true, 10));
+        Assert.Contains(s.Events("skyrace", 10), e => e.Kind == "withdraw");
+        Assert.False(s.Withdraw("pilot", "skyrace").Ok); // nothing pending now
+        Assert.True(s.CreateDraft("pilot", "skyrace", NoFolder, Made).Ok); // the name is free again
+    }
+
+    [Fact]
+    public void withdrawing_a_drafts_request_returns_it_to_editing()
+    {
+        var s = WithDraft();
+        Assert.True(s.RequestPublic("pilot", "p").Ok);
+        Assert.True(s.Withdraw("pilot", "skyrace").Ok);
+        Assert.Equal(DraftStatus.Active, s.Draft("skyrace")!.Status);
+        Assert.True(s.RequestPublic("pilot", "again").Ok);
+    }
 }
