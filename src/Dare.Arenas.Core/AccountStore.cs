@@ -15,7 +15,7 @@ namespace Dare.Arenas.Core;
 /// Send-rate limits are the caller's job; the store enforces code expiry, single use, the
 /// 5-wrong-tries rule and the game-login lockout.
 /// </summary>
-public sealed class AccountStore : IDisposable
+public sealed partial class AccountStore : IDisposable
 {
     public static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
     /// <summary>One email can recover up to this many pilot names.</summary>
@@ -101,6 +101,11 @@ public sealed class AccountStore : IDisposable
               window_start TEXT NOT NULL,
               count INTEGER NOT NULL,
               PRIMARY KEY (purpose, email)
+            );
+            CREATE TABLE IF NOT EXISTS game_passes (
+              pass_hash TEXT NOT NULL PRIMARY KEY,
+              account_id INTEGER NOT NULL,
+              expires TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS account_meta (
               key TEXT NOT NULL PRIMARY KEY,

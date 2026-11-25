@@ -163,6 +163,7 @@ internal sealed partial class WebServer
             "/email" => await AddEmailAsync(req, body).ConfigureAwait(false),
             "/email/verify" => VerifyEmail(req, body),
             "/password" => ChangePassword(req, body),
+            "/gamepass" => GamePass(req),
             _ => Text(404, "Not found."),
         };
     }
@@ -370,6 +371,20 @@ internal sealed partial class WebServer
             _m.Log(LogLevel.Info, $"Password reset by email for '{changed}'.");
         }
         return Ok(r.Message);
+    }
+
+    /// <summary>
+    /// A single-use game pass for the signed-in pilot (the site's Play button): the game sends it as
+    /// the password and the zone takes it once, within a minute (AccountStore.RedeemGamePass).
+    /// Account sessions only, behind the same Origin and header checks as every account POST.
+    /// </summary>
+    private Reply GamePass(HttpListenerRequest req)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var pass = _m.Accounts.IssueGamePass(cur.Account.Id);
+        if (pass is null) return JsonReply(403, new { ok = false, message = "This account can't sign in." });
+        _m.Log(LogLevel.Info, $"Game pass issued for '{cur.Account.Name}' ({ClientIp(req)}).");
+        return JsonReply(200, new { ok = true, name = cur.Account.Name, pass });
     }
 
     private Reply AccountMe(HttpListenerRequest req)

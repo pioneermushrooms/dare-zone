@@ -190,7 +190,11 @@ public sealed class FoundationAuth : IModule, IAuth
             Account? account = null;
             try
             {
-                outcome = store.CheckLogin(name, password, out account);
+                // a game pass from the site's Play button (single use, one minute, this account
+                // only); anything else is checked as the password
+                outcome = store.RedeemGamePass(name, password, out account)
+                    ? LoginResult.Ok
+                    : store.CheckLogin(name, password, out account);
             }
             catch (Exception ex)
             {
