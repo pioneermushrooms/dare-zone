@@ -164,15 +164,8 @@ public sealed partial class ArenaOwnership
             return error;
         }
 
-        var made = TryCreateArenaFolder(name);
-        if (made is not null || Directory.Exists(Path.Combine(ArenasDir, draft))) return made;
-        var copy = DraftFiles.CopyArena(ArenasDir, name, draft, DraftRules.PublishFilesFromConf(ReadOwnConf(name)));
-        if (copy is not null)
-        {
-            RemoveFolder(name);
-            Log(LogLevel.Error, $"Making draft {draft} for '{name}' failed: {copy}");
-        }
-        return copy;
+        // A new arena is just its own folder now: no draft copy to publish from.
+        return TryCreateArenaFolder(name);
     }
 
     /// <summary>Once at load: every owned arena without a draft gets one, copied from its live files.</summary>
@@ -209,17 +202,8 @@ public sealed partial class ArenaOwnership
         return false;
     }
 
-    /// <summary>The entry rule for a draft (names count only when authenticated). Also used before entry.</summary>
-    private bool MayEnterDraft(Player player, string draft)
-    {
-        var name = player.Name;
-        if (name is null) return false;
-        var authenticated = player.Flags.Authenticated;
-        return DraftRules.Entry(
-            authenticated ? Store.RoleIn(draft, name) : null,
-            authenticated && Store.IsInvited(draft, name),
-            authenticated && GrantLogic.IsGlobalStaff(GlobalGroupOf(name))) == EntryDecision.Allow;
-    }
+    /// <summary>Anyone may enter any arena, drafts included (Chris, 2026-11-25: no invite list at the door).</summary>
+    private static bool MayEnterDraft(Player player, string draft) => player.Name is not null;
 
     private void MoveOutIfNotAllowed(string name, string playerName)
     {
@@ -242,9 +226,8 @@ public sealed partial class ArenaOwnership
     /// <summary>Null when <paramref name="arenaName"/> may be edited directly, else why not (it publishes from a draft).</summary>
     internal string? LiveEditRefusal(string arenaName)
     {
-        if (Store.IsLiveWithDraft(arenaName))
-            return $"'{arenaName}' changes only by publishing: edit your draft #{arenaName} (?go #{arenaName}), then ?publish.";
-        if (DraftRules.IsDraft(arenaName)) Store.TouchDraft(arenaName); // an edit counts as activity
+        // Arenas are edited directly now (no publish step); a draft's edits still count as activity.
+        if (DraftRules.IsDraft(arenaName)) Store.TouchDraft(arenaName);
         return null;
     }
 

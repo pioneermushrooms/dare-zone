@@ -118,6 +118,7 @@ public sealed partial class ArenaOwnership
             status = owned?.Status.ToString(),
             coMods = owned?.CoMods ?? (IReadOnlyList<string>)Array.Empty<string>(),
             lastEntered = owned?.LastEntered,
+            @private = Store.IsPrivate(arena),
             map = cfg is null ? null : _configManager.GetStr(cfg, "General", "Map"),
             levelFiles,
             limits = new { maxLevelFiles = MaxLevelFiles, mapBytes = 2 * 1024 * 1024, lvzBytes = 5 * 1024 * 1024, settingChangesPerMinute = SettingChangesPerMinute },
@@ -423,7 +424,11 @@ internal sealed partial class WebServer : IDisposable
             case "/lvl.js": return Get(method, () => Static("lvl.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/visibility": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebSetPrivate(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/discard": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebDiscard(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/arenas":
+                return method == "GET" ? JsonReply(200, new { ok = true, arenas = await OnMain(() => _m.ZoneArenas()).ConfigureAwait(false) }) : MethodNotAllowed();
             case "/api/chat": return method == "GET" ? await ChatAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/chat/join": return method == "POST" ? await ChatJoinAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/chat/say": return method == "POST" ? await ChatSayAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -764,6 +769,20 @@ internal sealed partial class WebServer : IDisposable
             return new Reply(200, "application/octet-stream", bytes, [("X-Map-Name", Path.GetFileName(path))]);
         }
         return JsonReply(404, new { ok = false, message = "This arena has no map file yet; start from an empty map or upload one." });
+    }
+
+    /// <summary>Owner only, body {"arena", ...}: runs <paramref name="act"/> on the mainloop with the body.</summary>
+    private async Task<Reply> OwnerActionAsync(HttpListenerRequest req, Func<string, string, JsonElement, Result> act)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can do that." });
+        var arena = pick.Value.Arena;
+        var json = body.Value;
+        return ResultReply(await OnMain(() => act(player, arena, json)).ConfigureAwait(false));
     }
 
     /// <summary>Owner only: recycles the arena so a newly published map loads (as ?recyclearena). Body {"arena"}.</summary>

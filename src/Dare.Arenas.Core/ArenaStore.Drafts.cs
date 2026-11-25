@@ -107,8 +107,6 @@ public sealed partial class ArenaStore
             return Fail($"Arena '{arena}' has a pending request; approve or decline it instead.");
         if (OwnedCount(owner) >= MaxPerPilot)
             return Fail($"{owner} already owns {MaxPerPilot} arenas.");
-        if (DraftCount(owner) >= MaxPerPilot)
-            return Fail($"{owner} already has {MaxPerPilot} drafts; the arena would have none.");
         if (folderExists(arena) || folderExists(DraftRules.DraftOf(arena)))
             return Fail($"A folder named '{arena}' already exists on the server; cannot create.");
         var folderError = createFolder();
@@ -116,8 +114,6 @@ public sealed partial class ArenaStore
             return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
         var now = Now();
         Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
-            ("$a", arena), ("$o", owner), ("$t", now));
-        Run("INSERT INTO drafts(name, owner, status, live, created, last_touched) VALUES($a,$o,'Published',1,$t,$t)",
             ("$a", arena), ("$o", owner), ("$t", now));
         AddEvent(now, arena, staff, "create", $"owner: {owner}");
         return Ok($"Created '{arena}' for {owner}.");

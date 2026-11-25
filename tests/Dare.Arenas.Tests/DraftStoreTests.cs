@@ -272,15 +272,14 @@ public sealed class DraftStoreTests : IDisposable
     }
 
     [Fact]
-    public void old_style_request_still_works_and_its_approval_creates_a_live_draft()
+    public void a_request_approval_makes_the_arena_without_a_draft()
     {
         var s = Open();
         Assert.True(s.Request("Owner", "oldway", "pitch").Ok);
         Assert.False(s.IsDraftRequest("oldway"));
         Assert.True(s.Approve("oldway", "staff", NoFolder).Ok);
-        var d = s.Draft("oldway")!;
-        Assert.True(d.Live);
-        Assert.Equal("owner", s.RoleIn("#oldway", "owner"));
+        Assert.Null(s.Draft("oldway"));
+        Assert.Equal("owner", s.RoleIn("oldway", "owner"));
     }
 
     [Fact]

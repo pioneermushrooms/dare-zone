@@ -109,8 +109,8 @@ function route() {
 }
 
 function renderNoArena(body) {
-  $("maketitle").textContent = "Name it. Launch it.";
-  $("makeinfo").textContent = "It's yours at once: map, graphics, rules and crew. One arena per player.";
+  $("maketitle").textContent = "Make an arena";
+  $("makeinfo").textContent = "It's yours at once. Up to 3 per pilot.";
   $("requestform").hidden = false;
   // an old request (from before arenas launched without approval): offer the same name
   if (body.pendingRequest && !$("reqname").value) {
@@ -138,11 +138,15 @@ function renderArena(body) {
   const max = body.maxPerPilot || 3;
   const owned = body.arenas.filter((a) => a.role === "owner" && !a.name.startsWith("#")).length;
   const full = owned >= max;
-  $("maketitle").textContent = full ? `You own ${max} arenas` : "Name it. Launch it.";
+  $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
   $("makeinfo").textContent = full
-    ? `That's the most per pilot. Everything for them is in the menu.`
-    : `It goes public at once and it's yours, with a private draft to keep building in. You own ${owned} of ${max}.`;
+    ? "That's the most per pilot. Discard one to make another."
+    : `It's yours at once. You own ${owned} of ${max}.`;
   $("requestform").hidden = full;
+
+  // owner: public/private switch and discard
+  $("ownerbox").hidden = !owner;
+  showPrivacy(!!body.private);
 
   // map
   $("maptitle").textContent = body.map || "No map yet";
@@ -282,7 +286,27 @@ async function createArena(form, nameInput, ownerInput, out, after) {
   if (body.ok) { form.reset(); after(); }
 }
 
+function showPrivacy(isPrivate) {
+  $("privacy").checked = isPrivate;
+  $("privacylabel").textContent = isPrivate ? "Private" : "Public";
+  $("privacynote").textContent = isPrivate
+    ? "Left off the site's lists. Anyone who knows the name can still enter."
+    : "Listed on the site for everyone.";
+}
+
 function wireHub() {
+  $("privacy").addEventListener("change", async (e) => {
+    const want = e.target.checked;
+    const { body } = await postJson("/visibility", { arena: current.arena, private: want });
+    msg($("ownermsg"), body.message, body.ok);
+    showPrivacy(body.ok ? want : !want);
+  });
+  $("discardform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const { body } = await postJson("/discard", { arena: current.arena, confirm: $("discardname").value.trim() });
+    msg($("ownermsg"), body.message, body.ok);
+    if (body.ok) setTimeout(() => { location.hash = ""; mePage(); }, 1200);
+  });
   window.addEventListener("hashchange", route);
   $("filter").addEventListener("input", applyFilter);
   $("arenapick").addEventListener("change", (e) => mePage(e.target.value));

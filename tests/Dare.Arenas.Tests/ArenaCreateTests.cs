@@ -67,14 +67,12 @@ public sealed class ArenaCreateTests : IDisposable
     }
 
     [Fact]
-    public void a_created_arena_gets_its_live_draft()
+    public void a_created_arena_is_edited_directly_with_no_draft()
     {
         Assert.True(_s.Create("skyrace", "S", "Racer", NoFolder, FolderOk).Ok);
-        var d = _s.Draft("skyrace")!;
-        Assert.True(d.Live);
-        Assert.Equal("Racer", d.Owner);
-        Assert.Equal("owner", _s.RoleIn("#skyrace", "racer"));
-        Assert.True(_s.IsLiveWithDraft("skyrace"));
+        Assert.Null(_s.Draft("skyrace"));
+        Assert.False(_s.IsLiveWithDraft("skyrace"));
+        Assert.Equal("owner", _s.RoleIn("skyrace", "racer"));
     }
 
     [Fact]

@@ -144,3 +144,71 @@ public sealed partial class ArenaOwnership
         foreach (var b in stale) b.Dispose();
     }
 }
+
+// The home page's arena list: what the game's ?arena -a shows (every arena the zone has, with
+// how many are in each), minus private and suspended ones.
+public sealed partial class ArenaOwnership
+{
+    /// <summary>Mainloop: [{name, players}], "0" being the public arena; busiest first, then by name.</summary>
+    internal IReadOnlyList<object> ZoneArenas()
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        _arenaManager.Lock();
+        try
+        {
+            foreach (var known in _arenaManager.KnownArenaNames)
+            {
+                var name = known.Span.ToString();
+                if (name.Equals("(public)", StringComparison.OrdinalIgnoreCase)) name = "0";
+                counts.TryAdd(name, 0);
+            }
+            _arenaManager.GetPopulationSummary(out _, out _);
+            foreach (var arena in _arenaManager.Arenas)
+            {
+                if (arena.Status != ArenaState.Running) continue;
+                arena.GetPlayerCounts(out var total, out _);
+                counts[arena.Name] = total;
+            }
+        }
+        finally
+        {
+            _arenaManager.Unlock();
+        }
+        var hidden = Store.Arenas().Where(a => a.Status != ArenaStatus.Active).Select(a => a.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        counts.TryAdd("0", 0);
+        return counts
+            .Where(p => p.Key.Length > 0 && p.Key[0] is not ('#' or '_') && !hidden.Contains(p.Key) && !IsHiddenArena(p.Key))
+            .OrderByDescending(p => p.Key == "0").ThenByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(p => (object)new { name = p.Key, players = p.Value })
+            .ToList();
+    }
+
+    /// <summary>An arena its owner switched to private: left out of the site's lists.</summary>
+    private bool IsHiddenArena(string name) => Store.IsPrivate(name);
+}
+
+// Owner actions from the arena page: public/private, and discard.
+public sealed partial class ArenaOwnership
+{
+    /// <summary>Mainloop: {"arena", "private": true|false}. The caller checked the owner role.</summary>
+    internal Result WebSetPrivate(string player, string arena, System.Text.Json.JsonElement body)
+    {
+        var makePrivate = body.TryGetProperty("private", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+        var r = Store.SetPrivate(arena, player, makePrivate);
+        if (r.Ok) Log(LogLevel.Info, $"(web) {player} made [{arena}] {(makePrivate ? "private" : "public")}.");
+        return r;
+    }
+
+    /// <summary>Mainloop: {"arena", "confirm": the arena's name}. Archives it and sends everyone out.</summary>
+    internal Result WebDiscard(string player, string arena, System.Text.Json.JsonElement body)
+    {
+        var confirm = body.TryGetProperty("confirm", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null;
+        if (!string.Equals((confirm ?? "").Trim(), arena, StringComparison.OrdinalIgnoreCase))
+            return new Result(false, $"Type {arena} to confirm.");
+        var r = Store.Discard(arena, player);
+        if (!r.Ok) return r;
+        SendPlayersOut(arena, $"Arena '{arena}' was discarded by its owner.");
+        Log(LogLevel.Info, $"(web) {player} discarded [{arena}].");
+        return new Result(true, $"Discarded '{arena}'. Staff can bring it back if you change your mind.");
+    }
+}

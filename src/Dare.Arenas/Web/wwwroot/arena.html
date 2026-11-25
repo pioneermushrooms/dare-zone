@@ -3,26 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your arena — SubSpace Foundation</title>
+<title>Your arenas — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="me">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/build.html">Create an arena</a><a href="/arenas.html">Arena directory</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
-<div class="page-head"><p class="eyebrow">YOUR ARENA</p><h1>Arena tools</h1></div>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Your arenas</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<div class="page-head"><h1>Your arenas</h1></div>
 
 <main class="panel narrow" id="signin" hidden>
-  <h2>Sign in to make stuff</h2>
+  <h2>Sign in</h2>
   <p id="signinmsg">Sign in with your Foundation account to make an arena, edit its map and pick your crew.</p>
   <div class="actions"><a class="btn" href="/account/login">Sign in</a><a class="btn ghost" href="/account/signup">Claim a name</a></div>
   <p class="hint">In game you can also type <b>?weblogin</b> for a one-time link.</p>
 </main>
 
 <div class="hub" id="hub" hidden>
-  <nav class="side" aria-label="Your hub">
+  <nav class="side" aria-label="Your arenas">
     <span class="who" id="who"></span>
-    <a href="#overview" data-view="overview" data-needs="arena">Your arena</a>
+    <a href="#overview" data-view="overview" data-needs="arena">Overview</a>
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
@@ -36,18 +36,16 @@
   <div class="content">
     <!-- no arena yet: launch one (staff can also make one for someone else) -->
     <section data-view="make" hidden>
-      <p class="kicker">Make an arena</p>
-      <h2 id="maketitle">Name it. Launch it.</h2>
-      <p class="dim" id="makeinfo">It goes public at once and it's yours: map, graphics, rules and crew. You also get a private draft #name to keep building in. Up to 3 arenas per pilot.</p>
+      <h2 id="maketitle">Make an arena</h2>
+      <p class="dim" id="makeinfo">It's yours at once. Up to 3 per pilot.</p>
       <form class="stack" id="requestform">
         <label>Arena name <input type="text" id="reqname" maxlength="15" pattern="[A-Za-z][A-Za-z0-9]{1,13}[A-Za-z]" title="3-15 letters and digits (a-z, 0-9); start with a letter, do not end in a digit" required autocomplete="off">
           <span class="hint">3–15 letters and digits; starts with a letter, doesn't end in a digit.</span></label>
         <label>What is it for? (optional) <input type="text" id="reqpitch" maxlength="120" autocomplete="off">
           <span class="hint">Up to 120 characters. Everyone can read it.</span></label>
-        <button type="submit" class="hot">Launch arena</button>
+        <button type="submit" class="hot">Make it</button>
       </form>
       <p class="msg" id="reqmsg"></p>
-      <p class="dim">Rather build in private first? Use the <a href="/build.html">arena builder</a>: a draft only you and your invited pilots can enter, public when you say so.</p>
       <div id="staffcreate" hidden>
         <h3>Staff: make one for someone else</h3>
         <p class="dim">The owner needs a Foundation account.</p>
@@ -74,6 +72,16 @@
             <a class="btn ghost" href="#crew" id="crewtile">Crew</a>
           </div>
           <p class="dim">In game: <b class="name" id="gocmd"></b></p>
+          <div id="ownerbox" hidden>
+            <label class="switch"><input type="checkbox" id="privacy" role="switch"><span class="track" aria-hidden="true"></span>
+              <span><b id="privacylabel">Public</b> <span class="dim" id="privacynote">Listed on the site.</span></span></label>
+            <p class="msg" id="ownermsg"></p>
+            <details class="discard"><summary>Discard this arena</summary>
+              <p class="dim">It closes and its files are stored away. Staff can bring it back.</p>
+              <form class="row" id="discardform"><input id="discardname" autocomplete="off" maxlength="16" placeholder="type the arena's name" aria-label="Type the arena's name to confirm" required>
+                <button type="submit" class="danger">Discard</button></form>
+            </details>
+          </div>
         </div>
       </div>
     </section>

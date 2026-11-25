@@ -154,7 +154,7 @@ public sealed partial class ArenaOwnership
         }
         Log(LogLevel.Info, $"{player} launched arena '{name}'{line}");
         _chat.SendModMessage($"[Dare.Arenas] {player} launched arena '{name}'{line}");
-        var message = $"'{name}' is live and yours. Type ?go {name}. Keep building in your draft #{name}; ?publish copies it to the live arena.";
+        var message = $"'{name}' is yours. Type ?go {name} to fly in it.";
         var recycleNote = approved.Message.IndexOf(" Could not recycle", StringComparison.Ordinal);
         if (recycleNote >= 0) message += approved.Message[recycleNote..];
         return new Result(true, message);
@@ -298,7 +298,7 @@ public sealed partial class ArenaOwnership
         Log(LogLevel.Info, $"{staff} approved arena '{name}'.");
         var message = fromDraft
             ? $"{result.Message} Folder arenas/{name}/ copied from the draft #{name}."
-            : $"{result.Message} Folder arenas/{name}/ created from the template, with its draft #{name}.";
+            : $"{result.Message} Folder arenas/{name}/ created from the template.";
 
         // Someone may already be in an arena of that name; it opened a shared fallback config
         // (no arenas/<name>/arena.conf then). Recycle it so it loads its own file, and players

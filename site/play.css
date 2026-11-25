@@ -41,10 +41,12 @@ h1 { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-t
   font-size: clamp(3.4rem, 9vw, 6.4rem); letter-spacing: .01em; }
 h1 em { font-style: normal; color: var(--cyan); }
 
-.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
 .arena { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 14px; min-height: 60px; border: 1px solid #344762; border-radius: 3px; background: #08111ee8; }
 .arena span { color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-.arena select { font: 600 1rem Inter, system-ui, sans-serif; color: var(--ink); background: transparent; border: 0; padding: 8px 6px; min-width: 9rem; max-width: 15rem; cursor: pointer; }
+/* a fixed width (an arena name is at most 15 characters, plus its count), so a long one can't crowd Enter */
+.arena select { font: 600 1rem Inter, system-ui, sans-serif; color: var(--ink); background: transparent; border: 0; padding: 8px 6px;
+  width: 12.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums; }
 .arena select option { background: #0b1422; color: var(--ink); }
 
 #start { --p: 0%; font: 700 1.2rem Inter, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 14px; min-height: 60px;
@@ -68,7 +70,7 @@ h1 em { font-style: normal; color: var(--cyan); }
 #status.error { color: var(--warn); }
 .newhere { margin: 6px 0 0; color: var(--muted); font-size: .9rem; }
 
-.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 980px; }
 .card { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; min-height: 96px; text-decoration: none; color: var(--ink);
   background: var(--panel); border: 1px solid var(--line); border-top-color: #537a92; border-radius: 3px; backdrop-filter: blur(6px); }
 .card b { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase; font-size: 1.35rem; letter-spacing: .02em; line-height: 1.1; }
@@ -91,7 +93,7 @@ dialog button.ghost { color: var(--ink); background: transparent; border-color: 
 dialog .msg { min-height: 1.3em; margin: 0; color: var(--warn); font-size: .9rem; }
 dialog .forgot, dialog .small { margin: 0; font-size: .85rem; color: var(--muted); }
 
-@media (max-width: 860px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .cards { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) {
   #entry { background-position: center, center, 55% center, center; }
   .controls { flex-direction: column; }

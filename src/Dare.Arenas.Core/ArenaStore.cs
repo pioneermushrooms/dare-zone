@@ -92,6 +92,9 @@ public sealed partial class ArenaStore : IDisposable
             Exec("ALTER TABLE requests ADD COLUMN draft INTEGER NULL;");
         AllowSeveralArenasPerOwner();
         Exec("CREATE INDEX IF NOT EXISTS ix_arenas_owner ON arenas(owner);");
+        // after the rebuild above, which keeps only the columns it knows
+        if (Scalar("SELECT COUNT(*) FROM pragma_table_info('arenas') WHERE name = 'private'") == 0)
+            Exec("ALTER TABLE arenas ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
     }
 
     public void Dispose()
@@ -144,8 +147,6 @@ public sealed partial class ArenaStore : IDisposable
             return Fail($"Arena '{arena}' is already taken.");
         var fromDraft = IsDraftRequestId(req.Id);
         var existingDraft = LoadDraft(arena);
-        if (!fromDraft && existingDraft is null && DraftCount(req.Player) >= MaxPerPilot)
-            return Fail($"{req.Player} already has {MaxPerPilot} drafts; the arena would have none.");
         var folderError = createFolder();
         if (folderError is not null)
             return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was approved and the request is still pending.");
@@ -153,10 +154,8 @@ public sealed partial class ArenaStore : IDisposable
         Run("UPDATE requests SET status='Approved', decided_by=$s WHERE id=$id", ("$s", staff), ("$id", req.Id));
         Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
             ("$a", arena), ("$o", req.Player), ("$t", now));
-        if (existingDraft is null)
-            Run("INSERT INTO drafts(name, owner, status, live, created, last_touched) VALUES($a,$o,'Published',1,$t,$t)",
-                ("$a", arena), ("$o", req.Player), ("$t", now));
-        else
+        // a new arena has no draft any more; one asked for from an existing draft keeps it
+        if (existingDraft is not null)
         {
             Run("UPDATE drafts SET status='Published', live=1, last_touched=$t WHERE name=$a", ("$t", now), ("$a", arena));
             // the draft's co-mods help run the live arena too
