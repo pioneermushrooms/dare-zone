@@ -33,8 +33,14 @@ h1 em { font-style: normal; color: var(--cyan); }
 .arena select option { background: #0b1422; color: var(--ink); }
 
 #start { --p: 0%; font: 700 1.2rem Inter, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 14px; min-height: 60px;
-  padding: 10px 28px 10px 10px; border-radius: 3px; cursor: pointer; color: #07131e; border: 1px solid var(--cyan);
-  background: linear-gradient(90deg, var(--cyan) var(--p), #3b7f8e var(--p)); }
+  min-width: 11.5rem; padding: 10px 28px 10px 10px; border-radius: 3px; cursor: pointer; color: #07131e; border: 1px solid var(--cyan);
+  background: var(--cyan); font-variant-numeric: tabular-nums; }
+/* downloading: dark, with a progress line along the bottom; still pressable */
+#start.downloading { color: var(--ink); border-color: #4a6179;
+  background: linear-gradient(var(--cyan), var(--cyan)) left bottom / var(--p) 4px no-repeat, #0f1a2a; }
+#start.downloading .play-icon { background: var(--cyan); }
+#start.downloading .play-icon::before { border-left-color: #07131e; }
+#start.downloading:hover:not(:disabled) { border-color: var(--cyan); background: linear-gradient(var(--cyan), var(--cyan)) left bottom / var(--p) 4px no-repeat, #13243a; }
 #start:hover:not(:disabled) { background: var(--cyan-hi); border-color: var(--cyan-hi); }
 #start.loading { cursor: progress; }
 #start:disabled { cursor: default; color: var(--muted); background: #0f1a2a; border-color: #344762; }

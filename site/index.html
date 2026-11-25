@@ -7,9 +7,20 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css">
-<!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below. -->
-<script type="module" src="/play/start.mjs"></script>
+<link rel="stylesheet" href="/play.css?v=3">
+<!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
+     Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
+<script type="module" src="/play/start.mjs?v=3"></script>
+<script>
+// If the game script never starts (an old cached copy, a blocked script), say so instead of a grey button.
+setTimeout(function () {
+  var b = document.getElementById("start"), s = document.getElementById("status");
+  if (b && b.disabled && s && !s.textContent) {
+    s.textContent = "The game didn't load. Reload the page (Shift+Reload), or use desktop Chrome or Edge.";
+    s.className = "error";
+  }
+}, 15000);
+</script>
 </head>
 <body>
 <div id="entry">
