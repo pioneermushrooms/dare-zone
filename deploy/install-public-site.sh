@@ -4,8 +4,8 @@ stage="${1:?usage: install-public-site.sh SITE_SOURCE}"
 site=/var/www/foundation
 host=subspacefoundation.com
 files=(
-  style.css home.css portal.js arenas.js jump.webp sector.png
-  arena-owner-reference.html arena-owners.html pilot.html client-standard.html
+  style.css home.css play.css arenas.js jump.webp sector.png
+  arena-owner-reference.html arena-owners.html pilot.html
   arenas.html index.html build.html build.js
 )
 for name in "${files[@]}"; do
@@ -41,7 +41,7 @@ for name in "${files[@]}"; do
   mv -fT -- "$work/$name" "$site/$name"
   installed+=("$name")
 done
-for route in / /build.html /build.js /arenas.html /arenas.js /jump.webp /arena-owners.html /pilot.html /client-standard.html /play/ /arena/ /account/signup /arena/api/public; do
+for route in / /build.html /build.js /arenas.html /arenas.js /jump.webp /arena-owners.html /pilot.html /play/ /arena/ /account/signup /arena/api/public; do
   curl -fsS --max-time 10 --resolve "$host:443:127.0.0.1" "https://$host$route" -o /dev/null
 done
 echo "Published https://$host/ and https://$host/arenas.html"

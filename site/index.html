@@ -3,32 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Play SubSpace in your browser and build your own arena in the shared Foundation zone.">
-<title>SubSpace Foundation — Play and build together</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="home.css">
-<script src="portal.js" defer></script>
+<meta name="description" content="Fly SubSpace in your browser in the Foundation zone, and build arenas of your own.">
+<title>SubSpace Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/play.css">
+<!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below. -->
+<script type="module" src="/play/start.mjs"></script>
 </head>
-<body><header><nav aria-label="Main navigation"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="#play">Play</a><a href="/build.html">Create an arena</a><a href="arenas.html">Arena directory</a></div><a class="outline" href="pilot.html">Claim your name</a></nav></header>
-<main>
-<section class="wrap arrival" id="play">
-  <div class="arrival-copy">
-    <p class="eyebrow">MULTIPLAYER SPACE COMBAT</p>
-    <h1>A shared zone.<br><em>Room to innovate.</em></h1>
-    <p class="intro">Fly with other pilots in your browser. Find an arena you love, or create one with your own map, graphics, and rules.</p>
-  </div>
-  <div class="portal">
-    <a class="portal-launch" href="/play/" aria-label="Play SubSpace Foundation now in your browser">
-      <picture><img src="jump.webp" alt="" width="1672" height="941" fetchpriority="high"></picture>
-      <span class="tunnel-motion" aria-hidden="true"><img src="jump.webp" alt="" width="1672" height="941"></span>
-      <span class="portal-action"><span class="play-icon" aria-hidden="true"></span><span><strong>Play now</strong><small>Fly in your browser</small></span></span>
-    </a>
-    <div class="portal-footer">
-      <span><strong>First time flying?</strong> <a href="pilot.html">Claim a pilot name</a> and use it to sign in.</span>
-      <button class="motion-toggle" type="button" aria-pressed="false" hidden>Pause animation</button>
+<body>
+<div id="entry">
+  <header class="bar">
+    <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span></a>
+    <a class="pilot" id="pilot" href="/account/">Sign in</a>
+  </header>
+
+  <main class="launch">
+    <h1>SubSpace<br><em>Foundation</em></h1>
+    <div class="controls">
+      <label class="arena" for="arena"><span>Arena</span>
+        <select id="arena" title="Remembered for next time"><option value="">public</option></select>
+      </label>
+      <button id="start" type="button" disabled><span class="play-icon" aria-hidden="true"></span><span id="start-label">Play</span></button>
     </div>
-  </div>
-</section>
-<section class="lab" id="create"><div class="wrap section"><div><p class="eyebrow">PLAYER-OWNED ARENAS</p><h2>Make a place people want to play.</h2><p>Give a racing circuit, a duel format, or a new team game a home inside Foundation. Set the rules, upload your map and graphics, and invite up to five co-mods to help run it.</p><div class="actions"><a class="primary" href="/build.html">+ Create an arena</a><a class="outline" href="arena-owners.html">Read the arena owner guide</a></div></div><div class="panel"><h3>From idea to arena</h3><ol><li><strong>Name it.</strong> Pick a name and launch it. It’s public at once, no approval needed.</li><li><strong>Build it.</strong> Draw the map in your browser, set the rules, upload graphics. Or build in a private draft first.</li><li><strong>Fly it.</strong> Invite friends, pick up to five co-mods, and publish updates whenever you like.</li></ol></div></div></section>
-<section class="wrap section" id="future"><div><p class="eyebrow">WHAT’S NEXT</p><h2>Build and publish from your browser.</h2><p>The map editor is here: open your arena’s map in your browser, draw, and publish. Tile and ship editing come next.</p></div><div class="panel"><h3>A client you can make your own</h3><p>Explore the minimum gameplay standard and a proposal for shareable color themes.</p><a class="outline" href="client-standard.html">Read the client standard</a></div></section>
-</main><footer><div class="wrap"><a class="brand" href="./"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><span>Built with <a href="https://github.com/DangerMouseUK/oss-client">Open SubSpace</a> and <a href="https://github.com/gigamon-dev/SubspaceServer">SubspaceServer .NET</a>.</span></div></footer></body></html>
+    <p role="status" id="status"></p>
+    <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a></p>
+  </main>
+
+  <nav class="cards" aria-label="Site">
+    <a class="card" href="/arenas.html"><b>Arenas</b><span>What players have built, and who's flying.</span></a>
+    <a class="card" href="/build.html"><b>Build an arena</b><span>A private draft, public when you say.</span></a>
+    <a class="card" href="/arena/me#map"><b>Map editor</b><span>Draw your arena's map in the browser.</span></a>
+    <a class="card" href="/account/"><b>Pilot account</b><span>Your name, password and email.</span></a>
+  </nav>
+</div>
+
+<dialog id="signin" aria-labelledby="signin-title">
+  <form id="signin-form" method="dialog">
+    <h2 id="signin-title">Sign in to fly</h2>
+    <label>Pilot name <input id="signin-name" name="username" autocomplete="username" maxlength="24" required></label>
+    <label>Password <input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="31" required></label>
+    <p class="msg" id="signin-msg" role="alert"></p>
+    <p class="forgot" id="signin-forgot" hidden><a href="/account/forgot">Forgot your password?</a></p>
+    <div class="row">
+      <button type="submit" id="signin-go">Sign in and play</button>
+      <button type="button" class="ghost" id="signin-cancel">Cancel</button>
+    </div>
+    <p class="small">No pilot name yet? <a href="/account/signup">Claim one</a>.</p>
+  </form>
+</dialog>
+</body>
+</html>

@@ -34,7 +34,7 @@ function say(target, body) {
 function requestRow(r, can, maxReason) {
   const msg = el("p", { className: "msg", role: "status" });
   const actions = el("div", { className: "row" });
-  if (r.fromDraft) actions.append(el("a", { href: "/play/?arena=" + encodeURIComponent("#" + r.arena), textContent: "Fly in #" + r.arena }));
+  if (r.fromDraft) actions.append(el("a", { href: "/?arena=" + encodeURIComponent("#" + r.arena), textContent: "Fly in #" + r.arena }));
   if (can.approve) {
     const approve = el("button", { type: "button", textContent: "Approve" });
     approve.addEventListener("click", async () => {

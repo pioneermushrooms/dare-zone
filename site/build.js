@@ -81,7 +81,7 @@ function draftCard(draft, maxInvites) {
     el("div", { className: "status-line" }, el("h2", { textContent: hash }), el("span", { className: "tag " + cls, textContent: label })),
     el("p", { className: "msg", textContent: note }),
     el("div", { className: "actions" },
-      el("a", { className: "primary", href: "/play/?arena=" + encodeURIComponent(hash), textContent: "Fly in it" }),
+      el("a", { className: "primary", href: "/?arena=" + encodeURIComponent(hash), textContent: "Fly in it" }),
       el("a", { className: "outline", href: "/arena/me?arena=" + encodeURIComponent(hash), textContent: "Edit settings, map and graphics" })),
     el("div", {},
       el("h3", { textContent: `Who can enter (up to ${maxInvites} invited)` }),
