@@ -15,7 +15,7 @@ for f in Microsoft.Data.Sqlite.dll SQLitePCLRaw.core.dll SQLitePCLRaw.batteries_
 printf 'subspacefoundation.com {\n\troot * /var/www/foundation\n\tfile_server\n}\n' > "$H/Caddyfile"
 # staging folder like deploy.sh makes
 S=$H/stage/dare-arenas-deploy-new; mkdir -p "$S/plugin" "$S/site"; cp -R $REPO/deploy "$S/deploy"
-cp $REPO/out/modules/Dare.Arenas/* "$S/plugin/"; cp $REPO/site/index.html $REPO/site/arena-owners.html $REPO/site/home.js "$S/site/"; cp $REPO/src/Dare.Arenas/Web/wwwroot/style.css "$S/site/"; mkdir -p "$S/site/img"; cp $REPO/site/img/*.png "$S/site/img/"
+cp $REPO/out/modules/Dare.Arenas/* "$S/plugin/"; cp $REPO/site/* "$S/site/"
 for o in 1 2 3 4; do mkdir -p "$H/stage/dare-arenas-deploy-2026010$o"; done
 echo up > "$H/state"; echo "${PLAYERS:-0}" > "$H/players"; : > "$H/journal"
 # stubs
