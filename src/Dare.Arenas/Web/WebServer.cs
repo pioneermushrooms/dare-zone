@@ -122,6 +122,7 @@ public sealed partial class ArenaOwnership
             limits = new { maxLevelFiles = MaxLevelFiles, mapBytes = 2 * 1024 * 1024, lvzBytes = 5 * 1024 * 1024, settingChangesPerMinute = SettingChangesPerMinute },
             settings = cfg is null ? null : SettingsForWeb(cfg),
             configMissing = cfg is null,
+            staff = StaffFlags(player),
         };
     }
 
@@ -137,6 +138,7 @@ public sealed partial class ArenaOwnership
             role = (string?)null,
             pendingRequest = pending is null ? null : new { pending.Arena, pending.Pitch, pending.At },
             maxPitch = MaxPitchLength,
+            staff = StaffFlags(player),
         };
     }
 
@@ -219,6 +221,90 @@ public sealed partial class ArenaOwnership
         var result = RemoveLvz(cfg, arena, player, fileName);
         Log(LogLevel.Info, $"(web) {player} remove of lvz '{fileName}' in [{arena}]: {(result.Ok ? "removed" : "refused: " + result.Message)}");
         return result;
+    }
+
+    /// <summary>
+    /// Whether the signed-in web name may use staff capability <paramref name="capability"/>: the
+    /// server's check by name, i.e. the name's staff.conf [(global)] group (arena-scoped groups such
+    /// as arenaowner never count here). The web session already proved the name. Mainloop.
+    /// </summary>
+    internal bool WebStaffCan(string player, string capability) =>
+        _capabilityManager.HasCapability(player, capability);
+
+    /// <summary>?createarena from the web staff view; null when the name lacks cmd_createarena.</summary>
+    internal Result? WebCreateArena(string player, string arena, string? owner)
+    {
+        if (!WebStaffCan(player, CreateCapability)) return null;
+        var (result, _, _) = CreateArena(player, arena, owner);
+        Log(LogLevel.Info, $"(web) {player} create arena '{arena}': {(result.Ok ? "created" : "refused: " + result.Message)}");
+        return result;
+    }
+
+    internal const string ApproveCapability = "cmd_approvearena";
+    internal const string DeclineCapability = "cmd_declinearena";
+
+    /// <summary>What the signed-in name may do in the staff view (by its [(global)] group). Mainloop.</summary>
+    internal object StaffFlags(string player) => new
+    {
+        approve = WebStaffCan(player, ApproveCapability),
+        decline = WebStaffCan(player, DeclineCapability),
+        create = WebStaffCan(player, CreateCapability),
+    };
+
+    /// <summary>The staff view: every request, arena and recent event; null for non-staff. Mainloop.</summary>
+    internal object? StaffData(string player)
+    {
+        bool approve = WebStaffCan(player, ApproveCapability), decline = WebStaffCan(player, DeclineCapability),
+             create = WebStaffCan(player, CreateCapability);
+        if (!approve && !decline && !create) return null;
+        var counts = PlayerCounts();
+        return new
+        {
+            player,
+            can = new { approve, decline, create },
+            pending = Store.PendingRequestsOldestFirst(200).Select(r => new { r.Arena, r.Player, r.Pitch, r.At }),
+            arenas = Store.Arenas().Select(a => new
+            {
+                a.Name, a.Owner, status = a.Status.ToString(), a.Created, a.LastEntered, a.CoMods,
+                players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
+            }),
+            events = Store.Events(null, 100).Select(e => new { e.At, e.Arena, e.Actor, e.Kind, e.Detail }),
+            maxReason = MaxPitchLength,
+        };
+    }
+
+    /// <summary>Approve/decline from the web staff view; null when the name lacks that capability. Mainloop.</summary>
+    internal Result? WebDecide(string player, string arena, bool approve, string reason)
+    {
+        if (!WebStaffCan(player, approve ? ApproveCapability : DeclineCapability)) return null;
+        var result = approve ? ApproveArena(player, arena) : DeclineArena(player, arena, reason);
+        Log(LogLevel.Info, $"(web) {player} {(approve ? "approve" : "decline")} '{arena}': {(result.Ok ? "done" : "refused: " + result.Message)}");
+        return result;
+    }
+
+    /// <summary>Co-mods from the web hub: the owner role is checked again here, at the moment of writing. Mainloop.</summary>
+    internal Result WebCoMod(string player, string arena, string action, string name)
+    {
+        if (!HasRole(arena, player, ownerOnly: true))
+            return new Result(false, "Only the arena's owner can change co-mods.");
+        return ChangeCoMod(player, arena, action, name);
+    }
+
+    /// <summary>The arena's General:Map value. Mainloop.</summary>
+    internal string? MapSetting(ConfigHandle cfg) => _configManager.GetStr(cfg, "General", "Map");
+
+    /// <summary>Recycle from the web (after a map publish); the owner role is checked again here. Mainloop.</summary>
+    internal Result WebRecycle(string player, string arena)
+    {
+        if (!HasRole(arena, player, ownerOnly: true))
+            return new Result(false, "Only the arena's owner can recycle it from the web.");
+        var (recycled, notRecycled) = RecycleRunning(arena);
+        Log(LogLevel.Info, $"(web) {player} recycled [{arena}]: {recycled.Count} recycled, {notRecycled.Count} could not be.");
+        if (notRecycled.Count > 0)
+            return new Result(false, $"Could not recycle {string.Join(", ", notRecycled)} right now; type ?recyclearena there.");
+        return new Result(true, recycled.Count > 0
+            ? "Arena recycled: players inside are back in with the new map."
+            : "Nobody is in the arena; the new map loads when someone enters.");
     }
 
     internal Result WebRequest(string player, string arena, string pitch)
@@ -365,6 +451,7 @@ internal sealed partial class WebServer : IDisposable
             case "/app.js": return Get(method, () => Static("app.js"));
             case "/style.css": return Get(method, () => Static("style.css"));
             case "/login": return method == "GET" ? Login(req) : MethodNotAllowed();
+            case "/api/zones": return Get(method, ZonesReply);
             case "/api/public":
                 return method == "GET" ? await PublicAsync().ConfigureAwait(false) : MethodNotAllowed();
             case "/api/me": return method == "GET" ? await MeAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -372,6 +459,17 @@ internal sealed partial class WebServer : IDisposable
             case "/api/upload": return method == "POST" ? await UploadAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/rmlvz": return method == "POST" ? await RemoveLvzAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/request": return method == "POST" ? await RequestAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/staff": return Get(method, () => Static("staff.html"));
+            case "/api/staff": return method == "GET" ? await StaffDataAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/create": return method == "POST" ? await StaffCreateAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/approve": return method == "POST" ? await StaffDecideAsync(req, approve: true).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/decline": return method == "POST" ? await StaffDecideAsync(req, approve: false).ConfigureAwait(false) : MethodNotAllowed();
+            case "/map": return Get(method, () => Static("map.html"));
+            case "/editor.js": return Get(method, () => Static("editor.js"));
+            case "/lvl.js": return Get(method, () => Static("lvl.js"));
+            case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             default: return Text(404, "Not found.");
         }
     }
@@ -404,6 +502,19 @@ internal sealed partial class WebServer : IDisposable
         {
             _publicBuild.Release();
         }
+    }
+
+    /// <summary>The live zone list (public; served from the module's cache, never fetched per request).</summary>
+    private Reply ZonesReply()
+    {
+        var z = _m.Zones();
+        return JsonReply(200, new
+        {
+            zones = z.Zones.Select(x => new { x.Name, x.Description, x.Address, x.Players }),
+            at = z.At == DateTimeOffset.MinValue ? (DateTimeOffset?)null : z.At,
+            answered = z.Answered,
+            asked = z.Asked,
+        });
     }
 
     private static Reply JsonBytes(int status, byte[] body) => new(status, "application/json; charset=utf-8", body);
@@ -610,6 +721,118 @@ internal sealed partial class WebServer : IDisposable
         return ResultReply(result);
     }
 
+    /// <summary>
+    /// Staff only (cmd_createarena: smod/sysop by their staff.conf [(global)] group): same as
+    /// ?createarena. Body {"arena", "owner"?}; no owner: the signed-in staff member owns it.
+    /// </summary>
+    private async Task<Reply> StaffCreateAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var arena = Str(body, "arena") ?? "";
+        var owner = Str(body, "owner");
+        var result = await OnMain(() => _m.WebCreateArena(player, arena, owner)).ConfigureAwait(false);
+        if (result is null)
+            return JsonReply(403, new { ok = false, message = "Only super moderators and sysops can create arenas." });
+        return ResultReply(result);
+    }
+
+    /// <summary>The staff view's data; 403 unless the name holds a staff capability (by its [(global)] group).</summary>
+    private async Task<Reply> StaffDataAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var data = await OnMain(() => _m.StaffData(player)).ConfigureAwait(false);
+        return data is null
+            ? JsonReply(403, new { ok = false, message = "This page is for zone staff." })
+            : JsonReply(200, data);
+    }
+
+    /// <summary>Staff: approve ({"arena"}) or decline ({"arena", "reason"}) a request, as ?approvearena/?declinearena.</summary>
+    private async Task<Reply> StaffDecideAsync(HttpListenerRequest req, bool approve)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var arena = Str(body, "arena") ?? "";
+        var reason = Str(body, "reason") ?? "";
+        var result = await OnMain(() => _m.WebDecide(player, arena, approve, reason)).ConfigureAwait(false);
+        if (result is null)
+            return JsonReply(403, new { ok = false, message = "Only zone staff (moderators and up) can decide requests." });
+        return ResultReply(result);
+    }
+
+    /// <summary>
+    /// The arena's current map (General:Map) for the hub and the map editor; owner or co-mod. Read
+    /// from the arena's folder or the shared maps/ folder only (MapFile), at most 4 MB.
+    /// </summary>
+    private async Task<Reply> MapAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+
+        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        if (pick is null)
+            return JsonReply(403, new { ok = false, message = "You are not an owner or co-mod of that arena." });
+        var arena = pick.Value.Arena;
+
+        var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
+        if (cfg is null)
+            return JsonReply(409, new { ok = false, message = ArenaOwnership.ConfigMissingMessage });
+        string? setting;
+        try
+        {
+            setting = await OnMain(() => _m.MapSetting(cfg)).ConfigureAwait(false);
+        }
+        finally
+        {
+            _m.CloseArenaConfig(cfg);
+        }
+
+        foreach (var path in MapFile.Candidates(ArenaOwnership.ArenasDir, arena, ArenaOwnership.MapsDir, setting))
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) continue;
+            if (info.Length > MapFile.MaxReadBytes || info.Length == 0)
+                return JsonReply(409, new { ok = false, message = "The current map can't be opened in the editor (empty or too large)." });
+            var bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+            return new Reply(200, "application/octet-stream", bytes, [("X-Map-Name", Path.GetFileName(path))]);
+        }
+        return JsonReply(404, new { ok = false, message = "This arena has no map file yet; start from an empty map or upload one." });
+    }
+
+    /// <summary>Owner only: recycles the arena so a newly published map loads (as ?recyclearena). Body {"arena"}.</summary>
+    private async Task<Reply> RecycleAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can recycle it from the web." });
+        var arena = pick.Value.Arena;
+        return ResultReply(await OnMain(() => _m.WebRecycle(player, arena)).ConfigureAwait(false));
+    }
+
+    /// <summary>Owner only: {"arena", "action": "add"|"remove", "player"}, as ?comod.</summary>
+    private async Task<Reply> CoModAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: true, out var player) is { } denied) return denied;
+
+        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        if (body is null) return error!;
+        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        if (pick is null || pick.Value.Role != "owner")
+            return JsonReply(403, new { ok = false, message = "Only the arena's owner can change co-mods." });
+        var action = (Str(body, "action") ?? "").ToLowerInvariant();
+        var name = Str(body, "player") ?? "";
+        var arena = pick.Value.Arena;
+        var result = await OnMain(() => _m.WebCoMod(player, arena, action, name)).ConfigureAwait(false);
+        return ResultReply(result);
+    }
+
     // ---- mainloop marshalling -------------------------------------------------------------------
 
     /// <summary>Runs <paramref name="f"/> on the mainloop thread and returns its result.</summary>
@@ -748,7 +971,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "staff.html", "map.html", "app.js", "lvl.js", "editor.js", "style.css" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

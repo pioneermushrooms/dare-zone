@@ -54,7 +54,9 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/plugin" "$STAGE/site"
 cp -R "$REPO/deploy" "$STAGE/deploy"
 cp "$PLUGIN"/* "$STAGE/plugin/"
-cp "$REPO/site/index.html" "$REPO/site/arena-owners.html" "$STAGE/site/"
+cp "$REPO/site/index.html" "$REPO/site/arena-owners.html" "$REPO/site/home.js" "$STAGE/site/"
+cp "$REPO/src/Dare.Arenas/Web/wwwroot/style.css" "$STAGE/site/style.css"  # the home page shares the plugin's stylesheet
+mkdir -p "$STAGE/site/img" && cp "$REPO"/site/img/*.png "$STAGE/site/img/"
 
 TS=$(date -u +%Y%m%d-%H%M%S)
 REMOTE=/root/dare-arenas-deploy-$TS

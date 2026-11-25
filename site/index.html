@@ -4,54 +4,75 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SubSpace Foundation</title>
-<meta name="description" content="An open home for SubSpace: every zone, every client, and tools for anyone to build their own arena.">
-<style>
-  :root { --bg:#05070d; --panel:#131922; --line:#2a3442; --text:#c6d6e6; --dim:#7d8ea3; --accent:#22d3ee; --hot:#ff8a1f; }
-  * { box-sizing:border-box; }
-  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
-         background: radial-gradient(1200px 600px at 50% -10%, #0e2233 0%, transparent 60%), var(--bg); }
-  .stars { position:fixed; inset:0; pointer-events:none; background-image:
-    radial-gradient(1px 1px at 12% 22%, #fff8 50%, transparent 51%), radial-gradient(1px 1px at 72% 12%, #fff6 50%, transparent 51%),
-    radial-gradient(1px 1px at 33% 78%, #fff7 50%, transparent 51%), radial-gradient(1px 1px at 88% 64%, #fff5 50%, transparent 51%),
-    radial-gradient(1px 1px at 52% 42%, #fff6 50%, transparent 51%), radial-gradient(1px 1px at 6% 90%, #fff5 50%, transparent 51%); }
-  main { position:relative; width:100%; max-width:720px; background:linear-gradient(#161d27, #0f141b); border:1px solid var(--line);
-         box-shadow: inset 0 1px 0 #3a4552, 0 0 0 1px #0a0c10, 0 30px 80px #000a; border-radius:6px; padding:32px 28px; }
-  main::before { content:""; position:absolute; left:16px; right:16px; top:8px; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:.6; }
-  h1 { margin:0; font-size:clamp(28px, 7vw, 46px); letter-spacing:4px; color:var(--hot); text-shadow:0 0 18px #ff8a1f66; }
-  .sub { color:var(--accent); letter-spacing:3px; font-size:13px; margin:4px 0 24px; }
-  p { margin:0 0 16px; }
-  ul { margin:0 0 20px; padding-left:20px; }
-  li { margin:4px 0; }
-  .zone { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; background:#0a0e14; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin:20px 0; }
-  .zone b { color:#fff; }
-  code { color:var(--hot); }
-  .claim { display:inline-block; margin:4px 0 20px; padding:12px 22px; background:var(--hot); color:#05070d; font-weight:bold; letter-spacing:2px; text-decoration:none; border-radius:4px; box-shadow:0 0 18px #ff8a1f66; }
-  .claim:hover { background:#ffa24d; }
-  a { color:var(--accent); }
-  footer { margin-top:24px; color:var(--dim); font-size:13px; }
-</style>
+<meta name="description" content="Make your own SubSpace arena: draw the map, add graphics, set the rules, pick your crew. Every zone listed side by side.">
+<link rel="stylesheet" href="/style.css">
+<script src="/home.js" defer></script>
 </head>
 <body>
-<div class="stars"></div>
-<main>
-  <h1>SUBSPACE FOUNDATION</h1>
-  <div class="sub">EVERY ZONE · EVERY CLIENT · BUILT BY PLAYERS</div>
-  <p>SubSpace has always belonged to the people who play it: your own zone, your own arenas, your own settings, maps and skins.</p>
-  <p>We're building an open home for that:</p>
-  <ul>
-    <li>Every zone listed side by side, playable from any client</li>
-    <li>Request your own arena; run it with your own settings, map and graphics</li>
-    <li>Browser tools to edit ships, maps and tiles, and publish straight to your arena</li>
-    <li>Old arenas preserved, not deleted</li>
-  </ul>
-  <div class="zone">
-    <span>Play now: zone <b>Foundation</b></span>
-    <span>Continuum or oss-client · <code>5.161.238.245:5000</code></span>
+<div class="hero">
+  <img class="px" src="/img/hero.png" alt="">
+  <header class="top">
+    <a class="brand" href="/">FOUNDATION</a>
+    <nav>
+      <a href="/arena/">Arenas</a>
+      <a href="#zones">Zones</a>
+      <a class="cta" href="/arena/me">Your hub</a>
+    </nav>
+  </header>
+  <div class="pitch">
+    <p class="kicker">Player-owned arenas</p>
+    <h1>Draw it.<br>Fly it tonight.</h1>
+    <p class="lede">Your own arena on Foundation: map, graphics, rules and crew.</p>
+    <div class="actions">
+      <a class="btn hot" href="/arena/me#make">Make an arena</a>
+      <a class="btn ghost" href="#play">Play: 5.161.238.245:5000</a>
+    </div>
   </div>
-  <a class="claim" href="/account/signup">CLAIM YOUR NAME</a>
-  <p>Want your own arena? <a href="/arena-owners.html">How to request and run one</a> · <a href="/arena/">Player-owned arenas</a></p>
-  <footer>Under construction.</footer>
+</div>
+
+<main>
+  <section class="band wrap">
+    <div class="steps">
+      <div><b>Map</b><span>Draw it in the browser</span></div>
+      <div><b>Graphics</b><span>Drop in .lvz files</span></div>
+      <div><b>Rules</b><span>Tune every ship</span></div>
+      <div><b>Crew</b><span>Up to 5 co-mods</span></div>
+    </div>
+  </section>
+
+  <section class="band wrap">
+    <p class="kicker">Maps on Foundation</p>
+    <div class="maps">
+      <figure><img class="px" src="/img/tactical2.png" alt="Map of the turf arena" loading="lazy"><figcaption><b>turf</b><span class="dim">tactical2.lvl</span></figcaption></figure>
+      <figure><img class="px" src="/img/teamversus.png" alt="Map of the king arena" loading="lazy"><figcaption><b>king</b><span class="dim">teamversus.lvl</span></figcaption></figure>
+      <figure><img class="px" src="/img/pbg3d.png" alt="Map of the powerball arena" loading="lazy"><figcaption><b>pb</b><span class="dim">pbg3d.lvl</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="band wrap" id="play">
+    <p class="kicker">Play</p>
+    <h2>One name for the game and this site</h2>
+    <p class="dim">Claim it, then log in with Continuum or Dare to <b class="name">5.161.238.245:5000</b>.</p>
+    <div class="actions"><a class="btn" href="/account/signup">Claim your name</a><a class="btn ghost" href="/arena-owners.html">How arenas work</a></div>
+  </section>
+
+  <section class="band wrap" id="zones">
+    <p class="kicker">Every zone · live from the directory servers · A to Z</p>
+    <div class="zonebox">
+      <table class="zones">
+        <thead><tr><th scope="col">Zone</th><th scope="col" class="desc">About</th><th scope="col" class="addr">Address</th><th scope="col" class="num">Players</th></tr></thead>
+        <tbody id="zonerows"><tr><td colspan="4" class="dim">Loading the zone list…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="dim" id="zonenote"></p>
+  </section>
 </main>
+
+<footer class="site">
+  <span>SubSpace Foundation</span>
+  <a href="/arena/">Player-owned arenas</a>
+  <a href="/arena-owners.html">Owner guide</a>
+  <a href="/account/">Account</a>
+</footer>
 </body>
 </html>

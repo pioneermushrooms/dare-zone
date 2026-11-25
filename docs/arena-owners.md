@@ -93,7 +93,8 @@ Staff:
 | Command | What it does |
 | --- | --- |
 | `?approvearena <name>` | Approves a request: creates the arena and makes the asker its owner (moderators and up). |
-| `?declinearena <name> <reason>` | Declines a request; the reason is public (moderators and up). Nobody can approve or decline their own request. |
+| `?declinearena <name> <reason>` | Declines a request; the reason (one line, up to 120 characters) is public (moderators and up). Nobody can approve or decline their own request. |
+| `?createarena <name> [owner]` | Creates an arena at once, without a request; you (or the named player, who needs a Foundation account) own it. Public in `?arenalog` (super moderators and sysops). |
 | `?arenaadmin suspend <name> <reason>` | Closes an arena to players (super moderators and sysops). |
 | `?arenaadmin revive <name>` | Reopens a suspended or archived arena. |
 | `?arenaadmin transfer <name> <player>` | Gives the arena to another player (a name with a Foundation account). |
@@ -111,20 +112,28 @@ the web page.
 
 ## The web page
 
-Type `?weblogin` in game. You get a link like
-`https://subspacefoundation.com/arena/login?t=…`. Open it within 10 minutes; it works once and
-signs you in for 24 hours. No password is ever typed on the web.
+Sign in at <https://subspacefoundation.com/account/login> (or type `?weblogin` in game for a
+one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/arena/me>.
 
-- **Everyone** can see the public page, <https://subspacefoundation.com/arena/>: every
-  player-owned arena with its owner, co-mods and players online, waiting requests, decisions and
-  the public log.
-- **Without an arena**, the signed-in page lets you send a request (same rules as
+- **Everyone** can see <https://subspacefoundation.com/arena/>: every player-owned arena with its
+  owner, co-mods and players online, waiting requests, decisions and the public log. The home page
+  lists every SubSpace zone, live from the directory servers, A to Z.
+- **Without an arena**, the hub's *Make an arena* page sends a request (same rules as
   `?requestarena`).
-- **Owners and co-mods** see their arena's settings, grouped by section, with a description,
-  default and range for each, and can change them.
-- **Owners** can also upload the map (`.lvl`) and graphics (`.lvz`) by drag-and-drop, and remove
-  a graphics file with its **remove** button. A graphics file with the same name as one already
-  there replaces it.
+- **Owners and co-mods** see their arena: *Settings* (grouped by section, with a description,
+  default and range for each).
+- **Owners** also get *Map*: **Open the map editor** shows the arena's current map in the browser
+  (pencil, rectangle, eraser, undo/redo, zoom and pan; tiles from the map's own tileset, or flat
+  colours, or a tileset file of your own that stays in your browser). **Publish** saves it as the
+  arena's map and recycles the arena, so players inside come straight back in with the new map.
+  You can also upload a `.lvl` made elsewhere. Co-mods can open the editor to look and download,
+  not publish. Then *Graphics* (upload `.lvz` files by drag-and-drop,
+  remove one with its **Remove** button; a file with the same name replaces the old one) and
+  *Crew* (add or remove co-mods; same rules as `?comod`).
+- **Staff** get a *Staff* page (<https://subspacefoundation.com/arena/staff>): waiting requests
+  with Approve and Decline (moderators and up; a decline needs a public reason), *Create arena*
+  (super moderators and sysops, same as `?createarena`), every arena and the event log.
+  Suspend, revive, transfer and archive stay in game (`?arenaadmin`).
 
 ## Limits
 
@@ -137,5 +146,5 @@ signs you in for 24 hours. No password is ever typed on the web.
   settings can't be changed, and the map and graphics lists change only through uploads.
 - An arena nobody enters for **30 days** is archived (never while players are in it): it closes
   and its files are stored away at the next server restart, not deleted. Staff can bring it back with `?arenaadmin revive`.
-- Every decision (request, approval, decline, transfer, suspend, revive, archive, co-mod change)
+- Every decision (request, approval, decline, staff create, transfer, suspend, revive, archive, co-mod change)
   is public in `?arenalog` and on the web page.

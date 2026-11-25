@@ -16,6 +16,7 @@ public sealed partial class ArenaOwnership : IModule
     public const string ModuleName = "Dare.Arenas";
     internal const string ArenasDir = "arenas";
     internal const string TemplateDir = "_template";
+    internal const string MapsDir = "maps"; // the server's shared maps (General:Map falls back here)
     internal const string DbPath = "data/dare-arenas.db";
     internal const string PasswdFile = "passwd.conf";
 
@@ -117,6 +118,7 @@ public sealed partial class ArenaOwnership : IModule
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         RegisterCommands();
         RegisterStaff(broker);
+        LoadZoneList(broker);
         StartWeb();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
@@ -126,6 +128,7 @@ public sealed partial class ArenaOwnership : IModule
     bool IModule.Unload(IComponentBroker broker)
     {
         StopWeb(); // first: no new web work reaches the mainloop after this
+        UnloadZoneList(broker);
         UnregisterStaff(broker);
         UnregisterCommands();
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);

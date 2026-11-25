@@ -131,6 +131,37 @@ public sealed class ArenaStore : IDisposable
         return Ok($"Approved '{arena}' for {req.Player}.");
     });
 
+    /// <summary>
+    /// Staff create an arena directly (no request): <paramref name="owner"/> owns it at once. Same
+    /// checks as <see cref="Approve(string, string, Func{string, bool}, Func{string?})"/> on the
+    /// owner and the name, and refuses a name someone has a pending request for (decide that first)
+    /// and an owner with a pending request (approving it later would fail). <paramref name="createFolder"/>
+    /// runs inside the transaction after every check passed; on error nothing is created.
+    /// </summary>
+    public Result Create(string arena, string staff, string owner, Func<string, bool> folderExists, Func<string?> createFolder) => Tx(() =>
+    {
+        if (string.IsNullOrWhiteSpace(arena) || string.IsNullOrWhiteSpace(staff) || string.IsNullOrWhiteSpace(owner))
+            return Fail("Arena name, staff and owner are required.");
+        if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' is already taken.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
+            return Fail($"Arena '{arena}' has a pending request; approve or decline it instead.");
+        if (Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p", ("$p", owner)) > 0)
+            return Fail($"{owner} already owns an arena.");
+        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", owner)) > 0)
+            return Fail($"{owner} has a pending arena request; approve or decline it first.");
+        if (folderExists(arena))
+            return Fail($"A folder named '{arena}' already exists on the server; cannot create.");
+        var folderError = createFolder();
+        if (folderError is not null)
+            return Fail($"Creating arenas/{arena}/ failed ({folderError}); nothing was created.");
+        var now = Now();
+        Run("INSERT INTO arenas(name, owner, status, created, last_entered) VALUES($a,$o,'Active',$t,$t)",
+            ("$a", arena), ("$o", owner), ("$t", now));
+        AddEvent(now, arena, staff, "create", $"owner: {owner}");
+        return Ok($"Created '{arena}' for {owner}.");
+    });
+
     public Result Decline(string arena, string staff, string reason) => Tx(() =>
     {
         if (string.IsNullOrWhiteSpace(reason)) return Fail("A reason is required to decline a request.");
