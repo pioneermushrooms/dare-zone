@@ -55,6 +55,7 @@ button:hover:not(:disabled) { background:#b5f4ff; }
 button.hot { background:var(--hot); border-color:var(--hot); }
 button:disabled { opacity:.5; cursor:default; }
 button.small { padding:0 .5em; font-size:.8em; background:var(--panel2); color:var(--text); border-color:#344762; }
+button.small:hover:not(:disabled) { background:#16243a; border-color:var(--accent); color:var(--text); }
 form.row, .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .row input[type=text] { flex:1 1 160px; min-width:0; }
 .drop { border:2px dashed #344762; border-radius:3px; padding:22px; text-align:center; color:var(--dim); }
@@ -174,4 +175,12 @@ kbd { font:inherit; font-size:.7rem; opacity:.7; }
   .edmain { height:70vh; }
   .edside { flex:none; border-right:0; border-top:1px solid var(--line); }
 }
+/* account page: pilot names */
+.pilotrow { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; }
+.pilotrow .row { margin-left:auto; }
+button.danger { background:var(--bad); border-color:var(--bad); color:#1a0505; }
+button.danger:hover:not(:disabled) { background:#ffb3b3; }
+#deletebox { margin:14px 0; padding:14px; border:1px solid #6b2a2a; border-radius:3px; background:#1a0f14; }
+#deletebox h3 { margin-top:0; }
+.arenachoice { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; margin:0 0 8px; color:var(--dim); }
 [hidden] { display:none !important; }

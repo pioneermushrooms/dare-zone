@@ -21,6 +21,27 @@
   <p class="links"><a href="/arena/me">Your arena</a> · <button type="button" class="small" id="signout">Sign out</button></p>
 </main>
 
+<main class="panel narrow" id="pilots" hidden>
+  <h2>Pilot names</h2>
+  <p class="dim" id="pilotsnote">Every name on your recovery email. Fly as any of them; each keeps its own keys and macros.</p>
+  <ul class="list" id="pilotlist"></ul>
+  <div id="deletebox" hidden>
+    <h3 id="deletetitle"></h3>
+    <p class="dim" id="deletenote"></p>
+    <div id="deletearenas"></div>
+    <form class="stack" id="deleteform">
+      <label>Type the name to confirm <input id="deleteconfirm" autocomplete="off" maxlength="24" required></label>
+      <div class="row"><button type="submit" class="danger" id="deletego">Delete name</button><button type="button" class="ghost" id="deletecancel">Cancel</button></div>
+    </form>
+  </div>
+  <form class="stack" id="addform">
+    <label>Add a name <input name="name" maxlength="24" autocomplete="off" required>
+      <span class="hint">It starts with the same password as the name you're signed in as.</span></label>
+    <button type="submit">Add name</button>
+  </form>
+  <p class="msg" id="pilotsmsg"></p>
+</main>
+
 <main class="panel narrow" id="emailbox" hidden>
   <h2 id="emailtitle">Recovery email</h2>
   <p class="dim" id="emailnote"></p>

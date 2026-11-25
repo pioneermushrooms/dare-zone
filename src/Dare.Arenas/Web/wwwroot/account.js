@@ -93,8 +93,95 @@ const pages = {
       await post("/logout", {});
       location.href = "/account/login";
     });
+    await pilots(me);
+    if (location.hash === "#pilots") $("pilots").scrollIntoView();
   },
 };
+
+// ---- pilot names on this email ------------------------------------------------------------------
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  Object.assign(n, props || {});
+  for (const k of kids) if (k != null) n.append(k);
+  return n;
+}
+
+async function pilots(me) {
+  const box = $("pilots");
+  box.hidden = false;
+  let data;
+  try {
+    const r = await fetch(API + "/pilots", { credentials: "same-origin", cache: "no-store" });
+    data = await r.json();
+  } catch { data = { ok: false }; }
+  if (!data.ok) { msg($("pilotsmsg"), "Couldn't load your names.", false); return; }
+  if (!data.emailVerified) {
+    $("pilotsnote").textContent = "Confirm a recovery email (below) to have more than one name: your names share it.";
+    $("addform").hidden = true;
+  }
+  const names = data.pilots.map((p) => p.name);
+  $("pilotlist").replaceChildren(...data.pilots.map((p) => {
+    const current = p.name === data.current;
+    const owned = p.arenas.length + p.drafts.length;
+    const actions = el("span", { className: "row" });
+    if (current) actions.append(el("span", { className: "tag Active", textContent: "signed in" }));
+    else {
+      const fly = el("button", { type: "button", className: "small", textContent: "Switch to" });
+      fly.addEventListener("click", async () => {
+        const { body } = await post("/pilots/switch", { name: p.name });
+        if (body.ok) location.reload(); else msg($("pilotsmsg"), body.message, false);
+      });
+      actions.append(fly);
+    }
+    if (names.length > 1) {
+      const del = el("button", { type: "button", className: "small", textContent: "Delete" });
+      del.addEventListener("click", () => askDelete(p, names.filter((n) => n !== p.name)));
+      actions.append(del);
+    }
+    return el("li", { className: "pilotrow" }, el("b", { className: "name", textContent: p.name }),
+      el("span", { className: "dim", textContent: owned ? ` · ${p.arenas.length} arena${p.arenas.length === 1 ? "" : "s"}, ${p.drafts.length} draft${p.drafts.length === 1 ? "" : "s"}` : "" }),
+      actions);
+  }));
+  wire($("addform"), $("pilotsmsg"), "/pilots/add", () => { $("addform").reset(); void pilots(me); });
+}
+
+let deleting = null;
+function askDelete(p, others) {
+  deleting = p;
+  $("deletebox").hidden = false;
+  $("deletetitle").textContent = `Delete ${p.name}?`;
+  $("deletenote").textContent = "The name is freed at once: anyone can claim it. This can't be undone."
+    + (p.arenas.length + p.drafts.length ? " Choose what happens to what it owns:" : "");
+  const rows = [...p.arenas.map((a) => [a, a]), ...p.drafts.map((d) => [d, "#" + d + " (draft)"])].map(([name, label]) => {
+    const pick = el("select", { name });
+    pick.append(el("option", { value: "", textContent: "Archive it (files kept)" }));
+    for (const o of others) pick.append(el("option", { value: o, textContent: `Keep it, owned by ${o}` }));
+    return el("label", { className: "arenachoice" }, el("b", { className: "name", textContent: label }), pick);
+  });
+  $("deletearenas").replaceChildren(...rows);
+  $("deleteconfirm").value = "";
+  $("deleteconfirm").focus();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!$("deleteform")) return;
+  $("deletecancel").addEventListener("click", () => { $("deletebox").hidden = true; deleting = null; });
+  $("deleteform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!deleting) return;
+    if ($("deleteconfirm").value.trim().toLowerCase() !== deleting.name.toLowerCase()) {
+      msg($("pilotsmsg"), `Type ${deleting.name} to confirm.`, false);
+      return;
+    }
+    const keep = {};
+    for (const s of $("deletearenas").querySelectorAll("select")) if (s.value) keep[s.name] = s.value;
+    $("deletego").disabled = true;
+    const { body } = await post("/pilots/delete", { name: deleting.name, keep });
+    $("deletego").disabled = false;
+    msg($("pilotsmsg"), body.message, body.ok);
+    if (body.ok) setTimeout(() => location.reload(), 1200);
+  });
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   const f = pages[document.body.dataset.page];
