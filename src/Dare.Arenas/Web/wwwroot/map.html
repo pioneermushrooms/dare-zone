@@ -28,13 +28,21 @@
     <button type="button" class="ghost small" id="zoomIn" aria-label="Zoom in">+</button>
   </div>
   <div class="edactions">
-    <button type="button" class="ghost small" id="download">Download .lvl</button>
+    <button type="button" class="ghost small" id="libjump" title="Your saved maps: open, rename or delete">Your maps</button>
+    <button type="button" class="ghost small" id="download" title="Download this map (a copy is kept in Your maps)">Download .lvl</button>
     <button type="button" class="hot small" id="publish" disabled>Publish</button>
     <a class="btn ghost small" href="/arena/me#map" id="back">Back to hub</a>
   </div>
 </header>
 <div class="edbody">
   <aside class="edside">
+    <section class="libpanel" id="libpanel" aria-labelledby="libtitle">
+      <p class="kicker" id="libtitle">Your maps <span class="dim" id="libcount"></span></p>
+      <ul class="libmaps" id="libmaps"></ul>
+      <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>
+        <button type="button" class="ghost small" id="libsave" title="Keep this map in your maps without publishing it">Save to my maps</button></div>
+      <p class="hint" id="libhint">Every map you add, download or publish is kept here, yours only. Open one to edit it as a draft; the arena changes only when you Publish.</p>
+    </section>
     <p class="kicker">Start from</p>
     <div class="row"><select id="startfrom" aria-label="Start from a map"><option value="">a ready-made map…</option><option value="!empty">an empty map</option></select></div>
     <div class="row"><button type="button" class="ghost small" id="randomize">Randomize</button>
@@ -52,11 +60,6 @@
       <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
     <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
     <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
-    <p class="kicker">Your maps</p>
-    <ul class="libmaps" id="libmaps"></ul>
-    <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>
-      <button type="button" class="ghost small" id="libsave" title="Keep this draft in your maps without publishing it">Save to my maps</button></div>
-    <p class="hint">Your maps are yours only. Open one to edit it here; the arena changes only when you Publish.</p>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
     <div class="row palhead"><p class="kicker">Tiles</p><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Show the tiles bigger">Bigger</button></div>

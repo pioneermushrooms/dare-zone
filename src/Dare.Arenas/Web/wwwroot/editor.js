@@ -92,26 +92,70 @@
     return true;
   }
 
-  // ---- your maps (the pilot's collection): open one as a draft, add a file, save the draft -----------
+  // ---- your maps (the pilot's collection): open one as a draft, rename, delete, add a file, save ----
+  // Every map the pilot adds, downloads or publishes is kept there (the same bytes only once).
   const hdrs = (type) => Object.assign({ "X-Requested-With": "dare-arena" }, type ? { "Content-Type": type } : {});
+  const postJson = async (path, body) => {
+    const r = await fetch(API + path, { method: "POST", credentials: "same-origin", headers: hdrs("application/json"), body: JSON.stringify(body) }).catch(() => null);
+    return r ? r.json().catch(() => ({ ok: false, message: "HTTP " + r.status })) : { ok: false, message: "No connection." };
+  };
+  const kb = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  const ago = (iso) => {
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (!(s >= 0)) return "";
+    if (s < 90) return "just now";
+    if (s < 5400) return Math.round(s / 60) + " min ago";
+    if (s < 129600) return Math.round(s / 3600) + " h ago";
+    return new Date(iso).toLocaleDateString();
+  };
+  const smallBtn = (text, label, onClick, cls) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "ghost small " + (cls || ""); b.textContent = text; b.setAttribute("aria-label", label); b.title = label;
+    b.addEventListener("click", onClick);
+    return b;
+  };
   async function loadLibrary() {
     const r = await fetch(API + "/library", { credentials: "same-origin" }).catch(() => null);
     const j = r && r.ok ? await r.json().catch(() => null) : null;
     const list = $("libmaps");
     list.replaceChildren();
-    for (const m of (j && j.maps) || []) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "ghost small open"; b.textContent = m.name; b.title = `Open ${m.name} as a draft`;
-      b.addEventListener("click", () => openLib(m.id));
+    const maps = (j && j.maps) || [];
+    $("libcount").textContent = j ? `${maps.length}/${j.max}` : "";
+    for (const m of maps) {
+      const open = document.createElement("button");
+      open.type = "button"; open.className = "ghost small open";
+      open.title = `Open ${m.name} here as a draft for ${arena || "your arena"}`;
+      const nm = document.createElement("span"); nm.className = "libname"; nm.textContent = m.name;
+      const meta = document.createElement("span"); meta.className = "libmeta"; meta.textContent = `${kb(m.size)} · ${ago(m.updated)}`;
+      open.append(nm, meta);
+      open.addEventListener("click", () => openLib(m.id));
       const li = document.createElement("li");
-      if (m.id === libId) li.className = "on";
-      li.append(b);
+      if (m.id === libId) { li.className = "on"; open.setAttribute("aria-current", "true"); }
+      li.append(open,
+        smallBtn("Rename", `Rename ${m.name}`, () => renameLib(m)),
+        smallBtn("Delete", `Delete ${m.name} from your maps`, () => removeLib(m), "danger"));
       list.append(li);
     }
-    if (!list.children.length) {
-      const li = document.createElement("li"); li.className = "dim"; li.textContent = "None yet.";
+    if (!maps.length) {
+      const li = document.createElement("li"); li.className = "dim";
+      li.textContent = j ? "None yet. Add a .lvl, or Save to my maps." : "Couldn't load your maps.";
       list.append(li);
     }
+  }
+  async function renameLib(m) {
+    const name = await Dlg.prompt(`A new name for ${m.name}:`, { title: "Rename map", value: m.name, ok: "Rename" });
+    if (name === null || !name.trim() || name.trim() === m.name) return;
+    const j = await postJson("/library/rename", { id: m.id, name: name.trim() });
+    say(j.message, j.ok);
+    if (j.ok && m.id === libId) { libName = j.message.replace(/^Renamed it (.*)\.$/, "$1"); $("edname").textContent = `${arena} · draft from your maps: ${libName}`; }
+    loadLibrary();
+  }
+  async function removeLib(m) {
+    if (!await Dlg.confirm(`Delete ${m.name} from your maps? Arenas using it keep their copy.`, { title: "Delete map", ok: "Delete", danger: true })) return;
+    const j = await postJson("/library/remove", { id: m.id });
+    say(j.message, j.ok);
+    if (j.ok && m.id === libId) { libId = null; libName = null; }
+    loadLibrary();
   }
   async function openLib(id) {
     const r = await fetch(API + "/library/file?id=" + encodeURIComponent(id), { credentials: "same-origin" });
@@ -126,6 +170,20 @@
     setDirty(true); // a draft until published, even if it matches
     loadLibrary();
   }
+  // a copy of a downloaded map (same bytes only once); the editor keeps editing what it was editing
+  async function keepCopy(bytes, name) {
+    const r = await fetch(API + "/library/save?name=" + encodeURIComponent(name), { method: "POST", credentials: "same-origin", headers: hdrs("application/octet-stream"), body: bytes }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    loadLibrary();
+    return j;
+  }
+  $("libjump").addEventListener("click", () => {
+    const p = $("libpanel");
+    p.scrollIntoView({ block: "start", behavior: "smooth" });
+    p.classList.remove("flash"); void p.offsetWidth; p.classList.add("flash");
+    const first = p.querySelector("button.open");
+    if (first) first.focus({ preventScroll: true });
+  });
   $("libfile").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
@@ -484,11 +542,17 @@
   });
 
   // ---- save / publish ------------------------------------------------------------------------
-  $("download").addEventListener("click", () => {
+  $("download").addEventListener("click", async () => {
+    const bytes = Lvl.serialize(grid, prefix);
+    const name = libName || (arena || "map").replace(/^#/, "");
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([Lvl.serialize(grid, prefix)], { type: "application/octet-stream" }));
-    a.download = `${arena || "map"}.lvl`; a.click();
+    a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    a.download = `${name}.lvl`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    if (!bytes.length) return;
+    const j = await keepCopy(bytes, name);
+    say(j && j.ok ? `Downloaded ${name}.lvl. ${/already/.test(j.message) ? j.message : "A copy is in Your maps."}`
+      : `Downloaded ${name}.lvl, but it couldn't be kept in Your maps: ${(j && j.message) || "no connection"}`, !!(j && j.ok));
   });
 
   $("publish").addEventListener("click", async () => {
@@ -511,10 +575,11 @@
     say("Publishing…", true);
     const hdr = { "X-Requested-With": "dare-arena" };
     const fileName = arena.replace(/^#/, "") + ".lvl";
-    const url = `${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(fileName)}`;
+    const url = `${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(fileName)}&libname=${encodeURIComponent(libName || arena.replace(/^#/, ""))}`;
     const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/octet-stream" }, hdr), body: bytes });
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
     if (!j.ok) { say(j.message, false); setDirty(true); return; }
+    if (j.library) { libId = j.library; libName = libName || arena.replace(/^#/, ""); loadLibrary(); } // the server kept a copy in Your maps
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
     if (!liveName && !choice.restart) {
