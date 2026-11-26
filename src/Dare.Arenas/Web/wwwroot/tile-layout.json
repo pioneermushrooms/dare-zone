@@ -1,0 +1,394 @@
+{
+ "format": "dare-tile-layout",
+ "version": 1,
+ "name": "Foundation standard (from tactical2.lvl)",
+ "about": "Tile numbers are map tile values (1-190): slot = number - 1, column = slot % 19, row = slot // 19. Each role lists the edges where the wall continues into the neighbouring cell (N, E, S, W); every other edge is closed. A tool picks a piece by the set of neighbouring wall cells, not by the role's name.",
+ "tileset": {
+  "columns": 19,
+  "rows": 10,
+  "tileSize": 16
+ },
+ "roles": {
+  "single": {
+   "open": "",
+   "label": "Single block, closed on all four edges"
+  },
+  "end-left": {
+   "open": "E",
+   "label": "Horizontal bar, left end"
+  },
+  "h-mid": {
+   "open": "EW",
+   "label": "Horizontal bar, middle"
+  },
+  "end-right": {
+   "open": "W",
+   "label": "Horizontal bar, right end"
+  },
+  "end-top": {
+   "open": "S",
+   "label": "Vertical bar, top end"
+  },
+  "v-mid": {
+   "open": "NS",
+   "label": "Vertical bar, middle"
+  },
+  "end-bottom": {
+   "open": "N",
+   "label": "Vertical bar, bottom end"
+  },
+  "corner-tl": {
+   "open": "ES",
+   "label": "Corner: turns right and down (top-left of a box)"
+  },
+  "edge-top": {
+   "open": "ESW",
+   "label": "T-junction open left, right and down (top edge of a box)"
+  },
+  "corner-tr": {
+   "open": "SW",
+   "label": "Corner: turns left and down (top-right of a box)"
+  },
+  "edge-left": {
+   "open": "NES",
+   "label": "T-junction open up, right and down (left edge of a box)"
+  },
+  "fill": {
+   "open": "NESW",
+   "label": "Cross / interior fill, open on all four edges"
+  },
+  "edge-right": {
+   "open": "NSW",
+   "label": "T-junction open up, down and left (right edge of a box)"
+  },
+  "corner-bl": {
+   "open": "NE",
+   "label": "Corner: turns up and right (bottom-left of a box)"
+  },
+  "edge-bottom": {
+   "open": "NEW",
+   "label": "T-junction open left, right and up (bottom edge of a box)"
+  },
+  "corner-br": {
+   "open": "NW",
+   "label": "Corner: turns up and left (bottom-right of a box)"
+  }
+ },
+ "packTemplate": {
+  "size": [
+   4,
+   4
+  ],
+  "cells": {
+   "single": [
+    0,
+    0
+   ],
+   "end-left": [
+    1,
+    0
+   ],
+   "h-mid": [
+    2,
+    0
+   ],
+   "end-right": [
+    3,
+    0
+   ],
+   "end-top": [
+    0,
+    1
+   ],
+   "v-mid": [
+    0,
+    2
+   ],
+   "end-bottom": [
+    0,
+    3
+   ],
+   "corner-tl": [
+    1,
+    1
+   ],
+   "edge-top": [
+    2,
+    1
+   ],
+   "corner-tr": [
+    3,
+    1
+   ],
+   "edge-left": [
+    1,
+    2
+   ],
+   "fill": [
+    2,
+    2
+   ],
+   "edge-right": [
+    3,
+    2
+   ],
+   "corner-bl": [
+    1,
+    3
+   ],
+   "edge-bottom": [
+    2,
+    3
+   ],
+   "corner-br": [
+    3,
+    3
+   ]
+  }
+ },
+ "packs": [
+  {
+   "id": "grey-plate",
+   "name": "Grey plate",
+   "origin": [
+    1,
+    0
+   ],
+   "tiles": {
+    "single": 2,
+    "end-left": 3,
+    "h-mid": 4,
+    "end-right": 5,
+    "end-top": 21,
+    "v-mid": 40,
+    "end-bottom": 59,
+    "corner-tl": 22,
+    "edge-top": 23,
+    "corner-tr": 24,
+    "edge-left": 41,
+    "fill": 42,
+    "edge-right": 43,
+    "corner-bl": 60,
+    "edge-bottom": 61,
+    "corner-br": 62
+   }
+  },
+  {
+   "id": "grey-round",
+   "name": "Grey rounded",
+   "origin": [
+    5,
+    0
+   ],
+   "tiles": {
+    "single": 6,
+    "end-left": 7,
+    "h-mid": 8,
+    "end-right": 9,
+    "end-top": 25,
+    "v-mid": 44,
+    "end-bottom": 63,
+    "corner-tl": 26,
+    "edge-top": 27,
+    "corner-tr": 28,
+    "edge-left": 45,
+    "fill": 46,
+    "edge-right": 47,
+    "corner-bl": 64,
+    "edge-bottom": 65,
+    "corner-br": 66
+   }
+  },
+  {
+   "id": "green-lit",
+   "name": "Green lit",
+   "origin": [
+    9,
+    0
+   ],
+   "tiles": {
+    "single": 10,
+    "end-left": 11,
+    "h-mid": 12,
+    "end-right": 13,
+    "end-top": 29,
+    "v-mid": 48,
+    "end-bottom": 67,
+    "corner-tl": 30,
+    "edge-top": 31,
+    "corner-tr": 32,
+    "edge-left": 49,
+    "fill": 50,
+    "edge-right": 51,
+    "corner-bl": 68,
+    "edge-bottom": 69,
+    "corner-br": 70
+   }
+  },
+  {
+   "id": "white-lit",
+   "name": "White lit",
+   "origin": [
+    13,
+    0
+   ],
+   "tiles": {
+    "single": 14,
+    "end-left": 15,
+    "h-mid": 16,
+    "end-right": 17,
+    "end-top": 33,
+    "v-mid": 52,
+    "end-bottom": 71,
+    "corner-tl": 34,
+    "edge-top": 35,
+    "corner-tr": 36,
+    "edge-left": 53,
+    "fill": 54,
+    "edge-right": 55,
+    "corner-bl": 72,
+    "edge-bottom": 73,
+    "corner-br": 74
+   }
+  },
+  {
+   "id": "steel-blue",
+   "name": "Steel blue",
+   "origin": [
+    5,
+    4
+   ],
+   "tiles": {
+    "single": 82,
+    "end-left": 83,
+    "h-mid": 84,
+    "end-right": 85,
+    "end-top": 101,
+    "v-mid": 120,
+    "end-bottom": 139,
+    "corner-tl": 102,
+    "edge-top": 103,
+    "corner-tr": 104,
+    "edge-left": 121,
+    "fill": 122,
+    "edge-right": 123,
+    "corner-bl": 140,
+    "edge-bottom": 141,
+    "corner-br": 142
+   }
+  },
+  {
+   "id": "navy",
+   "name": "Navy",
+   "origin": [
+    9,
+    4
+   ],
+   "tiles": {
+    "single": 86,
+    "end-left": 87,
+    "h-mid": 88,
+    "end-right": 89,
+    "end-top": 105,
+    "v-mid": 124,
+    "end-bottom": 143,
+    "corner-tl": 106,
+    "edge-top": 107,
+    "corner-tr": 108,
+    "edge-left": 125,
+    "fill": 126,
+    "edge-right": 127,
+    "corner-bl": 144,
+    "edge-bottom": 145,
+    "corner-br": 146
+   }
+  }
+ ],
+ "other": [
+  {
+   "tile": 1,
+   "label": "Small single block (stand-alone)"
+  },
+  {
+   "tiles": [
+    39,
+    58
+   ],
+   "label": "Pipe joints (decor)"
+  },
+  {
+   "tiles": [
+    18,
+    19,
+    37,
+    56
+   ],
+   "label": "Grey pipe pieces (decor, not a full pack)"
+  },
+  {
+   "tiles": [
+    38,
+    57,
+    75,
+    76,
+    95,
+    114
+   ],
+   "label": "Small blocks and balls (decor)"
+  },
+  {
+   "tiles": [
+    77,
+    96,
+    115,
+    134,
+    135,
+    136
+   ],
+   "label": "Screw pipe (decor, not a full pack)"
+  },
+  {
+   "tiles": [
+    78,
+    79,
+    80,
+    97,
+    98,
+    99,
+    116,
+    117,
+    118
+   ],
+   "label": "Big ring, a fixed 3x3 picture"
+  },
+  {
+   "tiles": [
+    81,
+    100,
+    119,
+    137,
+    138
+   ],
+   "label": "Plates, light and logo (decor)"
+  },
+  {
+   "tiles": [
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161
+   ],
+   "label": "Lettering and faint pieces (decor)"
+  }
+ ],
+ "reserved": {
+  "from": 162,
+  "to": 190,
+  "label": "Doors, flag, safe zone, goal, fly-over and fly-under: the game gives these slots their own behaviour, never use them as wall pieces"
+ }
+}
