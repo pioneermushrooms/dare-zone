@@ -58,7 +58,10 @@ class Sheet:
     cell: tuple[int, int]
     frames: int  # frames per row
     rows: tuple[Row, ...]
-    body: str  # the procedural shape family
+    body: str  # the procedural shape family ("" when New look has none: prompt and recolour only)
+    continuous: bool = False  # one animation through every frame, left to right, top to bottom
+    keep_colour: bool = False  # one thing in every row: a drawing keeps its own colours
+    full: bool = False  # the picture fills its cell edge to edge (bricks)
 
 
 # Row order as the client reads it (view.rs): bullets lvl*4 (+20 bouncing, 16 burst, last row
@@ -77,6 +80,16 @@ SHEETS: dict[str, Sheet] = {
     "shield": Sheet((16, 16), 10, (Row("item", 0, "tilt"),), "shield"),
     "super": Sheet((16, 16), 10, (Row("item"),), "super"),
     "warppnt": Sheet((16, 16), 10, (Row("item"),), "warppnt"),
+    # Map objects (view.rs draws over1..over5 as asteroids, a space station and a wormhole, each
+    # one animation through all of its frames), the goal (yours and the enemy's halves) and
+    # bricks (the enemy's half, then your team's).
+    "over1": Sheet((16, 16), 15, (Row("item"),) * 2, "", continuous=True, keep_colour=True),
+    "over2": Sheet((32, 32), 10, (Row("item"),) * 3, "", continuous=True, keep_colour=True),
+    "over3": Sheet((16, 16), 15, (Row("item"),) * 2, "", continuous=True, keep_colour=True),
+    "over4": Sheet((96, 96), 5, (Row("item"),) * 2, "", continuous=True, keep_colour=True),
+    "over5": Sheet((80, 80), 4, (Row("item"),) * 6, "", continuous=True, keep_colour=True),
+    "goal": Sheet((16, 16), 9, (Row("enemy", 0, "glow"), Row("own", 0, "glow")), ""),
+    "wall": Sheet((16, 16), 10, (Row("enemy", 0, "glow"), Row("own", 0, "glow")), "", full=True),
 }
 
 
@@ -433,6 +446,8 @@ def _animate(img: Image.Image, anim: str, t: float, frame: int, seed: int) -> Im
     if anim == "pulse":
         k = 0.88 + 0.12 * math.sin(t * 2 * math.pi)
         return _shade(_scaled(img, k), 0.85 + 0.15 * math.sin(t * 2 * math.pi))
+    if anim == "glow":  # brightens and dims in place (tiles that must keep their edges)
+        return _shade(img, 0.8 + 0.2 * math.sin(t * 2 * math.pi))
     if anim == "flicker":
         return img.rotate(-(frame % 2) * 12, resample=Image.BICUBIC)
     if anim == "fade":  # trail: shrinks, dims and breaks up over its frames
@@ -521,23 +536,33 @@ def new_sprites(kind: str, template: Image.Image, rng: random.Random, sprite: Im
     side = max(cw, ch)
     S = side * 4
     out = Image.new("RGBA", template.size, (0, 0, 0, 0))
+    if sprite is None and not sheet.body:
+        raise GraphicError("That graphic can be recoloured or drawn from a description.")
     style = rng.choice(STYLES.get(sheet.body, [""]))
     seed = rng.randrange(1_000_000)
     base_hue = _hue_of(sprite, (0, 0, sprite.width, sprite.height)) if sprite is not None else None
     drawn = None
     if sprite is not None:
-        drawn = _scaled(sprite.resize((S, S), Image.LANCZOS), 0.92)
+        drawn = sprite.resize((S, S), Image.LANCZOS)
+        if not sheet.full:
+            drawn = _scaled(drawn, 0.92)
     cols = min(sheet.frames, template.width // cw)
-    for r, colours in enumerate(_row_colours(template, cw, ch, rng)):
+    colour_rows = _row_colours(template, cw, ch, rng)
+    for r, colours in enumerate(colour_rows):
         if colours is None:
             continue
         hue, accent = colours
         row = row_spec(kind, r)
-        body = _tint(drawn, hue, base_hue) if drawn is not None else _body(sheet.body, style, S, hue)
+        if drawn is None:
+            body = _body(sheet.body, style, S, hue)
+        elif sheet.keep_colour:
+            body = drawn
+        else:
+            body = _tint(drawn, hue, base_hue)
         if sheet.body == "bullet":
             body = _shade(body, 1.2)
         for col in range(cols):
-            t = col / cols
+            t = (r * cols + col) / (len(colour_rows) * cols) if sheet.continuous else col / cols
             frame = _animate(_role(body, row, hue, accent, col, cols, seed), row.anim, t, col, seed)
             frame = frame.filter(ImageFilter.GaussianBlur(S / 96)).resize((side, side), Image.LANCZOS)
             out.alpha_composite(_fit(frame, cw, ch), (col * cw, r * ch))
@@ -631,7 +656,48 @@ def _burst_frame(style: str, S: int, hue: float, t: float, debris, seed: int) ->
     return img
 
 
-def new_burst(kind: str, template: Image.Image, rng: random.Random) -> Image.Image:
+def _whiten(img: Image.Image, k: float) -> Image.Image:
+    """`img` blended toward white by k (0..1), outline kept: the white-hot start of a blast."""
+    if k <= 0:
+        return img
+    white = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    white.putalpha(img.getchannel("A"))
+    return Image.blend(img, white, min(1.0, k))
+
+
+def _burst_from_drawing(style: str, img: Image.Image, t: float, seed: int) -> Image.Image:
+    """Frame at time t in [0, 1] of a one-shot animation made from one drawing of the effect at
+    its fullest (`img`, at 4x): each style moves it the way the stock animation moves."""
+    frame = seed + int(t * 1000)
+    if style in ("explosion", "spark"):  # flash and bloom out, then spread, darken and break up
+        if t < 0.3:
+            u = t / 0.3
+            return _whiten(_scaled(img, 0.2 + 0.8 * (1 - (1 - u) ** 2)), 0.7 * (1 - u))
+        v = (t - 0.3) / 0.7
+        return _dissolve(_shade(_scaled(img, 1 + 0.3 * v), 1 - 0.55 * v), 0.05 + 0.9 * v ** 1.3, frame)
+    if style == "emp":  # rushes outward, crackling (a small twitch every frame), then gone
+        out = _scaled(img, 0.15 + 0.95 * t).rotate((-1) ** int(t * 40) * 10, resample=Image.BICUBIC)
+        out = _whiten(out, 0.5 * (1 - t) ** 2)
+        return _dissolve(out, (t - 0.5) / 0.5 * 0.9, frame) if t > 0.5 else out
+    if style == "warp":  # swirls in from a point, flashes, and swirls out
+        k = math.sin(math.pi * t)
+        return _whiten(_scaled(img, 0.1 + 0.9 * k).rotate(-t * 540, resample=Image.BICUBIC), 0.5 * (1 - k))
+    if style == "grow":  # repel: only grows, thinning out
+        out = _shade(_scaled(img, 0.15 + 0.85 * t), 1.0, 1 - 0.6 * t)
+        return _dissolve(out, (t - 0.6) / 0.4 * 0.85, frame) if t > 0.6 else out
+    if style in ("rocket", "puff"):  # a flash, a swell, then smoke breaking up
+        if t < 0.1:
+            return _whiten(_scaled(img, 0.3 + 2 * t), 0.8)
+        if t < 0.5:
+            u = (t - 0.1) / 0.4
+            return _whiten(_scaled(img, 0.5 + 0.5 * u), 0.3 * (1 - u))
+        v = (t - 0.5) / 0.5
+        return _dissolve(_shade(_scaled(img, 1 + 0.15 * v), 1 - 0.5 * v), 0.2 + 0.75 * v, frame)
+    return img
+
+
+def new_burst(kind: str, template: Image.Image, rng: random.Random, sprite: Image.Image | None = None) -> Image.Image:
+    """The effect's frames, procedural or (with `sprite`) made from a drawing of it at its fullest."""
     spec = BURST_SHEETS[kind]
     side = spec.side
     cols, rows = template.width // side, template.height // side
@@ -652,13 +718,24 @@ def new_burst(kind: str, template: Image.Image, rng: random.Random) -> Image.Ima
     else:
         runs = [(list(range(cols * rows)), _peak_hue(_hue_bins(template, (0, 0, template.width, template.height)))[0])]
     shift = rng.uniform(-0.08, 0.08)
+    S = side * 4
+    drawn = _scaled(sprite.resize((S, S), Image.LANCZOS), 0.92) if sprite is not None else None
+    base_hue = _hue_of(sprite, (0, 0, sprite.width, sprite.height)) if sprite is not None else None
+    first_hue = runs[0][1]
     for frames, hue in runs:
+        look = drawn
+        if drawn is not None and base_hue is not None and hue is not None and first_hue is not None and hue != first_hue:
+            # A drawing keeps its own colours; a later row (afterburners) moves as far round the
+            # colour wheel from the first as the stock rows do, so the two still read apart.
+            look = _tint(drawn, base_hue + hue - first_hue, base_hue)
         hue = rng.random() if hue is None else hue + shift
         live = [f for f in frames if used(f)]  # keep unused frames empty; play over the used ones
         for i, f in enumerate(live):
             t = i / max(1, len(live) - 1)
-            S = side * 4
-            frame = _burst_frame(spec.style, S, hue, t, debris, seed)
+            if look is not None:
+                frame = _burst_from_drawing(spec.style, look, t, seed)
+            else:
+                frame = _burst_frame(spec.style, S, hue, t, debris, seed)
             frame = frame.filter(ImageFilter.GaussianBlur(S / 80)).resize((side, side), Image.LANCZOS)
             out.alpha_composite(frame, (f % cols * side, f // cols * side))
     return out
@@ -671,15 +748,52 @@ SPRITE_PROMPT = (
     "{description}. Bold readable silhouette and strong colour, so it still reads at {px} pixels. "
     "No text, no frame, no grid, no scenery, no shadow."
 )
-# What a sprite of each sheet is, so a description like "green plasma" comes back as a
-# projectile of the right kind and weight rather than a scene or a ship.
+# Effects are drawn once, at their fullest; the sheet's frames are made from that one picture.
+EFFECT_PROMPT = (
+    "Draw exactly one game visual effect, seen from directly above, centred on a transparent "
+    "background, at the moment it is at its fullest: {description}. Bright, bold and readable "
+    "at {px} pixels, filling most of the picture. No text, no frame, no grid, no scenery."
+)
+# What a picture of each sheet is, so a description like "green plasma" or "tiny coins" comes
+# back as a projectile, item or effect of the right kind and weight rather than a scene or a ship.
 BRIEFS = {
     "bullets": "a tiny glowing energy bullet from a space fighter's gun, a simple round or "
                "teardrop bolt with a bright core",
     "bombs": "a round bomb fired by a space fighter, a compact orb or shell with a glowing core",
     "mines": "a floating space mine, a compact armed orb or spiked device",
     "shrapnel": "a tiny sharp shard of shrapnel, a jagged glowing fragment",
+    "prizes": "a floating power-up item, a compact box or token",
+    "powerb": "a round glowing ball for a ball game",
+    "flag": "a team flag on a short pole",
+    "shield": "a round protective energy bubble",
+    "super": "a glowing power-up ring",
+    "warppnt": "a small glowing warp point marker",
+    "over1": "a small floating asteroid or space rock",
+    "over2": "a large floating asteroid or space rock",
+    "over3": "a small floating asteroid or space rock",
+    "over4": "a large round space station seen from directly above",
+    "over5": "a round swirling wormhole",
+    "goal": "a small glowing goal marker tile",
+    "wall": "one square wall brick tile filling the whole square, edge to edge",
+    "explode0": "a tiny burst where a bullet hits something",
+    "explode1": "a round explosion bursting outward in every direction",
+    "explode2": "a big round explosion of a destroyed spaceship bursting outward in every direction",
+    "empburst": "an electric shockwave bursting outward in a ring",
+    "warp": "a round swirling warp flash",
+    "repel": "a round shockwave ring pushing outward",
+    "rocket": "a round flash of a rocket booster firing",
+    "exhaust": "a small round puff of engine exhaust",
 }
+# Try again: take 1, 2... asks for another take, so the next picture differs from those shown.
+TAKES = [
+    "a clearly different shape and silhouette", "a different colour scheme",
+    "rounder and softer", "sharper and more angular", "busier, with many small parts",
+    "bolder and simpler, with a few big parts", "more glow and light", "darker and grittier",
+]
+
+
+def promptable(kind: str) -> bool:
+    return kind in SHEETS or kind in BURST_SHEETS
 
 
 def sprite_description(kind: str, description: str) -> str:
@@ -688,12 +802,52 @@ def sprite_description(kind: str, description: str) -> str:
     return f"{description}, drawn as {brief}" if brief else description
 
 
-def pixel_lab_sprite(description: str, px: int = 16) -> Image.Image:
+def again(description: str, take: int, rng: random.Random | None = None) -> str:
+    """Take `take` (1, 2...) of a description: the same subject, a different look."""
+    rng = rng or random.Random()
+    return f"{description}. Another take on it, keeping what it asks for but {rng.choice(TAKES)}"
+
+
+def _side_px(kind: str) -> int:
+    return max(SHEETS[kind].cell) if kind in SHEETS else BURST_SHEETS[kind].side
+
+
+def draw_picture(kind: str, description: str, seed: int | None = None) -> Image.Image:
+    """One PixelLab picture of `kind` for the pilot's description (one paid call)."""
+    if not promptable(kind):
+        raise GraphicError("That graphic can't be drawn from a description.")
+    px = _side_px(kind)
+    return pixel_lab_sprite(
+        sprite_description(kind, description), px=px,
+        prompt=EFFECT_PROMPT if kind in BURST_SHEETS else SPRITE_PROMPT,
+        size=64 if px <= 48 else 128, fill=kind in SHEETS and SHEETS[kind].full, seed=seed,
+    )
+
+
+def from_picture(kind: str, template_bytes: bytes, picture: Image.Image, seed: int | None = None) -> bytes:
+    """The sheet for `kind` made from one drawing, the template's size and frame layout."""
+    rng = random.Random(seed)
+    template = load_template(template_bytes)
+    if kind in SHEETS:
+        return encode(new_sprites(kind, template, rng, sprite=picture))
+    if kind in BURST_SHEETS:
+        return encode(new_burst(kind, template, rng, sprite=picture))
+    raise GraphicError("That graphic can't be drawn from a description.")
+
+
+def pixel_lab_sprite(
+    description: str, px: int = 16, *, prompt: str = SPRITE_PROMPT, size: int = 64,
+    fill: bool = False, seed: int | None = None,
+) -> Image.Image:
+    """One picture from PixelLab, cropped to what it drew and made square (stretched when `fill`)."""
+    body = {"description": prompt.format(description=description, px=px),
+            "image_size": {"width": size, "height": size}, "no_background": True}
+    if seed is not None:
+        body["seed"] = seed
     response = requests.post(
         shipgen.API_URL,
         headers={"Authorization": f"Bearer {shipgen._api_key()}"},
-        json={"description": SPRITE_PROMPT.format(description=description, px=px),
-              "image_size": {"width": 64, "height": 64}, "no_background": True},
+        json=body,
         timeout=(10, 90),
     )
     if response.status_code == 402:
@@ -710,6 +864,8 @@ def pixel_lab_sprite(description: str, px: int = 16) -> Image.Image:
         raise RuntimeError("The drawing came back empty. Try another description.")
     img = img.crop(box)
     side = max(img.size)
+    if fill:
+        return img.resize((side, side), Image.LANCZOS)
     square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     square.alpha_composite(img, ((side - img.width) // 2, (side - img.height) // 2))
     return square
@@ -728,8 +884,7 @@ def generate(kind: str, mode: str, template_bytes: bytes, prompt: str | None = N
             return encode(new_burst(kind, template, rng))
         raise GraphicError("That graphic can only be recoloured.")
     if mode == "prompt":
-        if kind not in SHEETS:
+        if not promptable(kind):
             raise GraphicError("That graphic can't be drawn from a description.")
-        sprite = pixel_lab_sprite(sprite_description(kind, prompt or ""), px=max(SHEETS[kind].cell))
-        return encode(new_sprites(kind, template, rng, sprite=sprite))
+        return from_picture(kind, template_bytes, draw_picture(kind, prompt or ""), seed=seed)
     raise GraphicError("Choose Recolour, New look or From a description.")

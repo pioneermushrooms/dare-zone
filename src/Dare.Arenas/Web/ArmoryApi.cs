@@ -79,14 +79,23 @@ internal sealed partial class WebServer
         return r.Ok ? JsonReply(200, new { ok = true, message = r.Message, id = itemId }) : Bad(r.Message);
     }
 
-    /// <summary>{"kind", "mode": "random"|"prompt", "prompt"?}: a new sheet from the ship service, not saved.</summary>
+    /// <summary>{"kind", "mode": "random"|"prompt", "prompt"? | "batch"?}: a new sheet from the ship service, not saved.
+    /// "batch" (from an earlier prompted answer) is Try again: a take unlike the ones shown.</summary>
     private async Task<Reply> GenerateWeaponAsync(HttpListenerRequest req, long accountId, JsonElement? body)
     {
         if (AccountStore.FindArmoryKind(Str(body, "kind")) is not { } kind) return Bad("That isn't one of the weapons.");
         var mode = Str(body, "mode");
         var prompt = (Str(body, "prompt") ?? "").Trim();
         string serviceMode;
-        if (mode == "random")
+        var batch = mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } b ? b : null;
+        if (batch is not null && kind.Prompt)
+        {
+            // Try again on a prompt: usually a take already drawn; the ship service caps the paid ones.
+            if (!_m.ShipRandomPerAccount.TryTake("armory:random:" + accountId)) return Bad(TooMany, 429);
+            serviceMode = "prompt";
+            prompt = "";
+        }
+        else if (mode == "random")
         {
             if (!_m.ShipRandomPerAccount.TryTake("armory:random:" + accountId)) return Bad(TooMany, 429);
             serviceMode = "new";
@@ -107,12 +116,12 @@ internal sealed partial class WebServer
         if (Stock(kind.Name) is not { } template) return Bad("There's no picture to start from.");
         try
         {
-            using var content = JsonContent(new { kind = kind.Name, mode = serviceMode, prompt = serviceMode == "prompt" ? prompt : null, template = Convert.ToBase64String(template) });
+            using var content = JsonContent(new { kind = kind.Name, mode = serviceMode, prompt = serviceMode == "prompt" && batch is null ? prompt : null, batch, template = Convert.ToBase64String(template) });
             using var res = await ShipService.PostAsync(ShipServiceUrl + "/graphic", content).ConfigureAwait(false);
             var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var status = (int)res.StatusCode;
             _m.Log(status == 200 ? LogLevel.Info : LogLevel.Warn, $"Armory {kind.Name} {mode} for account {accountId}: {status}.");
-            return JsonBytes(status == 200 ? 200 : status is 400 or 429 or 503 ? status : 502, bytes);
+            return JsonBytes(status == 200 ? 200 : status is 400 or 410 or 429 or 503 ? status : 502, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {

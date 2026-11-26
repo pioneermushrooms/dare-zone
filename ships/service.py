@@ -13,6 +13,10 @@ read from this process's environment (PIXEL_LAB_API_KEY), so it never leaves the
       -> 4xx/5xx {"ok": false, "message": "..."}
     POST /front     {"sheet": <base64 ship-rotations.png>, "frame": 0-39}   that frame becomes the front
       -> 200 {"ok": true, "sheet": <base64>}
+    POST /graphic   {"kind", "mode": "recolor"|"new", "template": <base64 current sheet>}
+                    {"kind", "mode": "prompt", "prompt": "...", "template": ...}   drawn from a description
+                    {"kind", "mode": "prompt", "batch": "<token>", "template": ...}  Try again: unlike those shown
+      -> 200 {"ok": true, "sheet": <base64, the template's size and layout>, "batch"?, "ready"?}
     GET  /health    -> 200 {"ok": true, "prompt": <whether a PixelLab key is set>}
 
 Run: python3 service.py [--port 8089]
@@ -122,7 +126,7 @@ def generate(body: dict) -> dict:
         raise Refused(400, "Choose Random or Prompt.")
     batch = body.get("batch")
     tries = _found(batch)
-    if tries is not None:
+    if tries is not None and getattr(tries, "graphic_kind", None) is None:
         return _next(tries, batch)
     if isinstance(batch, str) and batch and mode == "prompt" and not body.get("prompt"):
         raise Refused(410, "Those options have expired. Draw it again.")
@@ -181,9 +185,48 @@ def generate(body: dict) -> dict:
     }
 
 
+# Prompted graphics: one PixelLab picture per take (pixflux answers in seconds, not minutes), so
+# a few may run at once; each pilot's run of tries is capped by designer.Tries.
+_picture_slots = threading.BoundedSemaphore(4)
+
+
+def _graphic_tries(kind: str, prompt: str, template: bytes) -> designer.Tries:
+    def draw(brief: str) -> list:
+        if not _picture_slots.acquire(timeout=1):
+            raise designer.Busy("The painter is busy. Try again in a few seconds.")
+        try:
+            return [graphics.draw_picture(kind, brief, seed=secrets.randbelow(2**31))]
+        finally:
+            _picture_slots.release()
+
+    def files(picture) -> dict:
+        return {"sheet": graphics.from_picture(kind, template, picture, seed=secrets.randbelow(2**31))}
+
+    tries = designer.Tries(
+        prompt=prompt, draw_fn=draw, files_fn=files, again_fn=graphics.again, recheck=True
+    )
+    tries.graphic_kind = kind  # a token only continues tries for the same graphic
+    return tries
+
+
+def _next_graphic(tries: designer.Tries, token: str) -> dict:
+    try:
+        files = tries.next()
+    except designer.Busy as exc:
+        raise Refused(429, str(exc)) from exc
+    except graphics.GraphicError as exc:
+        raise Refused(400, str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise Refused(502, str(exc)) from exc
+    return {"ok": True, "sheet": _b64(files["sheet"]), "batch": token, "ready": tries.ready}
+
+
 def graphic(body: dict) -> dict:
-    """A new sheet for one of the game's other graphics, from the arena's current one (the template)."""
-    global _next_paid
+    """A new sheet for one of the game's other graphics, from the arena's current one (the template).
+
+    A prompt starts a run of tries ("batch" in the answer); sending it back draws a take unlike
+    the ones shown, as ships do.
+    """
     kind, mode = body.get("kind"), body.get("mode")
     if not isinstance(kind, str) or not kind.isalnum() or len(kind) > 16:
         raise Refused(400, "Unknown graphic.")
@@ -198,6 +241,14 @@ def graphic(body: dict) -> dict:
     try:
         if mode != "prompt":
             return {"ok": True, "sheet": _b64(graphics.generate(kind, mode, template, seed=seed))}
+        if not graphics.promptable(kind):
+            raise Refused(400, "That graphic can't be drawn from a description.")
+        batch = body.get("batch")
+        tries = _found(batch)
+        if tries is not None and getattr(tries, "graphic_kind", None) == kind:
+            return _next_graphic(tries, batch)
+        if isinstance(batch, str) and batch and not body.get("prompt"):
+            raise Refused(410, "Those options have expired. Draw it again.")
         prompt = body.get("prompt")
         prompt = prompt.strip() if isinstance(prompt, str) else ""
         if not prompt:
@@ -206,16 +257,9 @@ def graphic(body: dict) -> dict:
             raise Refused(400, f"Use plain text, under {MAX_PROMPT + 1} characters.")
         if not os.environ.get("PIXEL_LAB_API_KEY", "").strip():
             raise Refused(503, "Drawing from a description is not set up on this server yet.")
-        if not _paid.acquire(blocking=False):
-            raise Refused(429, "Something else is being drawn. Try again in a few seconds.")
-        try:
-            wait = _next_paid - time.monotonic()
-            if wait > 0:
-                raise Refused(429, f"The painter is cooling down. Try again in {int(wait) + 1} s.")
-            _next_paid = time.monotonic() + PAID_GAP_SECONDS
-            return {"ok": True, "sheet": _b64(graphics.generate(kind, mode, template, prompt=prompt, seed=seed))}
-        finally:
-            _paid.release()
+        graphics.load_template(template)  # a bad template is refused before anything is paid for
+        tries = _graphic_tries(kind, prompt, template)
+        return _next_graphic(tries, _keep(tries))
     except graphics.GraphicError as exc:
         raise Refused(400, str(exc)) from exc
     except RuntimeError as exc:

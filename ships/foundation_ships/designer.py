@@ -105,6 +105,13 @@ class Tries:
     """One person's attempts at a ship: each next() differs from what they've seen.
 
     With a prompt, ships come from batches drawn for it; with prompt=None, from `pool`.
+
+    The keyword-only hooks let other sprites use the same run of tries (the game's other
+    graphics do): `draw_fn(brief)` draws a batch of candidates (default: stock-style ships),
+    `files_fn(sprite)` turns the chosen one into files (default: sheet_files; ValueError skips
+    it), and `again_fn(prompt, take)` words take 1, 2... of the brief (default: AGAIN with a new
+    hull and wings). `recheck=True` also checks a freshly drawn batch: when even its best
+    candidate is a near-twin of one shown, one more take is drawn (for one-candidate batches).
     """
 
     MAX_FROM_BATCH = 2      # then a fresh take: one batch's ships are cousins of each other
@@ -115,7 +122,8 @@ class Tries:
     )
 
     def __init__(
-        self, prompt: str | None = None, pool: RandomPool | None = None, max_batches: int = 5
+        self, prompt: str | None = None, pool: RandomPool | None = None, max_batches: int = 5,
+        *, draw_fn=None, files_fn=None, again_fn=None, recheck: bool = False,
     ):
         if prompt is None and pool is None:
             raise ValueError("Tries needs a prompt or a pool.")
@@ -126,6 +134,10 @@ class Tries:
         self._from_batch = 0
         self._takes = 0  # batches drawn (or being drawn) for this prompt
         self.max_batches = max_batches  # each is a paid PixelLab call
+        self._draw_fn = draw_fn
+        self._files_fn = files_fn
+        self._again = again_fn
+        self.recheck = recheck
         self._lock = threading.Lock()
         # The next take, drawn in the background while the pilot looks at this one: PixelLab
         # takes 1.5-4.5 minutes per batch, too long to wait for on Try again.
@@ -135,6 +147,8 @@ class Tries:
     def _brief(self, take: int) -> str:
         if take == 0:
             return self.prompt
+        if self._again is not None:
+            return self._again(self.prompt, take)
         rng = random.Random()
         return self.prompt + self.AGAIN.format(
             hull=rng.choice(stylegen.HULLS), wings=rng.choice(stylegen.WINGS)
@@ -149,7 +163,7 @@ class Tries:
 
         def run():
             try:
-                self._upcoming = draw(brief)
+                self._upcoming = (self._draw_fn or draw)(brief)
             except Exception as exc:  # the next Try again draws in the foreground instead
                 log.warning("drawing ahead failed: %s", exc)
                 self._takes -= 1
@@ -171,7 +185,7 @@ class Tries:
             brief = self._brief(self._takes)
             self._takes += 1
             self._draw_ahead()  # the next take alongside this one (PixelLab runs them in parallel)
-            self._batch = draw(brief)
+            self._batch = (self._draw_fn or draw)(brief)
         self._from_batch = 0
 
     def _pick(self) -> Image.Image:
@@ -182,7 +196,7 @@ class Tries:
             self._fresh_batch()
             drew = True
         i = stylegen.most_distinct(self._batch, self.seen)
-        if not drew and self.seen and min(
+        if (not drew or (self.recheck and self._takes < self.max_batches)) and self.seen and min(
             stylegen.distance(stylegen.features(self._batch[i]), s) for s in self.seen
         ) < self.MIN_DIFFERENCE:
             self._fresh_batch()  # only near-twins left: one fresh draw, then the best of it
@@ -196,7 +210,7 @@ class Tries:
             for _ in range(6):
                 sprite = self._pick()
                 try:
-                    files = sheet_files(sprite)
+                    files = (self._files_fn or sheet_files)(sprite)
                 except ValueError:
                     continue  # not one clean shape; take another
                 self.seen.append(stylegen.features(sprite))

@@ -745,9 +745,13 @@ async function runGenerator() {
   msg($("gfxdlgmsg"), "", true);
   const stopWait = waitingFor(run);
   try {
-    const { body } = await postJson("/graphics/generate", { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
+    // Again on a prompt continues its run (run.batch): the generator shows a take unlike the ones shown.
+    const { body } = await postJson("/graphics/generate", run.batch
+      ? { arena: run.arena, name: run.slot.name, mode: run.mode, batch: run.batch }
+      : { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
     if (gen !== run) return;
-    if (!body?.ok || !body.sheet) { msg($("gfxdlgmsg"), body?.message || "Couldn't draw that.", false); return; }
+    if (!body?.ok || !body.sheet) { run.batch = null; msg($("gfxdlgmsg"), body?.message || "Couldn't draw that.", false); return; }
+    run.batch = body.batch || null;
     run.png = Uint8Array.from(atob(body.sheet), (ch) => ch.charCodeAt(0));
     paintSheet($("gfxcanvas"), await createImageBitmap(new Blob([run.png], { type: "image/png" })));
     msg($("gfxdlgmsg"), "Use this, or try Again.", true);
@@ -784,6 +788,7 @@ function wireGraphics() {
     e.preventDefault();
     if (!gen) return;
     gen.prompt = $("gfxprompt").value.trim();
+    gen.batch = null; // Draw starts a new run of tries
     if (!gen.prompt) return msg($("gfxdlgmsg"), "Describe what to draw.", false);
     runGenerator();
   });

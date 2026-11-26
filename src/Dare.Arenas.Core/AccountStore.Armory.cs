@@ -27,8 +27,8 @@ public sealed partial class AccountStore
         new("bombs", "Bombs", 160, 208, true, true, "16×16 frames, 10 to a row. Rows: levels 1–4, EMP 1–4, bouncing 1–4, then thor."),
         new("mines", "Mines", 160, 128, true, true, "16×16 frames, 10 to a row. Rows: levels 1–4 (tumbling), then EMP 1–4."),
         new("shrapnel", "Shrapnel", 80, 48, true, true, "8×8 frames, 10 to a row. Rows: levels 1–3, then bouncing 1–3."),
-        new("repel", "Repel", 480, 192, false, false, "96×96 frames: the repel's ring, growing frame by frame. Every ship's repel looks the same."),
-        new("rocket", "Rocket", 312, 48, false, false, "24×24 frames: the rocket's trail, a flash, a glow, then smoke. Every ship's rocket looks the same."),
+        new("repel", "Repel", 480, 192, false, true, "96×96 frames: the repel's ring, growing frame by frame. Every ship's repel looks the same."),
+        new("rocket", "Rocket", 312, 48, false, true, "24×24 frames: the rocket's trail, a flash, a glow, then smoke. Every ship's rocket looks the same."),
     ];
 
     public static ArmoryKind? FindArmoryKind(string? name) =>

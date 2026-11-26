@@ -373,8 +373,8 @@ const FALLBACK_KINDS = [
   { name: "bombs", label: "Bombs", width: 160, height: 208, perShip: true, generate: ["random", "prompt"], hint: "" },
   { name: "mines", label: "Mines", width: 160, height: 128, perShip: true, generate: ["random", "prompt"], hint: "" },
   { name: "shrapnel", label: "Shrapnel", width: 80, height: 48, perShip: true, generate: ["random", "prompt"], hint: "" },
-  { name: "repel", label: "Repel", width: 480, height: 192, perShip: false, generate: ["random"], hint: "" },
-  { name: "rocket", label: "Rocket", width: 312, height: 48, perShip: false, generate: ["random"], hint: "" },
+  { name: "repel", label: "Repel", width: 480, height: 192, perShip: false, generate: ["random", "prompt"], hint: "" },
+  { name: "rocket", label: "Rocket", width: 312, height: 48, perShip: false, generate: ["random", "prompt"], hint: "" },
 ];
 
 /** Puts a saved item on the selected weapon for ship `s` (0 = every ship): on the account, then in the game. */
@@ -460,14 +460,23 @@ function showReview(next) {
 
 async function generate(request, name) {
   if (busy || !needArmory()) return;
-  setBusy(true, request.mode === "prompt" ? "Drawing it… this takes up to a minute." : "Making one…");
+  setBusy(true, request.batch ? "Finding a different one…"
+    : request.mode === "prompt" ? "Drawing it… this takes up to a minute." : "Making one…");
   try {
     const data = await call("/generate", request);
-    const sheet = await sheetFromBytes(Uint8Array.from(atob(data.sheet), (ch) => ch.charCodeAt(0)), kindOf(kind));
+    const sheet = await sheetFromBytes(Uint8Array.from(atob(data.sheet), (ch) => ch.charCodeAt(0)), kindOf(request.kind));
     say("Approve it to add it to your armory, or Try again for a different one.");
-    showReview({ sheet, name, source: request.mode === "prompt" ? "generated" : "random", again: () => generate(request, name) });
+    // A prompt's Try again continues its run (data.batch): a take unlike the ones shown.
+    const fresh = request.batch ? request.fresh : request;
+    showReview({
+      sheet,
+      name,
+      source: request.mode === "prompt" ? "generated" : "random",
+      again: () => generate(data.batch ? { kind: fresh.kind, mode: fresh.mode, batch: data.batch, fresh } : fresh, name),
+    });
   } catch (error) {
     say(error.message, true);
+    if (request.batch && pending) pending.again = () => generate(request.fresh, name); // expired: draw afresh
   } finally {
     setBusy(false);
   }
