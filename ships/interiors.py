@@ -11,7 +11,8 @@ every 16 px, so it joins itself on all four sides. Its main colour is the field 
 pack's edge pieces show on their inner side.
 
 Run: python3 interiors.py <tactical2.lvl or tileset .bmp>  -> tilesets/tactical2-interior.bmp
-(tactical2's tileset with the six pieces in INTERIOR_SLOTS) and a preview of thick walls.
+(tactical2's tileset with the six pieces in INTERIOR_SLOTS), the same file as the site's
+wwwroot/standard-tiles.bmp, and a preview of thick walls.
 """
 
 from __future__ import annotations
@@ -148,8 +149,10 @@ def main() -> None:
             raise SystemExit(f"slot {t} is not empty in {src}")
     new = with_interiors(bmp)
     out = os.path.join(tg.HERE, "tilesets")
-    with open(os.path.join(out, "tactical2-interior.bmp"), "wb") as f:
-        f.write(new)
+    # the site serves the same file as /arena/standard-tiles.bmp ("Use the standard tiles")
+    for path in (os.path.join(out, "tactical2-interior.bmp"), os.path.join(tg.WWWROOT, "standard-tiles.bmp")):
+        with open(path, "wb") as f:
+            f.write(new)
     pv = preview(new)
     pv.resize((pv.width * 2, pv.height * 2), Image.NEAREST).save(os.path.join(out, "tactical2-interior-preview.png"))
     print("interiors:", INTERIOR_SLOTS)
