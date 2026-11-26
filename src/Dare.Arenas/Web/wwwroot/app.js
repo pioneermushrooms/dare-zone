@@ -130,6 +130,7 @@ function route() {
   if (shown === "overview") loadBotSummary(current.arena);
   if (shown === "map") loadLibrary();
   if (shown === "graphics") loadGraphics();
+  if (shown === "tiles") openTiles();
 }
 
 function renderNoArena(body) {
@@ -920,6 +921,15 @@ async function removeLvz(name) {
   const { body } = await postJson("/rmlvz", { arena: current.arena, name });
   msg($("lvzmsg"), webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
+}
+
+// ---- Tile Editor tab: the tile studio (tile-studio.js), mounted on the first visit --------------------
+let studio = null;
+function openTiles() {
+  if (!window.TileStudio || !current?.arena) return;
+  if (!studio) studio = TileStudio.mount($("tilestudio"), { arena: current.arena, onMapSaved: () => loadLibrary() });
+  $("tilespage").href = "/arena/tiles?arena=" + encodeURIComponent(current.arena);
+  studio.setArena(current.arena, { open: true });
 }
 
 // ---- your maps: a dropped .lvl goes to the pilot's collection and opens as a draft in the editor ----
