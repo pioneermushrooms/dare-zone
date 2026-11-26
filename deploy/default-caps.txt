@@ -9,3 +9,4 @@ cmd_draftinvite
 cmd_requestpublic
 cmd_publish
 cmd_withdrawrequest
+cmd_v

@@ -120,6 +120,7 @@ public sealed partial class ArenaOwnership : IModule
         PromoteDrafts();
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
+        LoadVoice();
         RegisterCommands();
         RegisterStaff(broker);
         LoadZoneList(broker);
