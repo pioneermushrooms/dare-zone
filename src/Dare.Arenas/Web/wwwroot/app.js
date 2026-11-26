@@ -882,7 +882,7 @@ function periodicRow(slot, fresh) {
   });
   remove.addEventListener("click", async () => {
     if (fresh && slot.raw.trim() === "") { renderMessages(lastSettings); return; }
-    if (!confirm(`Remove timed message ${slot.i + 1}?`)) return;
+    if (!await Dlg.confirm(`Remove timed message ${slot.i + 1}?`, { title: "Remove message", ok: "Remove", danger: true })) return;
     if (await write("")) renderMessages(lastSettings);
   });
   return row;
