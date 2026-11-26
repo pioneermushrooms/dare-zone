@@ -85,6 +85,8 @@ public sealed partial class ArenaOwnership
 
     private readonly Dictionary<string, DateTimeOffset> _botOccupancy = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HostRun> _hosts = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Bots already logged as left out because the host would refuse them (label and reason).</summary>
+    private readonly HashSet<string> _hostRefusalsLogged = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, BotChat> _botChats = new(StringComparer.OrdinalIgnoreCase);
     private const string BotChatSecretsPath = "conf/bot-chat-secrets.conf";
     private BotBanter? _botBanter;
@@ -344,7 +346,11 @@ public sealed partial class ArenaOwnership
                 continue;
             }
             if (Store.Get(arena) is not { Status: ArenaStatus.Active } owned) continue;
-            var bots = Store.LaunchableBots(owned.Name, n => _accounts?.Find(n) is not null).Take(cap - total).ToList();
+            var bots = Store.LaunchableBots(owned.Name, n => _accounts?.Find(n) is not null, (bot, why) =>
+            {
+                if (_hostRefusalsLogged.Add(bot.Label + "\n" + why))
+                    Log(LogLevel.Warn, $"Bot [{bot.Label}] in [{owned.Name}] not launched: {why}.");
+            }).Take(cap - total).ToList();
             if (bots.Count == 0) continue;
             total += bots.Count;
             desired[owned.Name] = (owned.Owner, bots);

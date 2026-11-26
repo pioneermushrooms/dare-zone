@@ -7,6 +7,51 @@ namespace Dare.Arenas.Core;
 /// </summary>
 public static class BotLineup
 {
+    /// <summary>Longest reply trigger the host takes (oss-bot script.rs).</summary>
+    public const int MaxReplyKeyword = 24;
+
+    // The host's own limits (oss-bot script.rs and lineup.rs); a block that breaks one makes it refuse the whole lineup.
+    private const int HostMaxPoints = 64, HostMaxReplies = 20;
+
+    /// <summary>
+    /// Why the bot host would refuse this bot's block, or null when it would take it. The zone leaves such a
+    /// bot out of the lineup: one bad block makes the host refuse the whole message, freezing every bot in the arena.
+    /// </summary>
+    public static string? HostProblem(ArenaBot bot)
+    {
+        var name = bot.Label;
+        if (name.Length is < 1 or > 20 || !char.IsAsciiLetterOrDigit(name[0]) || name.Contains("  ", StringComparison.Ordinal) ||
+            name.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not (' ' or '_' or '-' or '.')))
+            return "the bot host cannot use this name";
+        int points = 0, replies = 0;
+        foreach (var line in ScriptLines(bot.Script))
+        {
+            if (line.Any(c => c is < ' ' or > '~')) return "a setting has characters the bot host cannot read";
+            var parts = line.Split(' ', 2, StringSplitOptions.TrimEntries);
+            var value = parts.ElementAtOrDefault(1) ?? "";
+            var fields = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string? why = parts[0] switch
+            {
+                "ship" => int.TryParse(value, out int ship) && ship is >= 1 and <= 8 ? null : "the ship must be 1-8",
+                "behaviour" => value is "idle" or "patrol" or "sentry" or "fighter" ? null : "unknown behaviour",
+                "point" => ++points > HostMaxPoints ? $"more than {HostMaxPoints} points"
+                    : fields.Length == 2 && fields.All(f => int.TryParse(f, out int n) && n is >= 0 and <= 1023) ? null
+                    : "a point must be two tiles, 0-1023",
+                "range" => int.TryParse(value, out int range) && range is >= 1 and <= 200 ? null : "the range must be 1-200 tiles",
+                "greet" => null,
+                "reply" => ++replies > HostMaxReplies ? $"more than {HostMaxReplies} replies"
+                    : fields.Length >= 1 && fields[0].Length <= MaxReplyKeyword ? null
+                    : $"a reply trigger is longer than {MaxReplyKeyword} characters",
+                _ => $"the bot host does not know the setting \"{parts[0]}\"",
+            };
+            if (why is not null) return why;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The lineup text. A bot the host would refuse (<see cref="HostProblem"/>) is left out, so it cannot stop the rest.
+    /// </summary>
     public static string Render(string arena, string controller,
         IReadOnlyList<(ArenaBot Bot, BotPlacement Placement, string Password)> bots)
     {
@@ -15,7 +60,7 @@ public static class BotLineup
         text.Append("controller ").Append(controller).Append('\n');
         foreach (var (bot, placement, password) in bots)
         {
-            if (placement.Seat == BotSeat.Out) continue;
+            if (placement.Seat == BotSeat.Out || HostProblem(bot) is not null) continue;
             text.Append("bot ").Append(bot.Label).Append('\n');
             text.Append("password ").Append(password).Append('\n');
             text.Append("seat ").Append(placement.Seat == BotSeat.In ? "in" : "spec").Append('\n');

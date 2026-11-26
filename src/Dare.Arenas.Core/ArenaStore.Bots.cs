@@ -34,7 +34,7 @@ public sealed partial class ArenaStore
             label.Contains("  ", StringComparison.Ordinal) || label.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not (' ' or '_' or '-' or '.')))
             return new(false, "Use 1–20 letters, digits, single spaces, underscores, hyphens or periods. Start with a letter or digit.");
         if (script is not null && !ValidBotScript(script))
-            return new(false, "Invalid bot settings. Check the ship, behavior, team, priority, coordinates and chat lines.");
+            return new(false, $"Invalid bot settings. Check the ship, behavior, team, priority, coordinates and chat lines (reply triggers are 1–{BotLineup.MaxReplyKeyword} characters).");
 
         return Tx(() =>
         {
@@ -86,15 +86,28 @@ public sealed partial class ArenaStore
         }
     }
 
-    /// <summary>The arena's deployed bots whose name no pilot account holds.</summary>
-    public IReadOnlyList<ArenaBot> LaunchableBots(string arena, Func<string, bool> isAccount) =>
-        Bots(arena).Where(b => b.Deployed && !isAccount(b.Label)).ToList();
+    /// <summary>
+    /// The arena's deployed bots whose name no pilot account holds and whose block the bot host would read.
+    /// <paramref name="refused"/> hears about each deployed bot left out because the host would refuse it.
+    /// </summary>
+    public IReadOnlyList<ArenaBot> LaunchableBots(string arena, Func<string, bool> isAccount,
+        Action<ArenaBot, string>? refused = null) =>
+        Bots(arena).Where(b =>
+        {
+            if (!b.Deployed || isAccount(b.Label)) return false;
+            if (BotLineup.HostProblem(b) is not { } why) return true;
+            refused?.Invoke(b, why);
+            return false;
+        }).ToList();
 
     /// <summary>Why a saved bot will not launch, or null when nothing stops it.</summary>
-    public string? BotProblem(string arena, string label, Func<string, bool> isAccount) =>
-        Bots(arena).Any(b => string.Equals(b.Label, label, StringComparison.OrdinalIgnoreCase)) && isAccount(label)
-            ? "Not launched: a pilot uses this name."
-            : null;
+    public string? BotProblem(string arena, string label, Func<string, bool> isAccount)
+    {
+        var bot = Bots(arena).FirstOrDefault(b => string.Equals(b.Label, label, StringComparison.OrdinalIgnoreCase));
+        if (bot is null) return null;
+        if (isAccount(bot.Label)) return "Not launched: a pilot uses this name.";
+        return BotLineup.HostProblem(bot) is { } why ? "Not launched: " + why + "." : null;
+    }
 
     /// <summary>Bots per team (frequency) the match director fields in the arena.</summary>
     public IReadOnlyDictionary<int, int> MatchSizes(string arena)
@@ -174,7 +187,7 @@ public sealed partial class ArenaStore
                     fields[1] is "friendly" or "dry" or "competitive",
                 "greet" => value.Length <= 200,
                 "announce" => ++announcements <= 10 && fields.Length >= 2 && uint.TryParse(fields[0], out uint seconds) && seconds >= 60,
-                "reply" => ++replies <= 20 && fields.Length >= 2,
+                "reply" => ++replies <= 20 && fields.Length >= 2 && fields[0].Length <= BotLineup.MaxReplyKeyword,
                 _ => false
             };
             if (!valid) return false;

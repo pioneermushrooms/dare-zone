@@ -459,6 +459,34 @@ public sealed class ArenaStoreTests : IDisposable
     }
 
     [Fact]
+    public void reply_triggers_are_1_to_24_characters()
+    {
+        var store = Owned();
+        var k24 = new string('k', 24);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Ok", $"behaviour idle\nreply {k24} fine").Ok);
+        var refused = store.SaveBot("bigarena", "Big Chris", "Long", $"behaviour idle\nreply {k24}x too long");
+        Assert.False(refused.Ok);
+        Assert.Contains("24", refused.Message);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Max", BotLineupHostLimitTests.MaxScript).Ok); // every kind at its limit
+    }
+
+    [Fact]
+    public void a_bot_the_host_would_refuse_is_not_launched_and_says_why()
+    {
+        var store = Owned();
+        // saved before the zone checked trigger length
+        Raw($"INSERT INTO bots(arena,label,script) VALUES('bigarena','Chatty','behaviour idle\nreply {new string('k', 25)} hi'), ('bigarena','Sparring','behaviour idle')");
+        Raw("DELETE FROM stopped_bots");
+        var refused = new List<string>();
+        Assert.Equal(["Sparring"], store.LaunchableBots("bigarena", _ => false, (b, why) => refused.Add(b.Label + ": " + why)).Select(b => b.Label));
+        Assert.Equal(["Chatty: a reply trigger is longer than 24 characters"], refused);
+        Assert.Equal("Not launched: a reply trigger is longer than 24 characters.", store.BotProblem("bigarena", "Chatty", _ => false));
+        Assert.Equal("not launched: a reply trigger is longer than 24 characters",
+            BotCommand.NotLaunched(store.BotProblem("bigarena", "Chatty", _ => false)!));
+        Assert.Null(store.BotProblem("bigarena", "Sparring", _ => false));
+    }
+
+    [Fact]
     public void existing_bots_get_a_team_0_match_size_once()
     {
         var store = Owned();

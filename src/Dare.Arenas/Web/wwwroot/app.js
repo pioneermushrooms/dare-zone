@@ -488,6 +488,7 @@ function wireBots() {
     for (const line of botLines($("botreply").value)) {
       const match = /^(\S+)\s*\|\s*(.+)$/.exec(line);
       if (!match) return msg($("botmsg"), "Use | between the trigger and the custom message.", false);
+      if (match[1].length > 24) return msg($("botmsg"), "A reply trigger can be at most 24 characters: " + match[1].slice(0, 24) + "…", false);
       script.push("reply " + match[1] + " " + match[2]);
     }
     changeBot("save", { arena: current.arena, label: $("botlabel").value, script: script.join("\n") });

@@ -33,6 +33,88 @@ public class BotLineupTests
     }
 }
 
+public class BotLineupHostLimitTests
+{
+    // What oss-bot's lineup.rs and script.rs accept; a block outside these makes the host refuse the whole lineup.
+    private static readonly HashSet<string> HostKeys = ["ship", "behaviour", "point", "range", "greet", "reply"];
+
+    private static void AssertHostTakes(string block)
+    {
+        var lines = block.Split('\n');
+        Assert.Matches("^bot [A-Za-z0-9][A-Za-z0-9 _.-]{0,19}$", lines[0]);
+        Assert.DoesNotContain("  ", lines[0]);
+        int points = 0, replies = 0;
+        foreach (var line in lines.Skip(1).TakeWhile(l => l != "end"))
+        {
+            Assert.All(line, c => Assert.InRange(c, ' ', '~'));
+            var (key, value) = (line.Split(' ', 2)[0], line.Split(' ', 2).ElementAtOrDefault(1) ?? "");
+            switch (key)
+            {
+                case "password": Assert.NotEmpty(value); break;
+                case "seat": Assert.Contains(value, new[] { "in", "spec" }); break;
+                case "team": Assert.InRange(int.Parse(value), 0, 9999); break;
+                case "ship": Assert.InRange(int.Parse(value), 1, 8); break;
+                case "behaviour": Assert.Contains(value, new[] { "idle", "patrol", "sentry", "fighter" }); break;
+                case "point":
+                    Assert.True(++points <= 64);
+                    Assert.All(value.Split(' '), v => Assert.InRange(int.Parse(v), 0, 1023)); break;
+                case "range": Assert.InRange(int.Parse(value), 1, 200); break;
+                case "greet": Assert.InRange(value.Length, 0, 200); break;
+                case "reply":
+                    Assert.True(++replies <= 20);
+                    Assert.InRange(value.Split(' ')[0].Length, 1, BotLineup.MaxReplyKeyword); break;
+                default: Assert.Fail($"the host does not know {key}"); break;
+            }
+            Assert.True(key is "password" or "seat" or "team" || HostKeys.Contains(key));
+        }
+    }
+
+    /// <summary>Every line kind the zone accepts, each at its limit (ArenaStoreTests saves it).</summary>
+    internal static readonly string MaxScript = string.Join("\n", new[]
+        {
+            "ship 8", "behaviour sentry", "team 9999", "priority 9", "range 200", "botchat on", "casual 5 competitive",
+            "greet " + new string('g', 200), "announce 86400 " + new string('a', 100),
+        }.Concat(Enumerable.Range(0, 64).Select(i => $"point {i * 16} 1023"))
+         .Concat(Enumerable.Range(0, 20).Select(i => $"reply {new string((char)('a' + i), 24)} {new string('r', 60)}")));
+
+    [Fact]
+    public void every_whitelisted_line_kind_renders_within_the_host_limits()
+    {
+        var script = MaxScript;
+        Assert.True(script.Length <= 3900, $"script is {script.Length} long");
+        var bot = new ArenaBot("Max_Bot-1.2 ok", script, true);
+        Assert.Null(BotLineup.HostProblem(bot));
+        foreach (var kinds in new[] { "behaviour idle", "behaviour patrol\npoint 0 0", "behaviour fighter\nteam 0", "behaviour idle\ncasual 1 friendly", "behaviour idle\ncasual 2 dry\nbotchat on" })
+        {
+            var b = new ArenaBot("B", kinds, true);
+            Assert.Null(BotLineup.HostProblem(b));
+            var text = BotLineup.Render("a", "o", [(b, new BotPlacement("B", BotSeat.In, 0), "P")]);
+            AssertHostTakes(text.Split("controller o\n")[1]);
+        }
+        var full = BotLineup.Render("a", "o", [(bot, new BotPlacement(bot.Label, BotSeat.Spectating, 9999), "P")]);
+        AssertHostTakes(full.Split("controller o\n")[1]);
+    }
+
+    [Fact]
+    public void a_bot_the_host_would_refuse_is_left_out_of_the_lineup()
+    {
+        var bad = new ArenaBot("Chatty", "behaviour idle\nreply " + new string('k', 25) + " hi", true);
+        var badName = new ArenaBot("_x", "behaviour idle", true);
+        var odd = new ArenaBot("Odd", "behaviour idle\nwarp 1", true);
+        var good = new ArenaBot("Rex", "behaviour idle", true);
+        Assert.Equal("a reply trigger is longer than 24 characters", BotLineup.HostProblem(bad));
+        Assert.Equal("the bot host cannot use this name", BotLineup.HostProblem(badName));
+        Assert.Equal("the bot host does not know the setting \"warp\"", BotLineup.HostProblem(odd));
+        var text = BotLineup.Render("a", "o", [
+            (bad, new BotPlacement("Chatty", BotSeat.In, 0), "P1"),
+            (badName, new BotPlacement("_x", BotSeat.In, 0), "P2"),
+            (odd, new BotPlacement("Odd", BotSeat.In, 0), "P3"),
+            (good, new BotPlacement("Rex", BotSeat.In, 0), "P4"),
+        ]);
+        Assert.Equal("lineup a\ncontroller o\nbot Rex\npassword P4\nseat in\nteam 0\nship 1\nbehaviour idle\nend\ndone\n", text);
+    }
+}
+
 public class BotStaggerTests
 {
     private static BotPlacement P(string label, BotSeat seat, int team = 0) => new(label, seat, team);
