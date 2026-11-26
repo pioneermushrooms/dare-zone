@@ -490,6 +490,7 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             default:
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? Text(404, "Not found.");
         }
