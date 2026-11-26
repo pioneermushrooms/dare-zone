@@ -358,7 +358,10 @@ window.TileStudio = (() => {
 
     // ---- slot, roles and packs ------------------------------------------------------------------------
     const currentPack = () => layout.packs.find((p) => p.id === packId) || null;
-    const otherLabel = (t) => { for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
+    const otherLabel = (t) => {
+      const ip = layout.packs.find((p) => p.interior === t);
+      if (ip) return `${ip.name}: interior (the plain inside of a thick wall)`;
+      for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
     function showSlot() {
       const [x, y] = slotXY(sel), r = TileLayout.roleOfTile(layout, sel), reserved = sel >= layout.reserved[0] && sel <= layout.reserved[1];
       q("st-slotname").textContent = `Tile ${sel} · column ${x / TS + 1}, row ${y / TS + 1}`;
