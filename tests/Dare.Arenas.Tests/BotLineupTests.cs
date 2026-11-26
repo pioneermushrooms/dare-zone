@@ -23,6 +23,12 @@ public class BotLineupTests
     }
 
     [Fact]
+    public void every_botchat_line_is_zone_only()
+    {
+        Assert.Equal(["ship 1", "behaviour idle"], BotLineup.ScriptLines("behaviour idle\nbotchat off\nbotchat  on"));
+    }
+
+    [Fact]
     public void a_casual_bot_with_its_own_greeting_keeps_it()
     {
         var bot = new ArenaBot("Rex", "ship 2\ngreet Yo {name}\ncasual 1 competitive", true);

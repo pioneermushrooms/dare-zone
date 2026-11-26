@@ -79,7 +79,7 @@ public static class BotLineup
     public static IReadOnlyList<string> ScriptLines(string script)
     {
         var lines = script.Split('\n').Select(line => line.Trim()).Where(line => line.Length != 0).ToList();
-        lines.RemoveAll(line => line == "botchat on" || line.StartsWith("announce ", StringComparison.Ordinal) ||
+        lines.RemoveAll(line => line.StartsWith("botchat ", StringComparison.Ordinal) || line.StartsWith("announce ", StringComparison.Ordinal) ||
             line.StartsWith("team ", StringComparison.Ordinal) || line.StartsWith("priority ", StringComparison.Ordinal));
         if (!lines.Any(line => line.StartsWith("ship ", StringComparison.Ordinal))) lines.Insert(0, "ship 1");
         var casual = lines.FindIndex(line => line.StartsWith("casual ", StringComparison.Ordinal));
