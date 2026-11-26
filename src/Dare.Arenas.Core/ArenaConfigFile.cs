@@ -30,7 +30,8 @@ public static class ArenaConfigFile
     /// file that was edited. Otherwise it runs on a shared file and the change applies after
     /// <c>?recyclearena</c>.
     /// </summary>
-    public static bool IsLive(string? runningValue, string written) => string.Equals(runningValue, written, StringComparison.Ordinal);
+    public static bool IsLive(string? runningValue, string written) =>
+        string.Equals(written.Length == 0 ? runningValue ?? "" : runningValue, written, StringComparison.Ordinal);
 
     private static bool IsPlainName(string? name)
     {

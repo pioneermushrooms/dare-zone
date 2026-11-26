@@ -369,7 +369,13 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
         approve = WebStaffCan(player, ApproveCapability),
         decline = WebStaffCan(player, DeclineCapability),
         create = WebStaffCan(player, CreateCapability),
+        admin = WebStaffCan(player, AdminCapability),
     };
+
+    /// <summary>Whether <paramref name="player"/> gets the Admin page (any staff capability). Mainloop.</summary>
+    internal bool IsWebStaff(string player) =>
+        WebStaffCan(player, ApproveCapability) || WebStaffCan(player, DeclineCapability)
+        || WebStaffCan(player, CreateCapability) || WebStaffCan(player, AdminCapability);
 
     /// <summary>The staff page: waiting requests and every arena; null for non-staff. Mainloop.</summary>
     internal object? StaffData(string player)

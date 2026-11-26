@@ -247,8 +247,10 @@
       refresh();
     }
     bBlank.addEventListener("click", () => apply("blank"));
-    bAll.addEventListener("click", () => {
-      if (confirm("Redraw every wall slot this map uses in the new style? Decorations drawn in the old tileset (lettering, pictures) are replaced too. You can put the old tiles back.")) apply("all");
+    bAll.addEventListener("click", async () => {
+      const ask = "Redraw every wall slot this map uses in the new style? Decorations drawn in the old tileset (lettering, pictures) are replaced too. You can put the old tiles back.";
+      const ok = window.Dlg ? await Dlg.confirm(ask, { title: "Restyle all walls", ok: "Restyle" }) : confirm(ask);
+      if (ok) apply("all");
     });
     bBack.addEventListener("click", () => {
       if (!before) return;

@@ -6,6 +6,7 @@
 <title>Arena editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/lvl.js" defer></script>
+<script src="/arena/dialogs.js" defer></script>
 <script src="/arena/app.js" defer></script>
 </head>
 <body data-page="me">
@@ -26,12 +27,13 @@
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
+    <a href="#messages" data-view="messages" data-needs="arena">Messages</a>
     <a href="#bots" id="botnav" data-view="bots" data-needs="arena" hidden>Bots</a>
     <a href="#crew" data-view="crew" data-needs="arena">Crew</a>
     <a href="#make" data-view="make">Make an arena</a>
     <hr>
     <a href="/account/">Account</a>
-    <a href="/arena/staff" id="stafflink" hidden>Staff desk</a>
+    <a href="/arena/staff" id="stafflink" hidden>Admin</a>
   </nav>
 
   <div class="content">
@@ -182,10 +184,27 @@
       <p class="kicker">Settings</p>
       <h2>Rules</h2>
       <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>.</p>
+      <div class="settabs" id="settabs" role="tablist" aria-label="Setting groups"></div>
       <input type="search" class="filter" id="filter" placeholder="Filter, e.g. warbird bulletspeed" aria-label="Filter settings">
       <p class="msg" id="setmsg"></p>
       <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
       <div id="settings"></div>
+    </section>
+
+    <section data-view="messages" hidden>
+      <p class="kicker">Messages</p>
+      <h2>Arena messages</h2>
+      <p class="dim">What the arena says in chat. The greeting goes to each pilot as they enter; timed messages go to everyone in the arena. Empty or off means silent.</p>
+      <form class="stack msgform" id="greetform">
+        <label>Greeting <input type="text" id="greettext" maxlength="200" autocomplete="off" placeholder="(no greeting)">
+          <span class="hint">Sent privately to each pilot who enters. Up to 200 characters.</span></label>
+        <div class="row"><button type="submit" class="small">Save greeting</button><button type="button" class="small ghost" id="greetclear">Turn off</button></div>
+      </form>
+      <h3>Timed messages</h3>
+      <p class="dim">Up to 10. Each repeats every so many minutes, starting a set number of minutes after the arena opens.</p>
+      <div id="periodiclist" class="periodic"></div>
+      <p class="msg" id="msgmsg" role="status"></p>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
     </section>
 
     <section data-view="crew" hidden>

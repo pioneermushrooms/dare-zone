@@ -402,6 +402,8 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffDecline(p, Str(b, "arena") ?? "", Str(b, "reason") ?? "", Str(b, "player"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/arena":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffArena(p, Str(b, "arena") ?? "", Str(b, "action") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/commands": return method == "GET" ? await StaffCommandsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/can": return method == "GET" ? await StaffCanAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/create":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));
@@ -428,6 +430,9 @@ internal sealed partial class WebServer : IDisposable
             case "/editor.js": return Get(method, () => Static("editor.js"));
             case "/lvl.js": return Get(method, () => Static("lvl.js"));
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
+            case "/autotile.js": return Get(method, () => Static("autotile.js"));
+            case "/dialogs.js": return Get(method, () => Static("dialogs.js"));
+            case "/tiles.bm2": return Get(method, () => Static("tiles.bm2"));
             case "/tileart.js": return Get(method, () => Static("tileart.js"));
             case "/tileart-styles.js": return Get(method, () => Static("tileart-styles.js"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
@@ -663,7 +668,10 @@ internal sealed partial class WebServer : IDisposable
         {
             var k = kind.Value;
             var result = await OnMain(() => _m.WebUpload(cfg, arena, player, k, name, content)).ConfigureAwait(false);
-            return ResultReply(result);
+            if (!result.Ok || k != UploadKind.Map) return ResultReply(result);
+            // every map put on an arena is also kept in the pilot's maps (the same bytes only once)
+            var kept = _m.WebStore.SaveMap(player, null, req.QueryString["libname"] ?? name, content, out var keptId);
+            return JsonReply(200, new { ok = true, message = result.Message, library = kept.Ok ? keptId : (long?)null, libraryMessage = kept.Message });
         }
         finally
         {
@@ -724,6 +732,25 @@ internal sealed partial class WebServer : IDisposable
                 .Where(r => string.Equals(r.Player, player, StringComparison.OrdinalIgnoreCase))
                 .Select(r => new { arena = r.Arena, pitch = r.Pitch, at = r.At }),
         });
+    }
+
+    /// <summary>Admin page: every server command with its help text and whether this staff member may use it.</summary>
+    private async Task<Reply> StaffCommandsAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var (staff, commands) = await OnMain(() => (_m.IsWebStaff(player), _m.StaffCommands(player))).ConfigureAwait(false);
+        if (!staff) return JsonReply(403, new { ok = false, message = "This page is for zone staff." });
+        return commands is null
+            ? JsonReply(503, new { ok = false, message = "The server's command list can't be read on this version; type ?allcommands in game." })
+            : JsonReply(200, new { ok = true, commands });
+    }
+
+    /// <summary>Whether the signed-in name is zone staff (for the homepage's Admin link).</summary>
+    private async Task<Reply> StaffCanAsync(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var staff = await OnMain(() => _m.IsWebStaff(player)).ConfigureAwait(false);
+        return JsonReply(200, new { ok = true, staff });
     }
 
     private async Task<Reply> StaffDataAsync(HttpListenerRequest req)
@@ -1105,7 +1132,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "editor.js", "tileart.js", "tileart-styles.js", "tile-layout.json" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js", "tile-layout.json" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");
