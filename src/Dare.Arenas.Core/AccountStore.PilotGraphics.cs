@@ -39,6 +39,8 @@ public sealed partial class AccountStore
     {
         if (GameGraphics.Find(slot) is not { } s || GameGraphics.ShipIndex(s.Name) > 0)
             return Fail("Ships are set from your shipyard; choose one of the other graphics.");
+        if (FindArmoryKind(s.Name) is not null)
+            return Fail($"{s.Label} is set from your armory.");
         if (!GameGraphics.TryCheckImage(image, out _, out _, out _, out var why)) return Fail(why);
         return Tx(() =>
         {

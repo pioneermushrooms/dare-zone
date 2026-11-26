@@ -120,6 +120,8 @@ public sealed partial class AccountStore
             Run("DELETE FROM shipyard_slots WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM shipyard_ships WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM pilot_graphics WHERE account_id = $id", ("$id", target.Id));
+            Run("DELETE FROM armory_slots WHERE account_id = $id", ("$id", target.Id));
+            Run("DELETE FROM armory_items WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM pilot_graphics_prefs WHERE account_id = $id", ("$id", target.Id));
             Run("DELETE FROM login_failures WHERE name = $n", ("$n", target.Name));
             Run("DELETE FROM email_codes WHERE account_id = $id", ("$id", target.Id));

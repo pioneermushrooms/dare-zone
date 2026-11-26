@@ -92,19 +92,32 @@ T keeps the line running through. Else `single`, else `fill`.
 
 ## The tile editor
 
-`/arena/tiles` (`tiles.html`, `tiles-editor.js`, `tiles.css`; shared code in `tiles.js`).
-Open a tileset from a ready-made map (`?map=tactical2.lvl` opens one directly), a `.lvl`, a
-`.bmp`/`.bm2` or a `.png` (reduced to 256 colours). Then:
+The Tile Editor tab of the arena editor (`/arena/me#tiles`) and the page `/arena/tiles`
+(`?arena=<name>` or `?map=<ready-made>.lvl` opens one) both mount `tile-studio.js`
+(`TileStudio.mount(el, { arena })`; shared code in `tiles.js`, styles in `tiles.css`).
 
-- the sheet shows each pack's pieces: closed edges as a line, open edges as a notch; reserved slots dimmed;
-- select a slot to set its pack and piece, or make a new pack laid out like the template at that slot;
-- pencil, fill and colour picker on the selected tile (with 4 px of its sheet neighbours, to match seams);
-  right-click draws colour 0 (empty); palette colours can be changed;
-- copy, paste, flip and rotate a tile; flipping a corner can move its role with it (corner-tl → corner-tr);
-- **Check edges** reads every tile's edges and marks pack pieces whose art doesn't look like their role;
-  **Roles from edges** sets the selected pack's roles from what the edges look like;
-- **How the pack joins** builds sample walls from the selected pack; click cells to draw your own;
-- save as `.lvl` (the map's walls and eLVL data kept), `.bmp`, the roles as JSON, or into Your maps.
+- **Open** the arena's current map tileset, one of Your tilesets, a map in Your maps, a ready-made
+  map, a `.lvl`/`.bmp`/`.bm2`, or a `.png` (reduced to 256 colours).
+- **Draw**: pencil and eraser (brush 1–8), line, rectangle and ellipse (outline or filled; Shift
+  for 45° and squares), fill, replace colour, colour picker (or Alt+click), two colours (right
+  click draws the second), mirror ↔/↕ inside a tile. Strokes stay inside the selection, or inside
+  the tile in tile view.
+- **Select** a rectangle: drag to move it, copy/cut/paste (the selection, or the whole tile),
+  flip and rotate, arrows nudge, colour 0 optionally see-through. Flipping a whole tile can move
+  its role with it (corner-tl → corner-tr).
+- **Views**: whole sheet or one tile with its neighbours (Tab), zoom, pixel and tile grids, full
+  screen. **Seams**: the tile repeated 3 × 3; **How the pack joins**: walls built from the pack.
+- **Palette**: pick, change a colour everywhere, flash its uses, take another tileset's palette
+  (pixels move to the nearest colour). Colour 0 is empty space.
+- **Reference**: an image under or over the art, and the tileset as opened, faintly.
+- **Roles** (the slot panel and Packs): set by hand, new pack from the template, Check edges,
+  Roles from edges, load a role map, back to the standard.
+- **Undo/redo** cover pixels, palette and roles. Keys are listed under Keys.
+- **Keep**: Your tilesets (`/arena/api/tilesets`: list, file, roles, save, rename, duplicate,
+  remove; 25 per pilot; BMP 304 × 160 8-bit plus the role map). Downloads: `.bmp`, `.lvl`, roles.
+- **Use it in a map**: put the tileset into the arena's current map (a new map in Your maps) or
+  into a map already in Your maps. Its walls and eLVL data are kept. Either way it is a draft:
+  the arena changes only when that map is Applied on the Map tab or Published from the map editor.
 
 ## Role maps for one tileset
 

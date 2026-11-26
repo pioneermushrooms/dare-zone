@@ -453,7 +453,7 @@ internal sealed partial class WebServer : IDisposable
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
             case "/tiles": return Get(method, () => Static("tiles.html"));
             case "/tiles.js": return Get(method, () => Static("tiles.js"));
-            case "/tiles-editor.js": return Get(method, () => Static("tiles-editor.js"));
+            case "/tile-studio.js": return Get(method, () => Static("tile-studio.js"));
             case "/tiles.css": return Get(method, () => Static("tiles.css"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
@@ -492,6 +492,7 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             default:
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? Text(404, "Not found.");
         }
@@ -1158,7 +1159,7 @@ internal sealed partial class WebServer : IDisposable
     }
 
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
-    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tiles-editor.js", "tiles.css", "tile-layout.json"];
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json"];
 
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {

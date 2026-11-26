@@ -4,7 +4,8 @@
 // items, explosions...): uploaded, or made by the same generators as the arena editor's. They are
 // kept on the pilot's account (/account/api/graphics) and laid over the arena's own whenever the
 // pilot flies. "Use my own" off shows the arena's ships and graphics instead, without forgetting
-// the pilot's, so switching back is instant. Ships stay on the Ships tab (graphics.js).
+// the pilot's, so switching back is instant. Ships stay on the Ships tab (graphics.js), weapons on
+// the Armory tab (graphics-armory.js).
 // The game is reached through globalThis.dareGraphics (play/start.mjs).
 const API = "/account/api/graphics";
 const JSON_HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
@@ -253,17 +254,19 @@ async function setUseOwn(on) {
   await showCurrent();
 }
 
-function showTab(other) {
-  $("gfx-tab-ships").setAttribute("aria-current", other ? "false" : "page");
-  $("gfx-tab-other").setAttribute("aria-current", other ? "page" : "false");
-  $("gfx-ships").hidden = other;
-  $("gfx-other").hidden = !other;
-  if (other) void refresh();
+/** Shows one of the overlay's panels (Ships, Armory, Other graphics) and tells the others. */
+function showTab(id) {
+  for (const tab of document.querySelectorAll("#graphics .gfxtabs .tab")) {
+    const on = tab.dataset.panel === id;
+    tab.setAttribute("aria-current", on ? "page" : "false");
+    $(tab.dataset.panel).hidden = !on;
+  }
+  if (id === "gfx-other") void refresh();
+  dialog.dispatchEvent(new CustomEvent("gfx-tab", { detail: id }));
 }
 
 // ---- wiring ----------------------------------------------------------------------------------
-$("gfx-tab-ships").addEventListener("click", () => showTab(false));
-$("gfx-tab-other").addEventListener("click", () => showTab(true));
+for (const tab of document.querySelectorAll("#graphics .gfxtabs .tab")) tab.addEventListener("click", () => showTab(tab.dataset.panel));
 useOwnBox.addEventListener("change", () => void setUseOwn(useOwnBox.checked));
 $("gfx-o-clear").addEventListener("click", () => void clearOwn());
 $("gfx-o-upload").addEventListener("click", () => { if (list) $("gfx-o-file").click(); else say("Sign in to use your own graphics.", true); });

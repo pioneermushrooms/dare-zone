@@ -205,7 +205,7 @@ def graphic(body: dict) -> dict:
         if len(prompt) > MAX_PROMPT or any(ord(ch) < 32 and ch not in "\t\n" for ch in prompt):
             raise Refused(400, f"Use plain text, under {MAX_PROMPT + 1} characters.")
         if not os.environ.get("PIXEL_LAB_API_KEY", "").strip():
-            raise Refused(503, "Drawing from a description is not set up on this server yet. Try New look.")
+            raise Refused(503, "Drawing from a description is not set up on this server yet.")
         if not _paid.acquire(blocking=False):
             raise Refused(429, "Something else is being drawn. Try again in a few seconds.")
         try:
