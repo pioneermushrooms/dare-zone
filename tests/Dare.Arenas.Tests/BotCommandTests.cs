@@ -46,4 +46,18 @@ public class BotCommandTests
         Assert.Equal("fighter, Spider", BotCommand.Describe("ship 3\nbehaviour fighter"));
         Assert.Equal("patrol, Warbird, 2 waypoints", BotCommand.Describe("behaviour patrol\npoint 1 1\npoint 2 2"));
     }
+
+    [Fact]
+    public void chat_on_and_off_read_and_apply()
+    {
+        Assert.True(BotCommand.Parse("Sparring fighter chat on").Chat);
+        Assert.Equal("Sparring", BotCommand.Parse("Sparring chat on fighter 3").Label);
+        Assert.False(BotCommand.Parse("Sparring chat off").Chat);
+        Assert.Null(BotCommand.Parse("Sparring fighter").Chat);
+        var on = BotCommand.Apply(null, "fighter", null, true);
+        Assert.Contains("casual 2 friendly", on);
+        Assert.Equal("fighter, Warbird, chats", BotCommand.Describe(on));
+        Assert.Equal(on, BotCommand.Apply(on, null, null, true));
+        Assert.DoesNotContain("casual", BotCommand.Apply(on + "\nbotchat on", null, null, false));
+    }
 }
