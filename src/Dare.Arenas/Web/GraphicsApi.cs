@@ -54,7 +54,7 @@ internal sealed partial class WebServer
     private Reply? PickArena(HttpListenerRequest req, string player, string? wanted, bool ownerOnly, out string arena)
     {
         arena = "";
-        var pick = Pick(_m.WebStore.RolesFor(player), wanted);
+        var pick = Pick(_m.WebRolesFor(player), wanted);
         if (pick is null || (ownerOnly && pick.Value.Role != "owner"))
             return JsonReply(403, new { ok = false, message = ownerOnly ? "Only the arena's owner can change its graphics." : "You are not an owner or co-mod of that arena." });
         arena = pick.Value.Arena;

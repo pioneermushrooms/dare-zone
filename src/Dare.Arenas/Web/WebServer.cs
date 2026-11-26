@@ -107,11 +107,12 @@ public sealed partial class ArenaOwnership
     internal object ArenaData(string player, IReadOnlyList<(string Arena, string Role)> roles, string arena, string role, ConfigHandle? cfg)
     {
         var owned = Store.OwnedOrDraft(arena);
+        var own = Store.RolesFor(player).Select(r => r.Arena).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var levelFiles = cfg is null ? new List<string>() : LevelFiles.Parse(_configManager.GetStr(cfg, "General", "LevelFiles")).ToList();
         return new
         {
             player,
-            arenas = roles.Select(r => new { name = r.Arena, role = r.Role }),
+            arenas = roles.Select(r => new { name = r.Arena, role = r.Role, staff = !own.Contains(r.Arena) }), // staff: run as arena admin, not owned
             arena,
             role,
             owner = owned?.Owner,
@@ -197,7 +198,7 @@ public sealed partial class ArenaOwnership
     /// <summary>Re-checks the role at the moment of writing (it may have changed since the request began).</summary>
     internal bool HasRole(string arena, string player, bool ownerOnly)
     {
-        var role = Store.RoleIn(arena, player);
+        var role = WebRoleIn(arena, player);
         return role is not null && (!ownerOnly || role == "owner");
     }
 
@@ -565,7 +566,7 @@ internal sealed partial class WebServer : IDisposable
     {
         if (Gate(req, write: false, out var player) is { } denied) return denied;
 
-        var roles = _m.WebStore.RolesFor(player);
+        var roles = _m.WebRolesFor(player);
         var wanted = req.QueryString["arena"];
         var pick = Pick(roles, wanted);
         if (pick is null)
@@ -597,7 +598,7 @@ internal sealed partial class WebServer : IDisposable
         var key = Str(body, "key");
         var value = Str(body, "value");
 
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null)
             return JsonReply(403, new { ok = false, message = "Only this arena's owner or co-mods can change its settings." });
         if (section is null || key is null || value is null)
@@ -631,7 +632,7 @@ internal sealed partial class WebServer : IDisposable
         if (kind is null)
             return JsonReply(400, new { ok = false, message = "kind must be map or lvz." });
 
-        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        var pick = Pick(_m.WebRolesFor(player), req.QueryString["arena"]);
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can upload files." });
         var arena = pick.Value.Arena;
@@ -676,7 +677,7 @@ internal sealed partial class WebServer : IDisposable
         if (body is null) return error!;
         var name = Str(body, "name");
 
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can remove files." });
         if (string.IsNullOrWhiteSpace(name))
@@ -761,7 +762,7 @@ internal sealed partial class WebServer : IDisposable
     {
         if (Gate(req, write: false, out var player) is { } denied) return denied;
 
-        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        var pick = Pick(_m.WebRolesFor(player), req.QueryString["arena"]);
         if (pick is null)
             return JsonReply(403, new { ok = false, message = "You are not an owner or co-mod of that arena." });
         var arena = pick.Value.Arena;
@@ -807,7 +808,7 @@ internal sealed partial class WebServer : IDisposable
         if (Gate(req, write: true, out var player) is { } denied) return denied;
         var (body, error) = await ReadJsonAsync(req, maxBytes).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can do that." });
         var arena = pick.Value.Arena;
@@ -831,7 +832,7 @@ internal sealed partial class WebServer : IDisposable
 
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can recycle it from the web." });
         var arena = pick.Value.Arena;
@@ -845,7 +846,7 @@ internal sealed partial class WebServer : IDisposable
 
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can change co-mods." });
         var action = (Str(body, "action") ?? "").ToLowerInvariant();
