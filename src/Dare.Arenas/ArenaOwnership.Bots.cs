@@ -48,7 +48,10 @@ public sealed partial class ArenaOwnership
     }
 
     private readonly Dictionary<string, DateTimeOffset> _botOccupancy = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<(string Arena, ArenaBot Bot, int Slot, string Owner), BotRun> _bots = new();
+    // A running bot is keyed by its saved settings, not its place in the arena's list, so adding
+    // or removing one bot does not restart the others; each one's team (100 + its place) is kept apart.
+    private readonly Dictionary<(string Arena, ArenaBot Bot, string Owner), BotRun> _bots = new();
+    private readonly Dictionary<(string Arena, ArenaBot Bot, string Owner), int> _botSlots = new();
     private const string BotChatSecretsPath = "conf/bot-chat-secrets.conf";
     private BotBanter? _botBanter;
     private readonly Queue<DateTimeOffset> _botChatRequests = new();
@@ -271,7 +274,8 @@ public sealed partial class ArenaOwnership
         finally { _playerData.Unlock(); }
 
         int cap = Math.Clamp(_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30), 0, 100);
-        var desired = new HashSet<(string Arena, ArenaBot Bot, int Slot, string Owner)>();
+        var desired = new HashSet<(string Arena, ArenaBot Bot, string Owner)>();
+        _botSlots.Clear();
         foreach (var (arena, lastSeen) in _botOccupancy.ToArray())
         {
             if (now - lastSeen > TimeSpan.FromMinutes(1))
@@ -282,7 +286,11 @@ public sealed partial class ArenaOwnership
             if (Store.Get(arena) is not { Status: ArenaStatus.Active } owned) continue;
             int slot = 0;
             foreach (var bot in Store.Bots(owned.Name))
-                if (bot.Deployed && desired.Count < cap) desired.Add((owned.Name, bot, slot++, owned.Owner));
+                if (bot.Deployed && desired.Count < cap)
+                {
+                    desired.Add((owned.Name, bot, owned.Owner));
+                    _botSlots[(owned.Name, bot, owned.Owner)] = slot++;
+                }
         }
 
         foreach (var (key, run) in _bots.ToArray())
@@ -296,10 +304,10 @@ public sealed partial class ArenaOwnership
                     DelayRestart(run, now);
                 }
                 else if (run.Process is not null && _playerData.FindPlayer(name) is { Status: PlayerState.Playing } player &&
-                    player.Ship != ShipType.Spec && player.Freq != 100 + key.Slot &&
+                    player.Ship != ShipType.Spec && _botSlots.TryGetValue(key, out int slot) && player.Freq != 100 + slot &&
                     string.Equals(player.Arena?.Name, key.Arena, StringComparison.OrdinalIgnoreCase))
                 {
-                    _game.SetFreq(player, (short)(100 + key.Slot));
+                    _game.SetFreq(player, (short)(100 + slot));
                 }
                 SendBotReply(name, run, now);
                 SendBotExchange(name, run, now);
@@ -394,12 +402,14 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "[create|set|list|deploy|stop|remove] [name] [behavior] [ship 1-8]",
+        Args = "[create|set|list|deploy|stop|remove] [name] [behavior] [ship 1-8] [chat on|off]",
         Description = """
             Arena bots for the arena you own (you must be in it). Behaviors: fighter (chases and
-            shoots pilots), patrol (flies its waypoints), sentry (guards a spot), idle (sits still).
+            shoots pilots, roams when there are none), patrol (flies its waypoints, or roams),
+            sentry (guards a spot), idle (sits still).
               ?bots create Sparring fighter 3   makes a bot and sends it in now (ship 3 = Spider)
               ?bots set Sparring patrol         changes its behavior or ship, keeps its waypoints
+              ?bots set Sparring chat on        it answers when a pilot says its name
               ?bots list                        your bots and whether they are flying
               ?bots stop Sparring / ?bots deploy Sparring   take it out / send it back in
               ?bots remove Sparring             deletes it
@@ -456,14 +466,17 @@ public sealed partial class ArenaOwnership
                     Reply(player, $"Bots: {taken.Label} already exists. Change it with ?bots set {taken.Label} <behavior> [ship 1-8].");
                     break;
                 }
-                var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship));
+                var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship, args.Chat));
                 if (!saved.Ok) { Reply(player, "Bots: " + saved.Message); break; }
                 var deployed = Store.SetBotDeployment(owned.Name, owner, args.Label, true);
                 var bot = Store.Bots(owned.Name).First(b => string.Equals(b.Label, args.Label, StringComparison.OrdinalIgnoreCase));
                 Reply(player, $"Bots: created {bot.Label}{ArenaStore.BotSuffix} ({BotCommand.Describe(bot.Script)}). " +
                     (deployed.Ok ? JoinNote() : deployed.Message));
-                if (bot.Script.Contains("behaviour patrol", StringComparison.Ordinal))
-                    Reply(player, "Bots: a patrol bot needs waypoints; add them on the map in the Arena Editor's Bots tab. Until then it stays near its spawn.");
+                if (!bot.Script.Contains("casual ", StringComparison.Ordinal))
+                    Reply(player, $"Bots: it doesn't talk yet. ?bots set {bot.Label} chat on lets it answer when a pilot says its name.");
+                if (!bot.Script.Contains("point ", StringComparison.Ordinal) && !bot.Script.Contains("behaviour idle", StringComparison.Ordinal) &&
+                    !bot.Script.Contains("behaviour sentry", StringComparison.Ordinal))
+                    Reply(player, "Bots: with no waypoints it roams the map. Set a route on the map in the Arena Editor's Bots tab.");
                 break;
             }
 
@@ -479,14 +492,14 @@ public sealed partial class ArenaOwnership
                     Known(args.Label);
                     break;
                 }
-                if (existing is not null && args.Behaviour is null && args.Ship is null)
+                if (existing is not null && args.Behaviour is null && args.Ship is null && args.Chat is null)
                 {
                     Reply(player, $"Bots: {existing.Label} is {BotCommand.Describe(existing.Script)}. " +
-                        $"Give a behavior (fighter, patrol, sentry, idle) or ship 1-8, e.g. ?bots set {existing.Label} sentry ship 2");
+                        $"Give a behavior (fighter, patrol, sentry, idle), ship 1-8 or chat on/off, e.g. ?bots set {existing.Label} sentry ship 2");
                     break;
                 }
                 var result = SaveBot(owned.Name, owner, existing?.Label ?? args.Label,
-                    BotCommand.Apply(existing?.Script, args.Behaviour, args.Ship));
+                    BotCommand.Apply(existing?.Script, args.Behaviour, args.Ship, args.Chat));
                 if (!result.Ok) { Reply(player, "Bots: " + result.Message); break; }
                 var after = Store.Bots(owned.Name).First(b => string.Equals(b.Label, existing?.Label ?? args.Label, StringComparison.OrdinalIgnoreCase));
                 Reply(player, $"Bots: {after.Label} is now {BotCommand.Describe(after.Script)}." +
@@ -529,9 +542,9 @@ public sealed partial class ArenaOwnership
 
     private void BotHelp(Player player, int count)
     {
-        Reply(player, "Bots: ?bots create <name> [fighter|patrol|sentry|idle] [ship 1-8]   e.g. ?bots create Sparring fighter 3");
-        Reply(player, "Bots: ?bots list | ?bots set <name> <behavior> [ship] | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
-        Reply(player, "Bots: fighter chases and shoots pilots, patrol flies waypoints, sentry guards a spot, idle sits still.");
+        Reply(player, "Bots: ?bots create <name> [fighter|patrol|sentry|idle] [ship 1-8] [chat on]   e.g. ?bots create Sparring fighter 3 chat on");
+        Reply(player, "Bots: ?bots list | ?bots set <name> <behavior|ship N|chat on|off> | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
+        Reply(player, "Bots: fighter chases and shoots pilots, patrol flies waypoints, sentry guards a spot, idle sits still. Without waypoints, fighter and patrol roam.");
         if (count == 0) Reply(player, "Bots: this arena has no bots yet.");
         if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
     }

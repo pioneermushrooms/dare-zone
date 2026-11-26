@@ -169,13 +169,15 @@ directly in chat:
 ?bots create Sparring fighter 3    make a bot and send it in now (ship 3 = Spider)
 ?bots list                         your bots and whether each is flying
 ?bots set Sparring patrol ship 2   change behavior or ship; waypoints and chat are kept
+?bots set Sparring chat on         answer when a pilot says its name (chat off to stop)
 ?bots stop Sparring                take it out, keeping its settings
 ?bots deploy Sparring              send it back in
 ?bots remove Sparring              delete it
 ```
 
 Behaviors are `fighter` (chases and shoots pilots), `patrol` (flies its
-waypoints), `sentry` (guards a spot) and `idle` (sits still). Without a behavior
+waypoints), `sentry` (guards a spot) and `idle` (sits still). A fighter with no
+one to chase and no route, or a patrol with no waypoints, roams the map. Without a behavior
 or ship, `create` makes a fighter in ship 1. Waypoints, greetings and replies
 are set in the Arena editor. If the zone has no bot program installed, the
 commands say so instead of claiming the bot will join.

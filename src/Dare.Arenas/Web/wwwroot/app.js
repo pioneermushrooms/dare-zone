@@ -137,13 +137,13 @@ function renderArena(body) {
   $("overview-bots-label").hidden = $("botnav").hidden;
   $("overview-bots").hidden = $("botnav").hidden;
   pick.replaceChildren(...body.arenas.map((a) => {
-    const o = el("option", { value: a.name, text: `${a.name} (${a.role})` });
+    const o = el("option", { value: a.name, text: `${a.name} (${a.staff ? "staff" : a.role})` });
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
   // make: up to maxPerPilot public arenas per pilot (drafts, named #..., don't count)
   const max = body.maxPerPilot || 3;
-  const owned = body.arenas.filter((a) => a.role === "owner" && !a.name.startsWith("#")).length;
+  const owned = body.arenas.filter((a) => a.role === "owner" && !a.staff && !a.name.startsWith("#")).length;
   const full = owned >= max;
   $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
   $("makeinfo").textContent = full

@@ -1,0 +1,21 @@
+[Unit]
+Description=Dare browser game log reports (POST /clientlog behind Caddy)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/dare-clientlog/collector.py --bind 127.0.0.1 --port 8091
+DynamicUser=yes
+StateDirectory=dare-clientlog
+StateDirectoryMode=0750
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

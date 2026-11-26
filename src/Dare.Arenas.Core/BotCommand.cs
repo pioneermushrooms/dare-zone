@@ -12,13 +12,14 @@ public static class BotCommand
     public static readonly string[] ShipNames =
         ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 
-    public sealed record Args(string Label, string? Behaviour, int? Ship);
+    public sealed record Args(string Label, string? Behaviour, int? Ship, bool? Chat = null);
 
     public static Args Parse(string text)
     {
         var words = text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries).ToList();
         string? behaviour = null;
         int? ship = null;
+        bool? chat = null;
 
         bool TakeOption(int i)
         {
@@ -34,6 +35,13 @@ public static class BotCommand
                 }
                 behaviour = word;
                 words.RemoveAt(i);
+                return true;
+            }
+            if (chat is null && word == "chat" && i + 1 < words.Count &&
+                words[i + 1].ToLowerInvariant() is "on" or "off")
+            {
+                chat = words[i + 1].Equals("on", StringComparison.OrdinalIgnoreCase);
+                words.RemoveRange(i, 2);
                 return true;
             }
             if (ship is null && word == "ship" && i + 1 < words.Count && ShipNumber(words[i + 1]) is { } n)
@@ -62,7 +70,7 @@ public static class BotCommand
         // ... then at the front ("fighter Sparring", the old ?bots save order)
         while (words.Count > 1 && TakeOption(0)) { }
 
-        return new(Label(string.Join(' ', words)), behaviour, ship);
+        return new(Label(string.Join(' ', words)), behaviour, ship, chat);
     }
 
     /// <summary>A bot name on its own (deploy, stop, remove): "Sparring" or "Sparring [bot]".</summary>
@@ -81,7 +89,7 @@ public static class BotCommand
     }
 
     /// <summary>The script with its behaviour and ship replaced; every other line (waypoints, chat) kept.</summary>
-    public static string Apply(string? script, string? behaviour, int? ship)
+    public static string Apply(string? script, string? behaviour, int? ship, bool? chat = null)
     {
         var lines = (script ?? "").Split('\n').Select(line => line.Trim()).Where(line => line.Length != 0).ToList();
         string Current(string key, string fallback) =>
@@ -90,6 +98,11 @@ public static class BotCommand
         var behaviourLine = "behaviour " + (behaviour ?? Current("behaviour", "fighter"));
         lines.RemoveAll(line => line.StartsWith("ship ", StringComparison.Ordinal) ||
                                 line.StartsWith("behaviour ", StringComparison.Ordinal));
+        // Casual chat: replies when a pilot names the bot (the web editor's Casual chat switch).
+        if (chat == false)
+            lines.RemoveAll(line => line.StartsWith("casual ", StringComparison.Ordinal) || line == "botchat on");
+        if (chat == true && !lines.Any(line => line.StartsWith("casual ", StringComparison.Ordinal)))
+            lines.Add("casual 2 friendly");
         return string.Join('\n', lines.Prepend(behaviourLine).Prepend(shipLine));
     }
 
@@ -98,14 +111,17 @@ public static class BotCommand
     {
         string? behaviour = null;
         int ship = 1, points = 0;
+        bool chat = false;
         foreach (var raw in script.Split('\n'))
         {
             var line = raw.Trim();
             if (line.StartsWith("behaviour ", StringComparison.Ordinal)) behaviour = line[10..];
             else if (line.StartsWith("ship ", StringComparison.Ordinal) && int.TryParse(line[5..], out int n) && n is >= 1 and <= 8) ship = n;
             else if (line.StartsWith("point ", StringComparison.Ordinal)) points++;
+            else if (line.StartsWith("casual ", StringComparison.Ordinal)) chat = true;
         }
         var text = $"{behaviour ?? "idle"}, {ShipNames[ship - 1]}";
-        return points > 0 ? $"{text}, {points} waypoint{(points == 1 ? "" : "s")}" : text;
+        if (points > 0) text += $", {points} waypoint{(points == 1 ? "" : "s")}";
+        return text + (chat ? ", chats" : "");
     }
 }
