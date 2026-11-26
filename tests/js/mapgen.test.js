@@ -1,5 +1,5 @@
 // Node tests for the map editor's generator and wall auto-tiler (no browser needed):
-//   node --test tests/web
+//   node --test tests/js
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
