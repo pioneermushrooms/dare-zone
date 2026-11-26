@@ -7,12 +7,13 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=9">
+<link rel="stylesheet" href="/play.css?v=10">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=9"></script>
-<script type="module" src="/chat.js?v=9"></script>
-<script type="module" src="/graphics.js?v=9"></script>
+<script type="module" src="/play/start.mjs?v=10"></script>
+<script type="module" src="/chat.js?v=10"></script>
+<script type="module" src="/graphics.js?v=10"></script>
+<script type="module" src="/graphics-other.js?v=10"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -118,10 +119,11 @@ setTimeout(function () {
 <dialog id="graphics" class="gfx" aria-labelledby="gfx-title">
   <header class="gfxhead">
     <h2 id="gfx-title">Graphics</h2>
-    <nav class="gfxtabs" aria-label="Graphics"><button type="button" class="tab" aria-current="page">Ships</button></nav>
+    <nav class="gfxtabs" aria-label="Graphics"><button type="button" class="tab" id="gfx-tab-ships" aria-current="page">Ships</button><button type="button" class="tab" id="gfx-tab-other">Other graphics</button></nav>
+    <label class="useown" title="Off: you see the arena's ships and graphics; yours are kept for when you turn it back on"><input type="checkbox" id="gfx-useown" data-always checked> Use my own</label>
     <button type="button" class="ghostbtn" id="gfx-close" data-always aria-label="Close graphics">✕</button>
   </header>
-  <div class="gfxbody">
+  <div class="gfxbody" id="gfx-ships">
     <section class="gfxmain" aria-label="Ships">
       <div class="shiplist" id="gfx-shiplist" role="group" aria-label="Ship"></div>
       <div class="shipview">
@@ -169,6 +171,41 @@ setTimeout(function () {
       <p class="small dim" id="gfx-yardnote"></p>
       <ul class="yardlist" id="gfx-yardlist"></ul>
       <button type="button" class="ghost" id="gfx-signin" hidden>Sign in to keep a shipyard</button>
+    </aside>
+  </div>
+  <div class="gfxbody gfxother" id="gfx-other" hidden>
+    <section class="gfxmain" aria-label="Other graphics">
+      <p class="small dim" id="gfx-o-intro">Your own bombs, bullets, items and effects. Only you see them, in every arena, over the arena's own.</p>
+      <div class="otherview">
+        <p class="label" id="gfx-o-label"></p>
+        <canvas class="sheet wide" id="gfx-o-sheet" width="160" height="16" aria-hidden="true"></canvas>
+        <p class="small dim" id="gfx-o-hint"></p>
+      </div>
+      <div class="gfxactions" id="gfx-o-actions">
+        <button type="button" class="ghost" id="gfx-o-clear" disabled>Use the arena's</button>
+        <button type="button" class="ghost" id="gfx-o-upload">Upload…</button>
+        <span id="gfx-o-gens"></span>
+        <input type="file" id="gfx-o-file" accept="image/png,image/bmp,.png,.bmp,.bm2" hidden>
+      </div>
+      <form class="gfxprompt" id="gfx-o-prompt" hidden>
+        <label>Describe it <textarea id="gfx-o-prompt-text" maxlength="500" rows="2" placeholder="A glowing green plasma orb"></textarea></label>
+        <div class="row"><button type="submit">Draw it</button><button type="button" class="ghost" id="gfx-o-prompt-cancel">Cancel</button></div>
+      </form>
+      <div class="gfxreview" id="gfx-o-review" hidden>
+        <p class="label" id="gfx-o-review-note"></p>
+        <canvas class="sheet wide" id="gfx-o-review-sheet" width="160" height="16" aria-hidden="true"></canvas>
+        <div class="row">
+          <button type="button" id="gfx-o-approve">Approve</button>
+          <button type="button" class="ghost" id="gfx-o-again">Try again</button>
+          <button type="button" class="ghost" id="gfx-o-decline">Decline</button>
+        </div>
+      </div>
+      <p class="gfxstatus" id="gfx-o-status" role="status"></p>
+    </section>
+    <aside class="gfxyard" aria-label="Graphic">
+      <h3>Graphics</h3>
+      <div class="slotlist" id="gfx-o-slots"></div>
+      <button type="button" class="ghost" id="gfx-o-signin" hidden>Sign in to use your own</button>
     </aside>
   </div>
 </dialog>

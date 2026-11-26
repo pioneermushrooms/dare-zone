@@ -4,7 +4,7 @@ stage="${1:?usage: install-public-site.sh SITE_SOURCE}"
 site=/var/www/foundation
 host=subspacefoundation.com
 files=(
-  style.css home.css play.css chat.js jump.webp sector.png
+  style.css home.css play.css chat.js graphics.js graphics-other.js jump.webp sector.png
   arena-owner-reference.html arena-owners.html pilot.html
   arenas.html index.html build.html
 )
