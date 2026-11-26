@@ -289,6 +289,18 @@ echo "caddy reloaded: $(systemctl is-active caddy || true)"
 # ---- 4. zone files ------------------------------------------------------------------------
 trap 'on_err $LINENO' ERR
 step "zone files ($ZONE)"
+# Arena bots need the oss-bot program beside the plugin. It is built from the client repo and only
+# bundled when deploy.sh gets OSS_BOT_LINUX, so otherwise keep the one installed (or, if a deploy
+# already dropped it, the newest backed-up copy): a plugin deploy must never switch the bots off.
+if [ ! -f "$STAGE/plugin/oss-bot" ]; then
+  keep=$(ls -t "$ZONE/bin/modules/Dare.Arenas/oss-bot" "$BACKUP_ROOT"/backup-arena-ownership-*/zone-bin-modules/Dare.Arenas/oss-bot 2>/dev/null | head -1 || true)
+  if [ -n "$keep" ]; then
+    install -m 0755 "$keep" "$STAGE/plugin/oss-bot"
+    echo "oss-bot kept from $keep"
+  else
+    echo "WARNING: no oss-bot to install: arena bots stay off until a deploy with OSS_BOT_LINUX" >&2
+  fi
+fi
 bash "$STAGE/deploy/apply-local.sh" "$ZONE" "$STAGE/plugin"
 chown -R "$OWNER" "$ZONE/bin/modules/Dare.Arenas" "$ZONE/arenas/_template"
 # the server's native SQLite (the version the plugin builds against; same C API as before)
