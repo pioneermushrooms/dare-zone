@@ -154,5 +154,5 @@ test("a pack's plain interior piece is used inside thick walls", () => {
   const [l] = Autotile.fromSpec(spec).layouts;
   assert.equal(l.roles.fill, 9);
   assert.equal(l.roles.cross, 3, "a crossing of lines keeps the pack's piece");
-  assert.equal(l.roles["inner-ne"], 9);
+  assert.equal(l.roles["inner-ne"], 3, "inside corners sit among the edges: the pack's fill");
 });

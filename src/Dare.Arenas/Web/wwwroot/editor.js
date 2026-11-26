@@ -76,6 +76,19 @@ function signedIn() {
     },
   });
 
+  // "Use the standard tiles": the standard tileset (the packs' art, with plain interiors for thick
+  // walls) into this map, so the packs look here and in game as they're meant to
+  $("stdtiles").addEventListener("click", async () => {
+    const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
+    if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return; }
+    const ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+    const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
+    prefix = TileArt.withTileset(prefix, rgba, ts.width, ts.height); mapTileset = ts; ownTileset = null;
+    flatView = false; $("flatview").checked = false;
+    noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw();
+    say("This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.", true);
+  });
+
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
     await loadDefaultTileset();
@@ -356,6 +369,7 @@ function signedIn() {
       const t = grid[y * N + x]; if (t) drawTile(vctx, t, ox + x * s, oy + y * s, s);
     }
     vctx.strokeStyle = "#22d3ee66"; vctx.lineWidth = 1; vctx.strokeRect(ox, oy, N * s, N * s);
+    if (tools) tools.overlay(vctx, s, ox, oy, view);
     if (dragRect) {
       const [ax, ay, bx, by] = dragRect;
       vctx.strokeStyle = "#ff8a1f"; vctx.lineWidth = 2;
@@ -468,8 +482,9 @@ function signedIn() {
     if (e.button === 2 || e.button === 1 || space || tool === "pan") { panning = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y }; return; }
     if (e.button !== 0) return;
     const [x, y] = toTile(e.offsetX, e.offsetY);
+    if (tools && tools.handles(tool)) { tools.down(x, y, e); return; } // drawtools.js
     stroke = [];
-    if (tool === "rect" || tool === "tidy") dragRect = [x, y, x, y]; else setTile(x, y, tool === "erase" ? 0 : cur);
+    if (tool === "tidy") dragRect = [x, y, x, y];
     draw();
   });
   view.addEventListener("pointermove", (e) => {
@@ -480,23 +495,20 @@ function signedIn() {
       cam.y = panning.cy - (e.clientY - panning.y) * devicePixelRatio / cam.z;
       draw(); return;
     }
+    if (tools && tools.handles(tool)) { tools.move(x, y, e); return; }
     if (!stroke) return;
-    if (tool === "rect" || tool === "tidy") { dragRect[2] = x; dragRect[3] = y; } else setTile(x, y, tool === "erase" ? 0 : cur);
+    if (tool === "tidy") { dragRect[2] = x; dragRect[3] = y; }
     draw();
   });
-  const up = () => {
+  const up = (e) => {
     if (panning) { panning = null; return; }
+    if (tools && tools.handles(tool)) { const [x, y] = toTile(e.offsetX, e.offsetY); tools.up(x, y, e); return; }
     if (!stroke) return;
     if (tool === "tidy" && dragRect) {
       const [ax, ay, bx, by] = dragRect;
       dragRect = null; stroke = null;
       tidy([Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]);
       return;
-    }
-    if (tool === "rect" && dragRect) {
-      const [ax, ay, bx, by] = dragRect;
-      for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++) setTile(x, y, cur);
-      dragRect = null;
     }
     endStroke(); draw();
   };
@@ -525,7 +537,7 @@ function signedIn() {
   $("undo").addEventListener("click", undo);
   $("redo").addEventListener("click", redo);
 
-  function pickTile(t) { cur = t; if (tool === "erase" || tool === "pan" || tool === "tidy") setTool("pencil"); drawPalette(); }
+  function pickTile(t) { cur = t; if (["erase", "pan", "tidy", "pick", "select", "lasso", "wand"].includes(tool)) setTool("pencil"); drawPalette(); }
   pal.addEventListener("click", (e) => { const t = palTileAt(e); if (t) pickTile(t); });
   mini.addEventListener("click", (e) => {
     const r = mini.getBoundingClientRect();
@@ -541,19 +553,28 @@ function signedIn() {
   }
   function setTool(t) {
     tool = t;
-    for (const [id, n] of [["tPencil", "pencil"], ["tRect", "rect"], ["tErase", "erase"], ["tPan", "pan"], ["tTidy", "tidy"]]) {
-      $(id).classList.toggle("on", n === t); $(id).setAttribute("aria-pressed", String(n === t));
+    for (const b of document.querySelectorAll("[data-tool]")) {
+      b.classList.toggle("on", b.dataset.tool === t); b.setAttribute("aria-pressed", String(b.dataset.tool === t));
     }
     view.classList.toggle("panning", t === "pan");
+    if (tools) tools.toolOn(t);
   }
-  $("tPencil").addEventListener("click", () => setTool("pencil"));
-  $("tRect").addEventListener("click", () => setTool("rect"));
-  $("tErase").addEventListener("click", () => setTool("erase"));
+  // the drawing tools (drawtools.js): shapes, fill, text, selections, all auto-tiled
+  const tools = window.DrawTools && DrawTools.mount({
+    N, get grid() { return grid; },
+    cur: () => cur, tool: () => tool, layout: () => tileLayout(),
+    setTool, pick: (t) => { cur = t; drawPalette(); say(`Drawing with tile ${t}.`, true); },
+    commit(change) { if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); } draw(); },
+    draw: () => draw(), drawTile, say,
+  });
+  setTool("pencil");
   $("tPan").addEventListener("click", () => setTool("pan"));
   $("tTidy").addEventListener("click", () => setTool("tidy"));
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector("dialog[open]")) return;
     if (e.key === " ") { space = true; e.preventDefault(); }
+    if (tools && !(e.metaKey || e.ctrlKey) && e.key === "t") { setTool("tidy"); return; }
+    if (tools && !((e.metaKey || e.ctrlKey) && /^[zy]$/i.test(e.key)) && tools.key(e)) { e.preventDefault(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
     else if (!e.metaKey && !e.ctrlKey) {

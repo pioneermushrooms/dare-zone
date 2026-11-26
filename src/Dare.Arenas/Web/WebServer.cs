@@ -459,6 +459,8 @@ internal sealed partial class WebServer : IDisposable
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
             case "/dialogs.js": return Get(method, () => Static("dialogs.js"));
             case "/tiles.bm2": return Get(method, () => Static("tiles.bm2"));
+            case "/drawtools.js": return Get(method, () => Static("drawtools.js"));
+            case "/standard-tiles.bmp": return Get(method, () => Static("standard-tiles.bmp"));
             case "/tileart.js": return Get(method, () => Static("tileart.js"));
             case "/tileart-styles.js": return Get(method, () => Static("tileart-styles.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -1162,7 +1164,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js" }.Concat(AccountStaticFiles).Concat(TileEditorFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js", "drawtools.js", "standard-tiles.bmp" }.Concat(AccountStaticFiles).Concat(TileEditorFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

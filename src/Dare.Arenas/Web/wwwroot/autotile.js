@@ -253,8 +253,9 @@
       // a plain interior piece (optional): where every neighbour is wall, so thick walls read as
       // one solid wall rather than a grid of the pack's decorated fill pieces
       if (ok(p.interior) || (Array.isArray(p.interior) && p.interior.length && p.interior.every(ok))) {
+        // inside corners keep the pack's decorated fill: they sit among the edge pieces
+        for (const d of ["ne", "se", "sw", "nw"]) roles["inner-" + d] = roles.fill;
         roles.fill = p.interior;
-        for (const d of ["ne", "se", "sw", "nw"]) roles["inner-" + d] = p.interior;
       }
       const layout = { id: p.id, name: `${spec.name ? spec.name.replace(/\s*\(.*\)$/, "") + ": " : ""}${p.name || p.id}`, roles, fallback: [roles.lone, roles.fill, 1].find(Number.isInteger), spec: true };
       const errs = check(layout);

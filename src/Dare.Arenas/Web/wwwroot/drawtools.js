@@ -546,7 +546,7 @@
       if ((k === "Delete" || k === "Backspace") && sel) { selAct("delete"); return true; }
       if ((sel || floating) && (k === "h" || k === "v")) { selAct(k); return true; }
       if ((sel || floating) && k === "]") { selAct("rot"); return true; }
-      if (k === "[" || k === "-") { $("dtThick").value = Math.max(1, opt.thick - 1); $("dtThick").dispatchEvent(new Event("input")); return true; }
+      if (k === "-" || k === "_") { $("dtThick").value = Math.max(1, opt.thick - 1); $("dtThick").dispatchEvent(new Event("input")); return true; }
       if (k === "=" || k === "+") { $("dtThick").value = Math.min(16, opt.thick + 1); $("dtThick").dispatchEvent(new Event("input")); return true; }
       const t = TOOLS.find((x) => x[2] === k.toLowerCase());
       if (t) { ed.setTool(t[0]); return true; }

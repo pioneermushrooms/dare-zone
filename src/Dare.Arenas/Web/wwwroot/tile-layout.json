@@ -171,7 +171,8 @@
     "corner-bl": 60,
     "edge-bottom": 61,
     "corner-br": 62
-   }
+   },
+   "interior": 128
   },
   {
    "id": "grey-round",
@@ -197,7 +198,8 @@
     "corner-bl": 64,
     "edge-bottom": 65,
     "corner-br": 66
-   }
+   },
+   "interior": 129
   },
   {
    "id": "green-lit",
@@ -223,7 +225,8 @@
     "corner-bl": 68,
     "edge-bottom": 69,
     "corner-br": 70
-   }
+   },
+   "interior": 130
   },
   {
    "id": "white-lit",
@@ -249,7 +252,8 @@
     "corner-bl": 72,
     "edge-bottom": 73,
     "corner-br": 74
-   }
+   },
+   "interior": 131
   },
   {
    "id": "steel-blue",
@@ -275,7 +279,8 @@
     "corner-bl": 140,
     "edge-bottom": 141,
     "corner-br": 142
-   }
+   },
+   "interior": 132
   },
   {
    "id": "navy",
@@ -301,7 +306,8 @@
     "corner-bl": 144,
     "edge-bottom": 145,
     "corner-br": 146
-   }
+   },
+   "interior": 133
   }
  ],
  "other": [
