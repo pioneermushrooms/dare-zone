@@ -6,7 +6,7 @@
 <meta name="description" content="Fly SubSpace in your browser in the Foundation zone, and build arenas of your own.">
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/play.css?v=11">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
@@ -98,28 +98,22 @@ setTimeout(function () {
 
 </div>
 
-<!-- after Enter, until the game draws its own copy of this panel and takes over (loading.js). Outside
-     #entry, which the game's start hides, so it stays up over the canvas until the game is drawing. -->
+<!-- after Enter, until the pilot is in the arena (loading.js): a warp through the stars while the game
+     downloads, connects and loads the arena, over the game's canvas. Outside #entry, which the game's start hides. -->
 <section class="loader" id="loader" hidden aria-live="polite" aria-label="Loading the game">
-  <div class="ld-stars" aria-hidden="true"></div>
-  <div class="ld-panel" id="loader-panel">
-    <p class="ld-title">Entering <b id="loader-arena">a public arena</b></p>
-    <div class="ld-ship" aria-hidden="true"></div>
-    <ol class="ld-steps" id="loader-steps">
-      <li data-step="game">Download the game</li>
-      <li data-step="connect">Connect to the zone</li>
-      <li data-step="signin">Sign in</li>
-      <li data-step="enter">Enter the arena</li>
-      <li data-step="download">Load map and graphics</li>
-    </ol>
-    <div class="ld-bar" id="loader-bar"><span></span></div>
-    <p class="ld-line"><span id="loader-text">Getting ready</span><b id="loader-pct"></b></p>
+  <canvas class="ld-warp" id="loader-warp" aria-hidden="true"></canvas>
+  <div class="ld-center">
+    <p class="ld-kicker">Entering</p>
+    <h2 class="ld-arena" id="loader-arena">public</h2>
+    <div class="ld-progress" id="loader-bar"><span></span></div>
+    <p class="ld-status" id="loader-text">Getting ready</p>
+    <div class="ld-error" id="loader-error" hidden>
+      <p id="loader-errortext"></p>
+      <button type="button" class="ghostbtn" id="loader-back">Back</button>
+    </div>
   </div>
   <p class="ld-tip" id="loader-tip"></p>
-  <div class="ld-error" id="loader-error" hidden>
-    <p id="loader-errortext"></p>
-    <button type="button" class="ghostbtn" id="loader-back">Back</button>
-  </div>
+  <div class="ld-flash" aria-hidden="true"></div>
 </section>
 
 <dialog id="signin" aria-labelledby="signin-title">
