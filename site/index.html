@@ -12,6 +12,7 @@
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
 <script type="module" src="/play/start.mjs?v=8"></script>
 <script type="module" src="/chat.js?v=8"></script>
+<script type="module" src="/graphics.js?v=8"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -94,6 +95,65 @@ setTimeout(function () {
       <p class="small dim">Get a quirky space name, new every time. No password, nothing to set up.</p>
     </div>
   </form>
+</dialog>
+
+<!-- In the game: Esc then G, or F8 (graphics.js) -->
+<dialog id="graphics" class="gfx" aria-labelledby="gfx-title">
+  <header class="gfxhead">
+    <h2 id="gfx-title">Graphics</h2>
+    <nav class="gfxtabs" aria-label="Graphics"><button type="button" class="tab" aria-current="page">Ships</button></nav>
+    <button type="button" class="ghostbtn" id="gfx-close" data-always aria-label="Close graphics">✕</button>
+  </header>
+  <div class="gfxbody">
+    <section class="gfxmain" aria-label="Ships">
+      <div class="shiplist" id="gfx-shiplist" role="group" aria-label="Ship"></div>
+      <div class="shipview">
+        <canvas class="spin" id="gfx-current" width="144" height="144" aria-hidden="true"></canvas>
+        <div class="sheetbox">
+          <p class="label" id="gfx-current-label"></p>
+          <canvas class="sheet" id="gfx-current-sheet" width="360" height="144" aria-hidden="true"></canvas>
+        </div>
+      </div>
+      <div class="gfxactions" id="gfx-actions">
+        <button type="button" class="ghost" id="gfx-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-upload">Upload…</button>
+        <button type="button" id="gfx-generate" aria-controls="gfx-genchoice">Generate</button>
+        <input type="file" id="gfx-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>
+        <div class="genchoice" id="gfx-genchoice" hidden>
+          <button type="button" id="gfx-random">Random</button>
+          <button type="button" id="gfx-prompted">Prompt</button>
+        </div>
+      </div>
+      <form class="gfxprompt" id="gfx-prompt" hidden>
+        <label>Describe your ship <textarea id="gfx-prompt-text" maxlength="500" rows="3" placeholder="A heavy bronze gunship with twin forward cannons"></textarea></label>
+        <label class="check"><input type="checkbox" id="gfx-creative"> Any subject (a creature, a car…), not only spacecraft</label>
+        <div class="row"><button type="submit">Draw it</button><button type="button" class="ghost" id="gfx-prompt-cancel">Cancel</button></div>
+      </form>
+      <div class="gfxreview" id="gfx-review" hidden>
+        <div class="shipview">
+          <canvas class="spin" id="gfx-review-spin" width="144" height="144" aria-hidden="true"></canvas>
+          <div class="sheetbox">
+            <p class="label" id="gfx-review-note"></p>
+            <canvas class="sheet" id="gfx-review-sheet" width="360" height="144" aria-hidden="true"></canvas>
+          </div>
+        </div>
+        <div class="row">
+          <label class="applyto">Apply to <select id="gfx-applyto"></select></label>
+          <button type="button" id="gfx-approve">Approve</button>
+          <button type="button" class="ghost" id="gfx-flip">Turn 180°</button>
+          <button type="button" class="ghost" id="gfx-again">Try again</button>
+          <button type="button" class="ghost" id="gfx-decline">Decline</button>
+        </div>
+      </div>
+      <p class="gfxstatus" id="gfx-status" role="status"></p>
+    </section>
+    <aside class="gfxyard" id="gfx-yard" aria-label="Shipyard">
+      <h3>Shipyard <span class="dim" id="gfx-yardcount"></span></h3>
+      <p class="small dim" id="gfx-yardnote"></p>
+      <ul class="yardlist" id="gfx-yardlist"></ul>
+      <button type="button" class="ghost" id="gfx-signin" hidden>Sign in to keep a shipyard</button>
+    </aside>
+  </div>
 </dialog>
 </body>
 </html>

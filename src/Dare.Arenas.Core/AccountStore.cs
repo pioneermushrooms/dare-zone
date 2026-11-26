@@ -113,6 +113,21 @@ public sealed partial class AccountStore : IDisposable
               account_id INTEGER NOT NULL,
               expires TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS shipyard_ships (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              account_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              source TEXT NOT NULL,
+              png BLOB NOT NULL,
+              created TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_shipyard_ships_account ON shipyard_ships(account_id);
+            CREATE TABLE IF NOT EXISTS shipyard_slots (
+              account_id INTEGER NOT NULL,
+              slot INTEGER NOT NULL,
+              ship_id INTEGER NOT NULL,
+              PRIMARY KEY (account_id, slot)
+            );
             CREATE TABLE IF NOT EXISTS account_meta (
               key TEXT NOT NULL PRIMARY KEY,
               value TEXT NOT NULL

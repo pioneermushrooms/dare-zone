@@ -1,0 +1,186 @@
+"""Foundation ship service: the ship generator behind a small loopback HTTP API.
+
+Only the zone's web server talks to it (it listens on 127.0.0.1); the zone checks the
+pilot is signed in and rate-limits them before a request gets here. The PixelLab key is
+read from this process's environment (PIXEL_LAB_API_KEY), so it never leaves the server.
+
+    POST /generate  {"mode": "random"}
+                    {"mode": "prompt", "prompt": "...", "creative": false, "variation": false}
+      -> 200 {"ok": true, "sheet": <base64 ship-rotations.png>, "art": <base64>|null, "seed": n|null}
+      -> 4xx/5xx {"ok": false, "message": "..."}
+    POST /flip      {"sheet": <base64 ship-rotations.png>}
+      -> 200 {"ok": true, "sheet": <base64>}
+    GET  /health    -> 200 {"ok": true, "prompt": <whether a PixelLab key is set>}
+
+Run: python3 service.py [--port 8089]
+"""
+
+import argparse
+import base64
+import binascii
+import json
+import logging
+import os
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import shipgen
+
+MAX_BODY = 512 * 1024
+MAX_PROMPT = 500
+# PixelLab is paid: one prompted ship at a time across the zone, and a short gap between them
+# (the same pacing the Discord bot uses).
+PAID_GAP_SECONDS = 15.0
+DEFAULT_PROMPT = (
+    "A modern sci-fi interceptor with broad swept wings, a prominent cockpit, "
+    "sculpted armor, and recessed twin engines."
+)
+
+log = logging.getLogger("dare-ships")
+_paid = threading.Lock()
+_next_paid = 0.0
+
+
+class Refused(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _b64(data: bytes | None) -> str | None:
+    return base64.b64encode(data).decode("ascii") if data else None
+
+
+def generate(body: dict) -> dict:
+    """One ship, as the files the browser needs. Raises Refused with a message for the pilot."""
+    global _next_paid
+    mode = body.get("mode")
+    if mode == "random":
+        seed = body.get("seed")
+        if seed is not None and not (isinstance(seed, int) and 0 <= seed < 2**31):
+            raise Refused(400, "Bad seed.")
+        files, seed = shipgen.generate_ship("", seed=seed)
+        return {"ok": True, "sheet": _b64(files["ship-rotations.png"]), "art": None, "seed": seed}
+    if mode != "prompt":
+        raise Refused(400, "Choose Random or Prompt.")
+
+    prompt = body.get("prompt")
+    prompt = prompt.strip() if isinstance(prompt, str) else ""
+    creative = body.get("creative") is True
+    if creative and not prompt:
+        raise Refused(400, "Describe the subject to draw.")
+    prompt = prompt or DEFAULT_PROMPT
+    if len(prompt) > MAX_PROMPT:
+        raise Refused(400, f"Keep the description under {MAX_PROMPT + 1} characters.")
+    if any(ord(ch) < 32 and ch not in "\t\n" for ch in prompt):
+        raise Refused(400, "Use plain text in the description.")
+
+    if not os.environ.get("PIXEL_LAB_API_KEY", "").strip():
+        raise Refused(503, "Prompted ships are not set up on this server yet. Try Random.")
+    if not _paid.acquire(blocking=False):
+        raise Refused(429, "Another ship is being drawn. Try again in a few seconds.")
+    try:
+        wait = _next_paid - time.monotonic()
+        if wait > 0:
+            raise Refused(429, f"The ship painter is cooling down. Try again in {int(wait) + 1} s.")
+        _next_paid = time.monotonic() + PAID_GAP_SECONDS
+        try:
+            files, _ = shipgen.generate_ship(
+                prompt, variation=body.get("variation") is True, creative=creative
+            )
+        except (ValueError, RuntimeError) as exc:
+            # The generator's own messages are written for players ("PixelLab is out of credits.").
+            raise Refused(502, str(exc)) from exc
+    finally:
+        _paid.release()
+    return {
+        "ok": True,
+        "sheet": _b64(files["ship-rotations.png"]),
+        "art": _b64(files.get("ship-art-128.png")),
+        "seed": None,
+    }
+
+
+def flip(body: dict) -> dict:
+    sheet = body.get("sheet")
+    try:
+        raw = base64.b64decode(sheet, validate=True) if isinstance(sheet, str) else b""
+    except binascii.Error:
+        raw = b""
+    if not raw:
+        raise Refused(400, "Send the sheet to flip.")
+    try:
+        files = shipgen.flip_ship_heading({"ship-rotations.png": raw})
+    except Exception as exc:  # unreadable PNG
+        raise Refused(400, "That isn't a ship rotation sheet.") from exc
+    return {"ok": True, "sheet": _b64(files["ship-rotations.png"])}
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "dare-ships"
+
+    def _reply(self, status: int, payload: dict) -> None:
+        data = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/health":
+            self._reply(200, {"ok": True, "prompt": bool(os.environ.get("PIXEL_LAB_API_KEY", "").strip())})
+        else:
+            self._reply(404, {"ok": False, "message": "Not found."})
+
+    def do_POST(self) -> None:  # noqa: N802
+        routes = {"/generate": generate, "/flip": flip}
+        handler = routes.get(self.path)
+        if handler is None:
+            self._reply(404, {"ok": False, "message": "Not found."})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= MAX_BODY:
+            self._reply(413, {"ok": False, "message": "Request too large."})
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError
+        except ValueError:
+            self._reply(400, {"ok": False, "message": "Bad request."})
+            return
+        started = time.monotonic()
+        try:
+            payload = handler(body)
+            status = 200
+        except Refused as exc:
+            payload, status = {"ok": False, "message": str(exc)}, exc.status
+        except Exception:
+            log.exception("ship %s failed", self.path)
+            payload, status = {"ok": False, "message": "Ship generation failed. Try again."}, 500
+        log.info("%s %s -> %d in %.1fs", self.path, body.get("mode", ""), status, time.monotonic() - started)
+        self._reply(status, payload)
+
+    def log_message(self, *args) -> None:  # requests are logged above, without bodies
+        pass
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8089)
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    log.info("listening on %s:%d (prompted ships %s)", args.host, args.port,
+             "on" if os.environ.get("PIXEL_LAB_API_KEY", "").strip() else "off: no PIXEL_LAB_API_KEY")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

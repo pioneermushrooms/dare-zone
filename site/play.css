@@ -8,7 +8,7 @@ a { color: var(--cyan); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 
 /* The game's canvas fills the window once Play starts it. */
-canvas { position: fixed; inset: 0; width: 100vw !important; height: 100vh !important; display: block; outline: none; touch-action: none; }
+body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100vh !important; display: block; outline: none; touch-action: none; }
 
 #entry { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: clamp(16px, 3vw, 36px);
   background: linear-gradient(90deg, #060b14f5 0%, #060b14c8 42%, #060b1420 80%), linear-gradient(0deg, #060b14 0%, transparent 40%),
@@ -149,3 +149,66 @@ dialog .guest[hidden] { display: none; }
   .chat { position: static; width: auto; max-height: 70vh; }
   .chat .lines { max-height: 40vh; }
 }
+
+/* the Graphics overlay (in the game: Esc then G, or F8); ships for now */
+dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: auto; }
+.gfx[open] { display: flex; flex-direction: column; }
+.gfxhead { display: flex; align-items: center; gap: 18px; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+.gfxhead h2 { margin: 0; }
+.gfxtabs { flex: 1 1 auto; display: flex; gap: 6px; }
+.gfxtabs .tab { font: 700 .8rem Inter, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; min-height: 0; padding: 6px 12px;
+  color: var(--cyan); background: #12223a; border: 1px solid var(--cyan); }
+.gfx .gfxhead .ghostbtn { min-height: 36px; padding: 4px 12px; font-size: 1rem; color: var(--muted); background: transparent; border-color: #344762; }
+.gfxbody { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 0; min-height: 0; }
+.gfxmain { display: grid; gap: 14px; align-content: start; padding: 18px 20px 20px; }
+.shiplist { display: flex; flex-wrap: wrap; gap: 6px; }
+.gfx .shiplist button { font: 600 .85rem Inter, system-ui, sans-serif; min-height: 36px; padding: 6px 10px; color: var(--ink); background: #0a1322; border: 1px solid #344762; }
+.gfx .shiplist button b { color: var(--cyan); margin-right: 2px; }
+.gfx .shiplist button[aria-pressed="true"] { border-color: var(--cyan); background: #12223a; }
+.gfx .shiplist button:hover:not(:disabled) { background: #16243a; }
+.shipview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+/* the page's own canvases: not the game's full-window one */
+.gfx canvas { position: static; width: auto !important; height: auto !important; image-rendering: pixelated; }
+.gfx canvas.spin { width: 144px !important; height: 144px !important; flex: none; border: 1px solid var(--line); border-radius: 3px;
+  background: radial-gradient(circle, #13203a 0%, #04070d 70%); }
+.sheetbox { display: grid; gap: 6px; min-width: 0; flex: 1 1 260px; }
+.sheetbox .label { margin: 0; color: var(--muted); font-size: .88rem; }
+.gfx canvas.sheet { max-width: 100%; width: 360px !important; background: #04070d; border: 1px solid var(--line); border-radius: 3px; }
+.gfxactions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.gfxactions[hidden], .genchoice[hidden], .gfxprompt[hidden], .gfxreview[hidden], .gfx [hidden] { display: none !important; }
+.genchoice { display: flex; gap: 6px; padding: 4px; border: 1px solid #344762; border-radius: 4px; background: #09111d; }
+.gfx .genchoice button { min-height: 36px; padding: 6px 14px; }
+.gfxprompt { display: grid; gap: 10px; }
+.gfxprompt textarea { font: inherit; font-size: .95rem; color: var(--ink); background: #09111d; border: 1px solid #344762; border-radius: 3px; padding: 10px 12px; resize: vertical; }
+.gfxprompt textarea:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.gfx label.check { display: flex; gap: 8px; align-items: center; font-size: .85rem; }
+.gfx label.check input { width: auto; }
+.gfxreview { display: grid; gap: 14px; padding: 14px; border: 1px solid #537a92; border-radius: 4px; background: #0a1527; }
+.gfx .applyto { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.gfx select { font: 600 .9rem Inter, system-ui, sans-serif; color: var(--ink); background: #09111d; border: 1px solid #344762; border-radius: 3px; padding: 9px 8px; }
+.gfxstatus { margin: 0; min-height: 1.4em; color: var(--muted); font-size: .9rem; }
+.gfxstatus.bad { color: var(--warn); }
+.gfx.busy .gfxstatus::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: 8px; vertical-align: -1px;
+  border: 2px solid var(--cyan); border-right-color: transparent; border-radius: 50%; animation: gfxspin .8s linear infinite; }
+@keyframes gfxspin { to { transform: rotate(1turn); } }
+.gfxyard { display: grid; gap: 8px; align-content: start; padding: 18px 16px 20px; border-left: 1px solid var(--line); background: #0a121f; }
+.gfxyard h3 { margin: 0; font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+.gfxyard .dim { color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.gfxyard .small { margin: 0; font-size: .8rem; }
+.yardlist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-height: 56vh; overflow-y: auto; }
+.yardlist li { position: relative; }
+.yardlist li.empty { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; padding: 18px 4px; text-align: center; border: 1px dashed #344762; border-radius: 3px; }
+.gfx .yardlist .thumb { width: 100%; min-height: 0; padding: 6px 4px 4px; display: grid; justify-items: center; gap: 2px; color: var(--ink); background: #070d18; border: 1px solid #263449; }
+.gfx .yardlist .thumb:hover:not(:disabled) { background: #12223a; border-color: var(--cyan); }
+/* frame 0 (nose-up) of the sheet: 10 by 4 frames, so the sheet is 10 thumbs wide and 4 tall */
+.yardlist .art { width: 54px; height: 54px; background: 0 0 / 1000% 400% no-repeat; image-rendering: pixelated; }
+.yardlist .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .7rem; font-weight: 500; color: var(--muted); }
+.yardlist .on { position: absolute; left: 4px; top: 4px; font-size: .62rem; font-weight: 700; color: #07131e; background: var(--cyan); border-radius: 2px; padding: 0 3px; }
+.gfx .yardlist .remove { position: absolute; right: 2px; top: 2px; min-height: 0; padding: 0 5px; font-size: .7rem; line-height: 1.4; color: var(--muted); background: #070d18cc; border: 0; }
+.gfx .yardlist .remove:hover:not(:disabled) { color: var(--warn); background: #070d18; }
+@media (max-width: 760px) {
+  .gfxbody { grid-template-columns: minmax(0, 1fr); }
+  .gfxyard { border-left: 0; border-top: 1px solid var(--line); }
+  .yardlist { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .gfx.busy .gfxstatus::before { animation: none; } }

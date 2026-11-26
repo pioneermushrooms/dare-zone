@@ -6,3 +6,4 @@ obj/
 .DS_Store
 .local-zone/
 out/
+__pycache__/
