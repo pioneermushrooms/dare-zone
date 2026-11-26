@@ -27,6 +27,11 @@ def load_phrases() -> dict:
     return json.loads(PHRASES.read_text())
 
 
+def drop_picks(picks: dict, codes: set) -> dict:
+    """Picks without the given phrases: regenerated takes must be heard and picked again."""
+    return {c: n for c, n in picks.items() if c not in codes}
+
+
 def exaggeration(delivery: str) -> float:
     return _EXAGGERATION[delivery]
 

@@ -3,16 +3,18 @@
     PYTORCH_ENABLE_MPS_FALLBACK=1 .venv/bin/python generate.py [--takes 4] [--only gw,tr]
 
 Writes takes/<code>_<n>.wav (24 kHz). A take that runs far longer than its words is regenerated
-with a new seed (up to 3 tries). --only replaces that phrase's takes; picks for it are kept.
+with a new seed (up to 3 tries). --only replaces that phrase's takes and forgets its pick, so
+export.py refuses until the new takes have been auditioned and one picked.
 """
 import argparse
+import json
 import zlib
 
 import torch
 import torchaudio as ta
 from chatterbox.tts import ChatterboxTTS
 
-from voicetool import REF, TAKES, duration, exaggeration, load_phrases, too_long
+from voicetool import PICKS, REF, TAKES, drop_picks, duration, exaggeration, load_phrases, too_long
 
 
 def main() -> None:
@@ -29,6 +31,9 @@ def main() -> None:
     todo = [p for p in phrases if not only or p["code"] in only]
 
     TAKES.mkdir(exist_ok=True)
+    if PICKS.exists():
+        codes = {p["code"] for p in todo}
+        PICKS.write_text(json.dumps(drop_picks(json.loads(PICKS.read_text()), codes), indent=1) + "\n")
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     model = ChatterboxTTS.from_pretrained(device=device)
 

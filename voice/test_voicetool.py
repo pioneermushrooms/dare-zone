@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from voicetool import MONSTER, exaggeration, rust_table, too_long
+from voicetool import MONSTER, drop_picks, exaggeration, rust_table, too_long
 
 
 def test_too_long_scales_with_words():
@@ -36,3 +36,8 @@ def test_rust_table_escapes_quotes_and_handles_the_real_table():
 def test_monster_is_the_approved_chain():
     assert MONSTER.startswith("asetrate=24000*0.72,aresample=24000,atempo=1.3889,")
     assert "lowpass=f=3600" in MONSTER
+
+
+def test_regenerating_a_phrase_forgets_its_pick():
+    assert drop_picks({"gw": 2, "tr": 1, "ml": 0}, {"gw", "ml"}) == {"tr": 1}
+    assert drop_picks({"gw": 2}, set()) == {"gw": 2}
