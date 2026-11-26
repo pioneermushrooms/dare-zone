@@ -30,6 +30,21 @@ import tilegen as tg
 INTERIOR_SLOTS = {"grey-plate": 128, "grey-round": 129, "green-lit": 130,
                   "white-lit": 131, "steel-blue": 132, "navy": 133}
 
+# Calm edges (Chris approved four packs): the pack's edge piece with its rim kept and the inside
+# drawn as the plain interior, so a thick wall's rim has no cut-off studs or pyramids.
+# open set -> slot, keyed like the layout's roles (ESW top, NES left, NSW right, NEW bottom).
+CALM_SLOTS = {
+    "grey-plate": {"ESW": 90, "NES": 91, "NSW": 92, "NEW": 93},
+    "grey-round": {"ESW": 109, "NES": 110, "NSW": 111, "NEW": 112},
+    "green-lit": {"ESW": 147, "NES": 148, "NSW": 149, "NEW": 150},
+    "steel-blue": {"ESW": 151, "NES": 152, "NSW": 94, "NEW": 113},
+}
+CLOSED = {"ESW": "N", "NES": "W", "NSW": "E", "NEW": "S"}
+# Rim depth in pixels from the closed side, read off the pieces: the bevel and the plate's frame
+# line (grey-plate's brown line, grey-round's dark groove, steel-blue's dark + light lines).
+# green-lit keeps its LED strip, which frames the whole box. None: measure (rim_depth).
+CALM_DEPTH: dict[str, int | None] = {"grey-plate": 6, "grey-round": 5, "green-lit": None, "steel-blue": 5}
+
 RGB = tuple[int, int, int]
 
 # Field colours, read from the packs (all in tactical2's palette).
@@ -74,6 +89,32 @@ def interior(pack: str) -> Image.Image:
     return im
 
 
+def rim_depth(edge: Image.Image, fill: Image.Image, closed: str) -> int:
+    """How many rows (or columns) in from the closed side the edge piece differs from the pack's
+    fill: that is its rim. Further in, the edge piece repeats the fill's pattern (the motif)."""
+    depth = 0
+    for k in range(tg.TS):
+        line = [(x, k) for x in range(tg.TS)] if closed == "N" else \
+               [(x, tg.TS - 1 - k) for x in range(tg.TS)] if closed == "S" else \
+               [(k, y) for y in range(tg.TS)] if closed == "W" else [(tg.TS - 1 - k, y) for y in range(tg.TS)]
+        if any(edge.getpixel(p) != fill.getpixel(p) for p in line):
+            depth = k + 1
+    return depth
+
+
+def calm_edge(edge: Image.Image, fill: Image.Image, pack: str, open_: str) -> Image.Image:
+    closed = CLOSED[open_]
+    depth = CALM_DEPTH.get(pack) or rim_depth(edge, fill, closed)
+    inside = interior(pack)
+    out = inside.copy()
+    for y in range(tg.TS):
+        for x in range(tg.TS):
+            k = {"N": y, "S": tg.TS - 1 - y, "W": x, "E": tg.TS - 1 - x}[closed]
+            if k < depth:
+                out.putpixel((x, y), edge.getpixel((x, y)))
+    return out
+
+
 # ---- tileset ------------------------------------------------------------------------------------
 
 def read_tileset(path: str) -> bytes:
@@ -102,11 +143,21 @@ def with_interiors(bmp: bytes, layout: dict | None = None) -> bytes:
     out = bytearray(bmp)
     row = (w + 3) & ~3
     bottom_up = struct.unpack_from("<i", bmp, 22)[0] > 0
-    for pack, tile in INTERIOR_SLOTS.items():
+    sheet = Image.open(io.BytesIO(bmp)).convert("RGB")
+    tile_im = lambda t: sheet.crop(tg._slot_xy(t) + (tg._slot_xy(t)[0] + tg.TS, tg._slot_xy(t)[1] + tg.TS))
+    by_id = {p["id"]: p for p in layout["packs"]}
+    roles = {r["open"]: name for name, r in layout["roles"].items()}
+    jobs = [(pack, tile, interior(pack)) for pack, tile in INTERIOR_SLOTS.items()]
+    for pack, calm in CALM_SLOTS.items():
+        if pack not in packs:
+            raise ValueError(f"the layout has no pack {pack}")
+        t = by_id[pack]["tiles"]
+        for open_, tile in calm.items():
+            jobs.append((pack, tile, calm_edge(tile_im(t[roles[open_]]), tile_im(t[roles["NESW"]]), pack, open_)))
+    for pack, tile, piece in jobs:
         if pack not in packs:
             raise ValueError(f"the layout has no pack {pack}")
         x0, y0 = tg._slot_xy(tile)
-        piece = interior(pack)
         for y in range(tg.TS):
             yy = (h - 1 - (y0 + y)) if bottom_up else y0 + y
             for x in range(tg.TS):
@@ -125,7 +176,8 @@ def slot_is_empty(bmp: bytes, tile: int) -> bool:
 
 
 def preview(bmp: bytes, layout: dict | None = None) -> Image.Image:
-    """Each pack as a 6x5 solid wall: the pack's rim and corners round interior pieces."""
+    """Each pack as a 6x5 solid wall: the pack's corners, calm edges (where it has them, else its
+    edge pieces) and interior pieces."""
     layout = layout or tg.load_layout()
     sheet = Image.open(io.BytesIO(bmp)).convert("RGB")
     tile = lambda t: sheet.crop(tg._slot_xy(t) + (tg._slot_xy(t)[0] + 16, tg._slot_xy(t)[1] + 16))
@@ -136,7 +188,11 @@ def preview(bmp: bytes, layout: dict | None = None) -> Image.Image:
         for y in range(H):
             for x in range(W):
                 open_ = {d for d, ok in (("N", y > 0), ("S", y < H - 1), ("W", x > 0), ("E", x < W - 1)) if ok}
-                t = INTERIOR_SLOTS[p["id"]] if 0 < x < W - 1 and 0 < y < H - 1 else p["tiles"][roles[frozenset(open_)]]
+                key = "".join(d for d in "NESW" if d in open_)
+                inner = 0 < x < W - 1 and 0 < y < H - 1
+                calm = CALM_SLOTS.get(p["id"], {}).get(key)
+                # every non-corner rim cell of a solid block faces an interior cell: calm if the pack has it
+                t = INTERIOR_SLOTS[p["id"]] if inner else calm or p["tiles"][roles[frozenset(open_)]]
                 out.paste(tile(t), ((i * (W + 1) + x) * 16, y * 16))
     return out
 
@@ -144,7 +200,7 @@ def preview(bmp: bytes, layout: dict | None = None) -> Image.Image:
 def main() -> None:
     src = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/dare-zone/.local-zone/zone/maps/tactical2.lvl")
     bmp = read_tileset(src)
-    for t in INTERIOR_SLOTS.values():
+    for t in [*INTERIOR_SLOTS.values(), *(v for c in CALM_SLOTS.values() for v in c.values())]:
         if not slot_is_empty(bmp, t):
             raise SystemExit(f"slot {t} is not empty in {src}")
     new = with_interiors(bmp)
