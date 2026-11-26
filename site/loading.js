@@ -12,17 +12,26 @@ const TIPS = [
   "Your keys and macros live on your <b>Pilot</b> account and come with you to any computer.",
   "No pilot name? Fly as a <b>guest</b>: you'll get a quirky space name, new every time.",
 ];
-// Each step's share of the progress line, and what the line under it says.
+// Each step's share of the progress line, in order, and the ship's preparations the line under it picks
+// from while the step lasts (the desktop game has the same, in connect_screen.rs).
 const STEPS = {
-  game: [0, 0.45, "Downloading the game"],
-  connect: [0.45, 0.6, "Connecting"],
-  signin: [0.6, 0.7, "Signing in"],
-  enter: [0.7, 0.78, "Joining the arena"],
-  download: [0.78, 1, "Loading the map"],
+  game: [0, 0.45, ["Refuelling", "Loading the cargo bay", "Warming up the reactor", "Bolting on the wings",
+    "Topping up the coolant", "Unpacking the hangar", "Stocking the galley"]],
+  connect: [0.45, 0.6, ["Plotting a course", "Hailing the zone", "Aligning the antenna",
+    "Calibrating the nav computer", "Locking onto the beacon"]],
+  signin: [0.6, 0.7, ["Checking your pilot licence", "Clearing docking control", "Scanning your ID badge",
+    "Confirming flight clearance"]],
+  enter: [0.7, 0.78, ["Testing the hyperdrive", "Opening the jump gate", "Spooling up the warp core",
+    "Charging the thrusters"]],
+  download: [0.78, 1, ["Checking your engines", "Charting the arena", "Mapping the asteroid fields",
+    "Downloading star charts", "Polishing the hull", "Arming the guns"]],
 };
+const ORDER = Object.keys(STEPS);
+const PHRASE_EVERY = 2200; // ms
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let active = false, tipTimer = 0, tip = Math.floor(Math.random() * TIPS.length), lastPercent = 0;
 let heard = false, fallback = 0, stage = "game", stageAt = 0, stagePercent = null, shown = 0, ending = 0;
+let phrase = "", phraseAt = 0;
 
 // ---- the warp --------------------------------------------------------------------------------
 const canvas = $("loader-warp"), ctx = canvas?.getContext("2d");
@@ -88,23 +97,45 @@ function draw(now) {
 }
 
 // ---- where the way in has got to ---------------------------------------------------------------
-// The line only moves forward: a step's downloads move it by their bytes; other steps ease it on
-// toward the end of their share while they last.
+// The line only moves forward, and never stands still: a step's downloads move it by their bytes, other
+// steps ease it on toward the end of their share, and underneath both it creeps on by itself, slower the
+// closer it gets to a little way into the next step's share. That creep is what carries it through the
+// quiet stretches nothing reports on: the game compiling once its download is in, and starting up.
 function advance(dt) {
-  const [lo, hi] = STEPS[stage] ?? STEPS.game;
-  const since = (performance.now() - stageAt) / 1000;
-  const target = ending ? 1 : stagePercent != null
-    ? lo + (hi - lo) * stagePercent / 100
-    : lo + (hi - lo) * 0.9 * (1 - Math.exp(-since / 1.6));
-  shown = Math.max(shown, shown + (target - shown) * Math.min(1, dt * 4));
-  $("loader-bar").style.setProperty("--p", `${(shown * 100).toFixed(1)}%`);
+  if (ending) {
+    shown += (1 - shown) * Math.min(1, dt * 6);
+  } else {
+    const [lo, hi] = STEPS[stage] ?? STEPS.game;
+    const next = STEPS[ORDER[ORDER.indexOf(stage) + 1]];
+    const cap = next ? hi + (next[1] - hi) * 0.5 : 0.985;
+    const since = (performance.now() - stageAt) / 1000;
+    const target = stagePercent != null
+      ? lo + (hi - lo) * stagePercent / 100
+      : lo + (hi - lo) * 0.9 * (1 - Math.exp(-since / 2));
+    const eased = shown + (target - shown) * Math.min(1, dt * 4);
+    const crept = shown + (0.0015 + 0.06 * Math.max(0, cap - shown)) * dt;
+    shown = Math.max(shown, Math.min(cap, Math.max(eased, crept)));
+  }
+  $("loader-bar").style.setProperty("--p", `${(shown * 100).toFixed(2)}%`);
+  if (performance.now() - phraseAt > PHRASE_EVERY && $("loader-error").hidden) say();
+}
+
+// The next of the ship's preparations for this step, never the one just shown.
+function say() {
+  const pool = (STEPS[stage] ?? STEPS.game)[2];
+  let next = phrase;
+  while (pool.length > 1 && next === phrase) next = pool[Math.floor(Math.random() * pool.length)];
+  phrase = next;
+  phraseAt = performance.now();
+  const el = $("loader-text");
+  el.classList.add("fade");
+  setTimeout(() => { el.textContent = phrase; el.classList.remove("fade"); }, 180);
 }
 
 function step(name, percent = null) {
   if (!STEPS[name]) return;
-  if (name !== stage) { stage = name; stageAt = performance.now(); }
   stagePercent = percent;
-  $("loader-text").textContent = STEPS[name][2];
+  if (name !== stage) { stage = name; stageAt = performance.now(); say(); }
 }
 
 function showTip() {
@@ -121,6 +152,8 @@ function open() {
   shown = 0;
   stage = "game";
   stageAt = performance.now();
+  phrase = "";
+  say();
   $("loader-arena").textContent = $("arena")?.value || "public";
   $("loader-error").hidden = true;
   $("loader-tip").hidden = false;
@@ -202,7 +235,6 @@ if (button && loader) {
     // signing in first: the sign-in box is on top; the warp waits underneath
     lastPercent = 0;
     open();
-    $("loader-text").textContent = "Getting ready";
     setTimeout(update, 50);
   });
   const watch = new MutationObserver(update);
