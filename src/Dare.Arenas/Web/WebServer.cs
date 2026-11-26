@@ -69,12 +69,11 @@ public sealed partial class ArenaOwnership
     internal Dictionary<string, int> PlayerCounts()
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var bots = Store.BotNames();
         _playerData.Lock();
         try
         {
             foreach (var p in _playerData.Players)
-                if (p.Arena is not null && !(p.Name is { } name && bots.Contains(name)))
+                if (p.Arena is not null && !IsBot(p))
                     counts[p.Arena.BaseName] = counts.GetValueOrDefault(p.Arena.BaseName) + 1;
         }
         finally

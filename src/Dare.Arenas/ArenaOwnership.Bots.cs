@@ -22,6 +22,23 @@ internal static class BotPasses
         Pending.TryRemove(new KeyValuePair<string, string>(name, password));
 
     internal static void Revoke(string name) => Pending.TryRemove(name, out _);
+
+    // Players who logged in on a bot pass. This, not the name, makes a player a bot: a pilot
+    // account that holds a registered bot's name logs in as a pilot and stays one.
+    private static readonly ConcurrentDictionary<Player, byte> Sessions = new();
+
+    internal static void MarkSession(Player player) => Sessions[player] = 0;
+
+    internal static void ForgetSession(Player player) => Sessions.TryRemove(player, out _);
+
+    internal static bool IsSession(Player player) => Sessions.ContainsKey(player);
+
+    /// <summary>Drops sessions of players no longer in the zone.</summary>
+    internal static void Prune(IReadOnlySet<Player> online)
+    {
+        foreach (var player in Sessions.Keys)
+            if (!online.Contains(player)) Sessions.TryRemove(player, out _);
+    }
 }
 
 public sealed partial class ArenaOwnership
@@ -76,7 +93,8 @@ public sealed partial class ArenaOwnership
     private string? _botProgram;
     private string _botServer = "";
 
-    internal bool IsBot(string name) => _store?.IsBotName(name) ?? false;
+    /// <summary>The player logged in on a bot's one-time pass.</summary>
+    internal static bool IsBot(Player player) => BotPasses.IsSession(player);
 
     internal Result SaveBot(string arena, string owner, string label, string? script)
     {
@@ -141,7 +159,7 @@ public sealed partial class ArenaOwnership
 
     private void AddressBot(Arena arena, Player sender, ReadOnlySpan<char> message)
     {
-        if (_botBanter is null || sender.Name is not { } pilot || IsBot(pilot)) return;
+        if (_botBanter is null || sender.Name is not { } pilot || IsBot(sender)) return;
         if (!_hosts.TryGetValue(arena.Name, out var host) || host.StopDeadline != default || host.Process is not { HasExited: false }) return;
         var text = message.Trim();
         if (text.IsEmpty || text.Length > 240) return;
@@ -292,30 +310,28 @@ public sealed partial class ArenaOwnership
     private void ReconcileBots()
     {
         var now = DateTimeOffset.UtcNow;
-        var botNames = Store.BotNames();
-        // Real players flying (in a ship) per arena and freq, and every bot name logged in to the zone.
-        var flying = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
-        var botsInZone = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
+        // Bots are the players on a bot pass; real people (not bots, not fake players) keep arenas occupied.
+        var entries = new List<CensusEntry>();
+        var online = new HashSet<Player>();
         _playerData.Lock();
         try
         {
             foreach (var player in _playerData.Players)
             {
+                online.Add(player);
                 if (player.Name is not { } name) continue;
-                if (botNames.Contains(name))
-                {
-                    botsInZone[name] = player;
-                    continue;
-                }
-                if (player.Status != PlayerState.Playing || player.Arena is not { } arena ||
-                    !string.Equals(arena.Name, arena.BaseName, StringComparison.OrdinalIgnoreCase)) continue;
-                _botOccupancy[arena.Name] = now;
-                if (player.Ship == ShipType.Spec) continue;
-                if (!flying.TryGetValue(arena.Name, out var freqs)) flying[arena.Name] = freqs = new();
-                freqs[player.Freq] = freqs.GetValueOrDefault(player.Freq) + 1;
+                entries.Add(new(name, player.Arena?.Name,
+                    player.Arena is { } a && string.Equals(a.Name, a.BaseName, StringComparison.OrdinalIgnoreCase),
+                    player.Status == PlayerState.Playing, player.Ship != ShipType.Spec, player.Freq,
+                    IsBot(player), player.Type == ClientType.Fake));
             }
         }
         finally { _playerData.Unlock(); }
+        BotPasses.Prune(online);
+        var census = ZoneCensus.Take(entries);
+        foreach (var arena in census.Occupied) _botOccupancy[arena] = now;
+        var flying = census.Flying;
+        var botsInZone = census.BotsInZone;
 
         int cap = Math.Clamp(_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30), 0, 100);
         int total = 0;
@@ -370,7 +386,7 @@ public sealed partial class ArenaOwnership
             // then it comes in like any arriving bot, after its own short wait.
             var target = BotDirector.Plan(bots, Store.MatchSizes(arena),
                     flying.TryGetValue(arena, out var freqs) ? freqs : new Dictionary<int, int>())
-                .Select(p => botsInZone.ContainsKey(p.Label) && !run.Passes.ContainsKey(p.Label) ? p with { Seat = BotSeat.Out } : p)
+                .Select(p => botsInZone.Contains(p.Label) && !run.Passes.ContainsKey(p.Label) ? p with { Seat = BotSeat.Out } : p)
                 .ToList();
             run.Shown = run.Stagger.Apply(run.Seats.Step(target));
             if (run.Process is not { } host) continue;
@@ -379,7 +395,7 @@ public sealed partial class ArenaOwnership
             foreach (var placement in run.Shown)
             {
                 if (placement.Seat == BotSeat.Out) continue;
-                bool inZone = botsInZone.ContainsKey(placement.Label);
+                bool inZone = botsInZone.Contains(placement.Label);
                 if (run.Passes.TryGetValue(placement.Label, out var pass))
                 {
                     // the bot has not come in on this pass: replace it, so the host (re)connects it on a fresh one
@@ -413,7 +429,7 @@ public sealed partial class ArenaOwnership
 
             foreach (var (bot, placement, _) in lineup)
             {
-                if (placement.Seat == BotSeat.In && botsInZone.TryGetValue(bot.Label, out var player) &&
+                if (placement.Seat == BotSeat.In && _playerData.FindPlayer(bot.Label) is { } player && IsBot(player) &&
                     player.Status == PlayerState.Playing && player.Ship != ShipType.Spec && player.Freq != placement.Team &&
                     string.Equals(player.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase))
                     _game.SetFreq(player, (short)placement.Team);

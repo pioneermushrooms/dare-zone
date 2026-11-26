@@ -200,6 +200,7 @@ public sealed class FoundationAuth : IModule, IAuth
         if (store.IsBotLogin(name))
         {
             result.Authenticated = BotPasses.Redeem(name, password);
+            if (result.Authenticated) BotPasses.MarkSession(player);
             result.Code = result.Authenticated ? AuthCode.OK : AuthCode.BadPassword;
             authRequest.Done();
             return;

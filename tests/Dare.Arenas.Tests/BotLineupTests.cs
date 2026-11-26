@@ -88,3 +88,40 @@ public class BotStaggerTests
         Assert.Equal([P("B", BotSeat.Out)], stagger.Apply([P("B", BotSeat.Out)]));
     }
 }
+
+public class ZoneCensusTests
+{
+    private static CensusEntry Pilot(string name, int freq = 0, bool ship = true, bool bot = false, bool fake = false) =>
+        new(name, "duel", true, true, ship, freq, bot, fake);
+
+    [Fact]
+    public void a_pilot_holding_a_bots_name_is_a_pilot()
+    {
+        // "Rex" is in the bot register, but this Rex logged in with an account, not a bot pass
+        var rex = Pilot("Rex", freq: 1);
+        var census = ZoneCensus.Take([rex]);
+        Assert.True(ZoneCensus.IsPerson(rex));
+        Assert.Contains("duel", census.Occupied);
+        Assert.Equal(1, census.Flying["duel"][1]);
+        Assert.Empty(census.BotsInZone);
+    }
+
+    [Fact]
+    public void bot_sessions_and_fake_players_are_not_people()
+    {
+        var census = ZoneCensus.Take([Pilot("Rex", bot: true), Pilot("Turret", fake: true)]);
+        Assert.Empty(census.Occupied);
+        Assert.Empty(census.Flying);
+        Assert.Equal(["Rex"], census.BotsInZone);
+        Assert.False(ZoneCensus.IsPerson(Pilot("Rex", bot: true)));
+        Assert.False(ZoneCensus.IsPerson(Pilot("Turret", fake: true)));
+    }
+
+    [Fact]
+    public void spectators_occupy_but_do_not_fly_and_sub_arenas_do_not_count()
+    {
+        var census = ZoneCensus.Take([Pilot("Ann", ship: false), new("Bob", "duel1", false, true, true, 0, false, false)]);
+        Assert.Equal(["duel"], census.Occupied);
+        Assert.Empty(census.Flying);
+    }
+}

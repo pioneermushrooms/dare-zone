@@ -164,9 +164,10 @@ public sealed partial class ArenaOwnership : IModule
 
     private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
     {
+        if (action == PlayerAction.Disconnect) BotPasses.ForgetSession(player);
         if (action != PlayerAction.EnterArena || arena is null || player.Name is null || _store is null)
             return;
-        if (IsBot(player.Name))
+        if (IsBot(player))
         {
             // excludepopulation: bots are left out of the zone's player count (ping, zone list, directory)
             _groupManager.SetTempGroup(player, "arenabot");

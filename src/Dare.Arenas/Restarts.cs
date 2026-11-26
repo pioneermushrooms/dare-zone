@@ -90,13 +90,12 @@ public sealed partial class ArenaOwnership
     private List<string> PilotsIn(string name)
     {
         var names = new List<string>();
-        var bots = Store.BotNames();
         _playerData.Lock();
         try
         {
             foreach (var p in _playerData.Players)
                 if (p.Arena is not null && string.Equals(p.Arena.BaseName, name, StringComparison.OrdinalIgnoreCase)
-                    && p.Name is { } n && !bots.Contains(n))
+                    && p.Name is { } n && !IsBot(p))
                     names.Add(n);
         }
         finally
