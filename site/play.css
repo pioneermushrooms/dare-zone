@@ -271,3 +271,7 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 @keyframes ld-in { from { opacity: 0; } }
 @keyframes ld-flash { 0% { opacity: 0; } 25% { opacity: .9; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .loader, .loader.done .ld-flash { animation: none; } }
+.gfx canvas.sheet.pick { cursor: crosshair; }
+.gfx .frontrow { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .8rem; }
+.gfx .frontrow .dim { color: var(--muted); margin-right: 4px; }
+.gfx .frontrow .ghostbtn { min-height: 0; }

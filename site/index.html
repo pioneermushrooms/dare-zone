@@ -7,14 +7,14 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=12">
+<link rel="stylesheet" href="/play.css?v=13">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=12"></script>
-<script type="module" src="/chat.js?v=12"></script>
-<script type="module" src="/graphics.js?v=12"></script>
-<script type="module" src="/loading.js?v=12"></script>
-<script type="module" src="/graphics-other.js?v=12"></script>
+<script type="module" src="/play/start.mjs?v=13"></script>
+<script type="module" src="/chat.js?v=13"></script>
+<script type="module" src="/graphics.js?v=13"></script>
+<script type="module" src="/loading.js?v=13"></script>
+<script type="module" src="/graphics-other.js?v=13"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -173,13 +173,15 @@ setTimeout(function () {
           <canvas class="spin" id="gfx-review-spin" width="144" height="144" aria-hidden="true"></canvas>
           <div class="sheetbox">
             <p class="label" id="gfx-review-note"></p>
-            <canvas class="sheet" id="gfx-review-sheet" width="360" height="144" aria-hidden="true"></canvas>
+            <canvas class="sheet pick" id="gfx-review-sheet" width="360" height="144" title="Click the frame that points up"></canvas>
+            <p class="frontrow"><span class="dim">Front</span>
+              <button type="button" class="ghostbtn" id="gfx-front-left" aria-label="Turn the front 9 degrees counter-clockwise">⟲ 9°</button>
+              <button type="button" class="ghostbtn" id="gfx-front-right" aria-label="Turn the front 9 degrees clockwise">9° ⟳</button></p>
           </div>
         </div>
         <div class="row">
           <label class="applyto">Apply to <select id="gfx-applyto"></select></label>
           <button type="button" id="gfx-approve">Approve</button>
-          <button type="button" class="ghost" id="gfx-flip">Turn 180°</button>
           <button type="button" class="ghost" id="gfx-again">Try again</button>
           <button type="button" class="ghost" id="gfx-decline">Decline</button>
         </div>

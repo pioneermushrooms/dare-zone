@@ -4,8 +4,8 @@
 //
 // A sheet is the layout the game reads ship1..ship8 in: 40 square frames in 10 columns and 4 rows
 // (360x144 for stock 36-pixel ships). Frame 0, top left, is the ship nose-up; each next frame, in
-// row order, is turned 9 degrees further clockwise. "Turn 180°" moves frame 20 to frame 0 for art
-// that faces backward. The game itself is reached through globalThis.dareShips (play/start.mjs).
+// row order, is turned 9 degrees further clockwise. When a new ship's art faces some other way, the
+// pilot clicks the frame that points up and it becomes frame 0 (clockwise order kept). The game itself is reached through globalThis.dareShips (play/start.mjs).
 const SHIPS = ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 const FRAMES = 40, COLS = 10, ROWS = 4;
 const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
@@ -33,7 +33,7 @@ const fileInput = $("gfx-file");
 
 let selected = 1; // the ship (1..8) being looked at
 let yard = null; // { ships, slots, max } when signed in, else null
-let pending = null; // { sheet (canvas), name, source, again, flipped } awaiting Approve
+let pending = null; // { sheet (canvas), name, source, again, front } awaiting Approve
 let busy = false;
 
 // ---- sheets: canvases holding a 10x4 sheet -------------------------------------------------
@@ -77,13 +77,13 @@ async function sheetFromBlob(blob) {
 
 const sheetFromBase64 = (b64) => sheetFromBlob(new Blob([Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0))], { type: "image/png" }));
 
-/** The same ship turned half a turn: frame 20 becomes frame 0, still clockwise. */
-function turned(sheet) {
+/** The same sheet with frame `front` as frame 0, still clockwise (Maigent's rebase_ship_heading). */
+function rebased(sheet, front) {
   const side = sheet.width / COLS;
   const c = canvasOf(sheet.width, sheet.height);
   const g = c.getContext("2d");
   for (let i = 0; i < FRAMES; i++) {
-    const from = (i + FRAMES / 2) % FRAMES;
+    const from = (i + front) % FRAMES;
     g.drawImage(sheet, (from % COLS) * side, Math.floor(from / COLS) * side, side, side, (i % COLS) * side, Math.floor(i / COLS) * side, side, side);
   }
   return c;
@@ -326,30 +326,35 @@ function showReview(next) {
   if (!next) { spin(reviewSpin, null); return; }
   spin(reviewSpin, next.sheet);
   showSheet(reviewSheet, next.sheet);
-  reviewNote.textContent = `${next.name}${next.flipped ? " · turned 180°" : ""}. The top-left frame should point its nose up; if it faces backward, turn it.`;
+  // Outline frame 0, the front.
+  const side = next.sheet.width / COLS, g = reviewSheet.getContext("2d");
+  g.strokeStyle = "#71e4fa";
+  g.lineWidth = 2;
+  g.strokeRect(1, 1, side - 2, side - 2);
+  reviewNote.textContent = `${next.name}. The outlined frame is the front and should point up; if another frame does, click it.`;
   $("gfx-again").hidden = !next.again;
   $("gfx-approve").focus();
 }
 
 async function generate(request, name) {
   if (busy || !needYard()) return;
-  setBusy(true, request.batch ? "Next option…"
-    : request.mode === "prompt" ? "Drawing your ship… this takes up to a minute."
-    : "Drawing a ship… (when none are waiting, this takes up to a minute)");
+  setBusy(true, request.batch ? "Finding a different one…"
+    : request.mode === "prompt" ? "Drawing your ship… PixelLab takes a few minutes."
+    : "Drawing a ship… (when none are waiting, PixelLab takes a few minutes)");
   try {
     const data = await call("/generate", request);
     const sheet = await sheetFromBase64(data.sheet);
-    // A prompt is drawn as a batch of options; Try again shows the next one (instant, free),
-    // and draws a fresh batch once they're used up.
-    const more = Number.isInteger(data.left) && data.left > 0;
-    say(more ? `Approve it to add it to your shipyard, or Try again: ${data.left} more option${data.left === 1 ? "" : "s"} ready.`
-      : "Here it is. Approve it to add it to your shipyard.");
+    // Try again continues this run (data.batch): the server picks a ship unlike the ones shown,
+    // from ships already drawn when it can (instant), or draws a fresh batch (1-3 minutes).
+    say(data.ready === false && data.batch
+      ? "Approve it to add it to your shipyard. Try again may take a few minutes (a fresh batch)."
+      : "Approve it to add it to your shipyard, or Try again for a different one.");
     const fresh = request.batch ? request.fresh : request;
     showReview({
       sheet,
       name,
       source: request.mode === "prompt" ? "generated" : "random",
-      again: () => generate(more ? { mode: "prompt", batch: data.batch, fresh } : { ...fresh, variation: true }, name),
+      again: () => generate(data.batch ? { ...fresh, batch: data.batch, fresh } : { ...fresh, variation: true }, name),
     });
   } catch (error) {
     say(error.message, true);
@@ -423,9 +428,18 @@ promptForm.addEventListener("submit", (event) => {
   void generate({ mode: "prompt", prompt, creative }, prompt.slice(0, 40));
 });
 $("gfx-prompt-cancel").addEventListener("click", () => { promptForm.hidden = true; });
-$("gfx-flip").addEventListener("click", () => {
-  if (pending) showReview({ ...pending, sheet: turned(pending.sheet), flipped: !pending.flipped });
+// Choosing the front: click the frame that points up (or nudge a frame at a time).
+function setFront(front) {
+  if (pending && front % FRAMES) showReview({ ...pending, sheet: rebased(pending.sheet, (front + FRAMES) % FRAMES) });
+}
+reviewSheet.addEventListener("click", (event) => {
+  const box = reviewSheet.getBoundingClientRect();
+  const col = Math.floor(((event.clientX - box.left) / box.width) * COLS);
+  const row = Math.floor(((event.clientY - box.top) / box.height) * ROWS);
+  if (col >= 0 && col < COLS && row >= 0 && row < ROWS) setFront(row * COLS + col);
 });
+$("gfx-front-left").addEventListener("click", () => setFront(-1));
+$("gfx-front-right").addEventListener("click", () => setFront(1));
 $("gfx-approve").addEventListener("click", () => void approve());
 $("gfx-again").addEventListener("click", () => { const again = pending?.again; showReview(null); void again?.(); });
 $("gfx-decline").addEventListener("click", () => { showReview(null); say("Declined. Nothing was saved."); });

@@ -36,12 +36,13 @@ class SheetContract(unittest.TestCase):
         self.assertEqual(top_heavy > 0, right_heavy > 0)
         self.assertNotEqual(top_heavy, 0)
 
-    def test_flip_moves_heading_20_to_frame_0(self):
+    def test_front_moves_the_chosen_frame_to_frame_0(self):
         f = frames(service.generate({"mode": "random", "seed": 11})["sheet"])
         sheet = shipgen._render_ship_files(f)["ship-rotations.png"]
-        flipped = frames(service.flip({"sheet": base64.b64encode(sheet).decode()})["sheet"])
-        for i in range(40):
-            self.assertEqual(flipped[i].tobytes(), f[(i + 20) % 40].tobytes(), i)
+        for front in (20, 7):
+            moved = frames(service.front({"sheet": base64.b64encode(sheet).decode(), "frame": front})["sheet"])
+            for i in range(40):
+                self.assertEqual(moved[i].tobytes(), f[(i + front) % 40].tobytes(), (front, i))
 
     def test_refusals(self):
         with self.assertRaises(service.Refused):
@@ -51,71 +52,129 @@ class SheetContract(unittest.TestCase):
         with self.assertRaises(service.Refused):
             service.generate({"mode": "prompt", "creative": True, "prompt": " "})
         with self.assertRaises(service.Refused):
-            service.flip({"sheet": "not base64!"})
+            service.front({"sheet": "not base64!", "frame": 3})
+        with self.assertRaises(service.Refused):
+            service.front({"sheet": base64.b64encode(b"x").decode(), "frame": 40})
 
 
 if __name__ == "__main__":
     unittest.main()
 
 
-class StockStyleBatches(unittest.TestCase):
-    """Random and prompted ships come from stylegen batches; PixelLab is mocked here."""
+class StockStyleTries(unittest.TestCase):
+    """Random and prompted ships come from foundation_ships.designer; PixelLab is mocked here."""
 
     def setUp(self):
         from unittest import mock
         import os
+        from foundation_ships import designer
         self.calls = []
 
-        def fake_batch(description, *, seed=None, timeout=180):
+        def fake_batch(description, *, seed=None, refs=None, timeout=270):
             self.calls.append(description)
-            # Nose-up arrows of distinct colours, 36x36 like the style endpoint's answer.
+            # Nose-up arrows: three near-twin blues and two clearly different ones per batch.
             sprites = []
-            for n in range(5):
+            for colour in [(40, 120, 200), (42, 122, 198), (44, 118, 202), (220, 60, 40), (60, 200, 60)]:
                 im = Image.new("RGBA", (36, 36))
                 for y in range(6, 30):
                     half = (y - 6) // 2
                     for x in range(18 - half, 18 + half + 1):
-                        im.putpixel((x, y), (40 * n, 120, 200, 255))
+                        im.putpixel((x, y), (*colour, 255))
                 sprites.append(im)
             return sprites
 
         patches = [
-            mock.patch("stylegen.draw_batch", side_effect=fake_batch),
+            mock.patch("foundation_ships.stylegen.draw_batch", side_effect=fake_batch),
             mock.patch.dict(os.environ, {"PIXEL_LAB_API_KEY": "test"}),
-            mock.patch.object(service, "_refill_soon", lambda: None),  # no background threads
+            mock.patch.object(designer.RandomPool, "refill_soon", lambda self: None),  # no threads
+            mock.patch.object(service, "_pool", designer.RandomPool(low=24, keep_per_batch=4)),
         ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
-        service._pool.clear()
-        service._batches.clear()
+        service._tries.clear()
 
-    def test_random_draws_a_batch_once_then_serves_from_it(self):
+    @staticmethod
+    def colour(reply):
+        f = frames(reply["sheet"])[0]
+        return max((px for px in f.getdata() if px[3] == 255), key=lambda p: p[0] + p[1] + p[2])
+
+    def test_random_is_nose_up_and_try_again_differs(self):
         first = service.generate({"mode": "random"})
-        second = service.generate({"mode": "random"})
         self.assertEqual(len(self.calls), 1)
-        self.assertEqual(len(service._pool), 3)  # 5 drawn, 2 served
-        for reply in (first, second):
-            f = frames(reply["sheet"])
-            self.assertTrue(all(fr.getchannel("A").getbbox() for fr in f))
-            # Nose-up: the arrow's tip is in the top half of frame 0.
-            box = f[0].getchannel("A").getbbox()
-            top = sum(1 for y in range(box[1], box[1] + 4) for x in range(36) if f[0].getpixel((x, y))[3])
-            bottom = sum(1 for y in range(box[3] - 4, box[3]) for x in range(36) if f[0].getpixel((x, y))[3])
-            self.assertLess(top, bottom)
-        self.assertNotEqual(first["sheet"], second["sheet"])
+        f = frames(first["sheet"])
+        self.assertTrue(all(fr.getchannel("A").getbbox() for fr in f))
+        # Nose-up: the arrow's tip is in the top of frame 0.
+        box = f[0].getchannel("A").getbbox()
+        top = sum(1 for y in range(box[1], box[1] + 4) for x in range(36) if f[0].getpixel((x, y))[3])
+        bottom = sum(1 for y in range(box[3] - 4, box[3]) for x in range(36) if f[0].getpixel((x, y))[3])
+        self.assertLess(top, bottom)
+        # The pool kept the batch's 4 most different (dropping a near-twin); Try again picks
+        # the ones least like what was shown: three different colours in three tries.
+        again = service.generate({"mode": "random", "batch": first["batch"]})
+        third = service.generate({"mode": "random", "batch": first["batch"]})
+        hues = {max(range(3), key=lambda k: self.colour(r)[k]) for r in (first, again, third)}
+        self.assertEqual(len(hues), 3)
 
-    def test_a_prompt_batch_gives_try_again_for_free_until_used_up(self):
+    def test_prompt_try_again_gives_different_ships_and_draws_the_next_take_ahead(self):
         reply = service.generate({"mode": "prompt", "prompt": "a bronze gunship"})
-        self.assertEqual((reply["left"], len(self.calls)), (4, 1))
-        self.assertIn("bronze gunship", self.calls[0])
-        seen = {reply["sheet"]}
-        for left in (3, 2, 1, 0):
-            again = service.generate({"mode": "prompt", "batch": reply["batch"]})
-            self.assertEqual(again["left"], left)
-            seen.add(again["sheet"])
-        self.assertEqual(len(seen), 5)
-        self.assertEqual(len(self.calls), 1)
+        tries = service._found(reply["batch"])
+        tries._drawing.join()  # the next take is drawn alongside the first, in the background
+        self.assertEqual(len(self.calls), 2)
+        self.assertTrue(all("bronze gunship" in c for c in self.calls))
+        self.assertEqual(sum("Another take" in c for c in self.calls), 1)
+        second = service.generate({"mode": "prompt", "batch": reply["batch"]})
+        hues = {max(range(3), key=lambda k: self.colour(r)[k]) for r in (reply, second)}
+        self.assertEqual(len(hues), 2, "the second isn't a repaint of the first")
+        self.assertTrue(second["ready"], "the next take is already drawn")
+        service.generate({"mode": "prompt", "batch": reply["batch"]})  # uses the take drawn ahead
+        tries._drawing and tries._drawing.join()
+        self.assertEqual(len(self.calls), 3, "and draws the one after that ahead")
+
+    def test_a_run_of_tries_has_a_cap_on_paid_batches(self):
+        from foundation_ships import designer
+        tries = designer.Tries(prompt="a bronze gunship", max_batches=2)
+        with self.assertRaises(RuntimeError):
+            for _ in range(20):
+                tries.next()
+        self.assertEqual(len(self.calls), 2)
+
+    def test_an_unknown_token_without_a_prompt_has_expired(self):
         with self.assertRaises(service.Refused) as gone:
-            service.generate({"mode": "prompt", "batch": reply["batch"]})
+            service.generate({"mode": "prompt", "batch": "nope"})
         self.assertEqual(gone.exception.status, 410)
+
+
+class StyleRequest(unittest.TestCase):
+    """What is sent to PixelLab's style endpoint (requests mocked)."""
+
+    def test_one_or_two_stock_refs_and_an_original_brief(self):
+        from unittest import mock
+        import os
+        from foundation_ships import stylegen
+        sent = []
+        art = Image.new("RGBA", (36, 36))
+        for y in range(8, 28):
+            for x in range(10, 26):
+                art.putpixel((x, y), (200, 100, 50, 255))
+        buf = io.BytesIO()
+        art.save(buf, "PNG")
+        done = {"status": "completed", "last_response": {"images": [{"base64": base64.b64encode(buf.getvalue()).decode()}]}}
+
+        def post(url, json, headers, timeout):
+            sent.append(json)
+            return mock.Mock(ok=True, status_code=202, json=lambda: {"background_job_id": "j"})
+
+        with mock.patch.dict(os.environ, {"PIXEL_LAB_API_KEY": "k"}), \
+                mock.patch("requests.post", side_effect=post), \
+                mock.patch("requests.get", return_value=mock.Mock(ok=True, json=lambda: done)), \
+                mock.patch("time.sleep"):
+            for seed in range(6):
+                self.assertEqual(len(stylegen.draw_batch("a bronze gunship", seed=seed)), 1)
+        counts = {len(body["style_images"]) for body in sent}
+        self.assertTrue(counts <= {1, 2} and counts, counts)
+        for body in sent:
+            self.assertTrue(body["description"].startswith(stylegen.ORIGINAL))
+            self.assertIn("a bronze gunship", body["description"])
+            self.assertIn("Do not copy", body["style_description"])
+            self.assertEqual({(r["width"], r["height"]) for r in body["style_images"]}, {(36, 36)})

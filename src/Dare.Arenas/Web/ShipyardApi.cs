@@ -25,8 +25,8 @@ internal sealed partial class WebServer
 {
     private const int MaxShipJsonBytes = 400 * 1024; // a base64 sheet is at most ~350 KB
 
-    // PixelLab's queue can take a few minutes for a fresh batch.
-    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(300) };
+    // PixelLab's queue takes 1.5-4.5 minutes for a fresh batch (the ship service gives up at 7).
+    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(450) };
 
     /// <summary>The ship service's base URL: DARE_SHIPS_URL, else the loopback default.</summary>
     private static readonly string ShipServiceUrl =
@@ -97,11 +97,15 @@ internal sealed partial class WebServer
         if (mode == "random")
         {
             if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
-            request = new { mode = "random" };
+            // Try again continues the pilot's run, so the next ship differs from those shown.
+            request = Str(body, "batch") is { Length: > 0 and <= 64 } again
+                ? new { mode = "random", batch = again }
+                : (object)new { mode = "random" };
         }
         else if (mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } batch)
         {
-            // The next option from a batch already drawn (and paid for): cheap, like Random.
+            // Try again on a prompt: usually a ship already drawn; the ship service caps how many
+            // fresh (paid) batches one run of tries may draw.
             if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
             request = new { mode = "prompt", batch };
         }
