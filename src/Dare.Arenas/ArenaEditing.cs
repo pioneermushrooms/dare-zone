@@ -151,7 +151,7 @@ public sealed partial class ArenaOwnership
             return new Result(false, $"{section}:{key} is not an arena setting owners can change.");
         (section, key) = documented[(section.ToLowerInvariant(), key.ToLowerInvariant())];
 
-        if (!SettingValue.TryValidate(rawValue, out var value, out var error))
+        if (!SettingValue.TryValidate(section, key, rawValue, out var value, out var error))
             return new Result(false, error);
 
         if (!_settingLimiter.TryTake(arenaName))
@@ -160,7 +160,7 @@ public sealed partial class ArenaOwnership
         var old = _configManager.GetStr(cfg, section, key);
         WriteArenaSetting(cfg, arenaName, section, key, value, $"{actor} with Dare.Arenas");
         Log(LogLevel.Info, $"{actor} set {section}:{key} in [{arenaName}]: '{old}' -> '{value}'.");
-        return new Result(true, $"{section}:{key}: {old ?? "(unset)"} -> {value}{LiveNote(arenaName, section, key, value)}");
+        return new Result(true, $"{section}:{key}: {old ?? "(unset)"} -> {(value.Length == 0 ? "(off)" : value)}{LiveNote(arenaName, section, key, value)}");
     }
 
     /// <summary>Reads one setting an owner may see (the editable ones plus General:Map/LevelFiles).</summary>

@@ -3,17 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Staff desk — SubSpace Foundation</title>
+<title>Admin — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/staff.js" defer></script>
 </head>
 <body class="staff">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
-<div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Staff desk</h1><p class="sub" id="who"></p></div>
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a><a href="/arena/staff" aria-current="page">Admin</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Admin</h1><p class="sub" id="who"></p></div>
 
 <section class="panel" id="gate" hidden><p id="gatemsg"></p></section>
 
 <div id="desk" hidden>
+<nav class="admintabs" role="tablist" aria-label="Admin sections">
+  <button type="button" class="settab" role="tab" data-tab="arenas" aria-selected="true">Arenas</button>
+  <button type="button" class="settab" role="tab" data-tab="commands" aria-selected="false">Commands</button>
+  <button type="button" class="settab" role="tab" data-tab="howto" aria-selected="false">How do I…</button>
+</nav>
+<div data-pane="arenas">
 <section class="panel" id="pendingpanel" hidden>
   <h2>Stuck requests</h2>
   <p class="dim">Arenas launch on their own now. These couldn't (a folder problem, say): approve to make them, or decline.</p>
@@ -33,6 +39,36 @@
   <h2>Player-owned arenas</h2>
   <table><thead><tr><th>Arena</th><th>Owner</th><th>Status</th><th>Listed</th><th>Pilots</th><th></th></tr></thead><tbody id="arenas"></tbody></table>
   <p class="msg" id="arenamsg" role="status"></p>
+</section>
+</div>
+
+<section class="panel" data-pane="commands" hidden>
+  <h2>Server commands</h2>
+  <p class="dim">Every command the zone has loaded right now, with its help. Type them in game chat with <b>?</b> (or <b>*</b> for some). Send one to a pilot as a private message (<b>/?command</b>) to aim it at them.</p>
+  <div class="cmdtools">
+    <input type="search" id="cmdfilter" placeholder="Filter, e.g. kick, setg, lastlog" aria-label="Filter commands">
+    <label class="switch bot-switch"><input type="checkbox" id="cmdmine" role="switch" checked><span class="track" aria-hidden="true"></span> Only ones I can use</label>
+    <select id="cmdmodule" aria-label="Module"><option value="">All modules</option></select>
+  </div>
+  <p class="dim" id="cmdcount"></p>
+  <div class="cmdlist" id="cmdlist"></div>
+  <p class="msg" id="cmdmsg" role="status"></p>
+</section>
+
+<section class="panel" data-pane="howto" hidden>
+  <h2>How do I…</h2>
+  <dl class="howto">
+    <dt>Stop or change a message the zone keeps repeating</dt>
+    <dd>Open the <a href="/arena/me#messages">Arena Editor</a>, pick <b>Public (0)</b> (or the arena it repeats in), then <b>Messages</b>. Switch the timed message off or remove it. In game, in that arena: <code>?seta Misc:PeriodicMessage0=0</code> (no spaces around <b>:</b> or <b>=</b>).</dd>
+    <dt>Change an arena's rules, ships, weapons or prizes</dt>
+    <dd>Arena Editor → pick the arena → <b>Settings</b>, then a tab (Ships, Weapons, Prizes and buying, Game rules, Flags and balls). Sysops and smods can edit every arena, including Public (0).</dd>
+    <dt>Change a zone-wide setting</dt>
+    <dd>In game, as sysop: <code>?getg Section:Key</code> to read it, <code>?setg Section:Key=value</code> to change it (written to global.conf; no spaces around <b>:</b> or <b>=</b>). Some need a zone restart.</dd>
+    <dt>See what the server has been warning about</dt>
+    <dd><code>?lastlog</code> shows recent log lines; <code>?lastlog 50 Security</code> filters by module. Red sysop messages are Malicious or Error logs.</dd>
+    <dt>Deal with a pilot</dt>
+    <dd><code>/?kick</code>, <code>/?spec</code>, <code>/?info</code> (sent privately to the pilot). See the Commands tab for the rest.</dd>
+  </dl>
 </section>
 </div>
 </body>

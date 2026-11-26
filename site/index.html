@@ -16,6 +16,13 @@
 <script type="module" src="/loading.js?v=16"></script>
 <script type="module" src="/graphics-other.js?v=16"></script>
 <script>
+// zone staff see an Admin link (the server says who is staff; the page itself checks again)
+fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
+  .then((r) => r.ok ? r.json() : null)
+  .then((b) => { if (b && b.staff) document.getElementById("adminlink").style.display = ""; })
+  .catch(() => {});
+</script>
+<script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
 setTimeout(function () {
@@ -48,6 +55,7 @@ setTimeout(function () {
     <nav class="toplinks" aria-label="Site">
       <a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a>
       <a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a>
+      <a href="/arena/staff" id="adminlink" title="Zone staff: arenas, server commands, how-tos" style="display:none">Admin</a>
     </nav>
     <div class="pilotbox">
       <button type="button" class="pilot" id="pilot" aria-haspopup="menu" aria-expanded="false">

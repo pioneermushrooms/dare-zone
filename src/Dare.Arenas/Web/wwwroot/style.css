@@ -563,3 +563,43 @@ select:hover { border-color:#3a5576; }
 #arenapick { font:700 1.05rem var(--label); letter-spacing:.08em; text-transform:uppercase; min-height:40px; }
 input[type=checkbox], input[type=radio], input[type=range] { accent-color:var(--accent); }
 .gfxcard .acts select { padding:4px 30px 4px 8px; background-position:right 9px center; }
+
+/* settings tabs */
+.settabs { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px; }
+.settab { font:600 .95rem/1 var(--label); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); background:var(--well);
+  border:1px solid var(--well-line); border-radius:5px; padding:7px 11px; display:inline-flex; gap:8px; align-items:center; cursor:pointer; }
+.settab:hover { color:var(--text); }
+.settab[aria-selected="true"] { color:#fff; background:linear-gradient(180deg, #1c4058, #13263c); border-color:#2f5674; box-shadow:inset 0 -2px 0 var(--accent); }
+.settab .count { font:500 .75rem/1 var(--sans); color:var(--dim); letter-spacing:0; }
+.setting label.switch { justify-self:start; }
+
+/* arena messages */
+.msgform { margin-bottom:18px; }
+.msgform .row { display:flex; gap:8px; }
+.periodic { display:flex; flex-direction:column; gap:8px; margin:8px 0; }
+.pmsg { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center;
+  background:var(--well); border:1px solid var(--well-line); border-radius:6px; padding:8px 10px; box-shadow:inset 0 2px 6px #000a; }
+.pmsg.off > :not(label.switch):not(button) { opacity:.55; }
+.pmsg label.num { display:flex; align-items:center; gap:6px; color:var(--dim); font-size:.85rem; white-space:nowrap; }
+.pmsg label.num input { width:4.5em; }
+.pmsg > span:empty { flex:1 1 0; }
+.pmsg > input[type=text] { flex:1 1 100%; min-width:0; }
+
+/* admin: command reference */
+.cmdtools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+.cmdtools input[type=search] { flex:1 1 220px; }
+.cmdlist { display:flex; flex-direction:column; gap:4px; }
+.cmd { border-top:1px solid #18243a; padding:8px 0; }
+.cmd > summary { cursor:pointer; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; list-style:none; }
+.cmd > summary::-webkit-details-marker { display:none; }
+.cmd > summary code { color:var(--accent); font-weight:700; }
+.cmd.no > summary code { color:var(--dim); }
+.cmd .first { color:var(--dim); font-size:.85rem; flex:1 1 200px; }
+.cmd pre { white-space:pre-wrap; color:var(--text); background:var(--well); border:1px solid var(--well-line); border-radius:5px;
+  padding:10px; margin:8px 0 0; font:.85rem/1.45 ui-monospace, Menlo, monospace; }
+.admintabs { display:flex; gap:6px; flex-wrap:wrap; width:min(980px, calc(100% - 32px)); margin:0 auto 14px; }
+.howto code { color:var(--accent); }
+dl.howto { margin:0; }
+dl.howto dt { color:#fff; font-weight:600; margin-top:14px; }
+dl.howto dt:first-child { margin-top:0; }
+dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }

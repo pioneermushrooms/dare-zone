@@ -91,6 +91,9 @@ public sealed class ArenaConfigFileTests : IDisposable
     [InlineData("3000", "3000", true)]
     [InlineData("2000", "3000", false)]
     [InlineData(null, "3000", false)]
+    [InlineData(null, "", true)]
+    [InlineData("", "", true)]
+    [InlineData("hi", "", false)]
     public void a_change_is_live_only_when_the_running_arena_sees_the_written_value(string? running, string written, bool live)
     {
         Assert.Equal(live, ArenaConfigFile.IsLive(running, written));

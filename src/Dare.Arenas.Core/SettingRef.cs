@@ -41,14 +41,40 @@ public static class SettingValue
 {
     public const int MaxLength = 64;
 
+    /// <summary>Chat messages (Misc:GreetMessage, Misc:PeriodicMessage0-9) may be this long.</summary>
+    public const int MaxMessageLength = 200;
+
+    /// <summary>
+    /// The arena's chat messages: Misc:GreetMessage and Misc:PeriodicMessage0 through 9. They may be
+    /// empty (an empty one is off) and longer than other values.
+    /// </summary>
+    public static bool IsMessage(string section, string key) =>
+        section.Equals("Misc", StringComparison.OrdinalIgnoreCase)
+        && (key.Equals("GreetMessage", StringComparison.OrdinalIgnoreCase)
+            || (key.Length == "PeriodicMessage0".Length
+                && key.StartsWith("PeriodicMessage", StringComparison.OrdinalIgnoreCase)
+                && char.IsAsciiDigit(key[^1])));
+
     /// <summary>Trimmed, non-empty, at most 64 chars, no control characters, no ';' and no backslash.</summary>
-    public static bool TryValidate(string? raw, out string value, out string error)
+    public static bool TryValidate(string? raw, out string value, out string error) =>
+        TryValidate(raw, MaxLength, allowEmpty: false, out value, out error);
+
+    /// <summary>
+    /// As <see cref="TryValidate(string?, out string, out string)"/>, but a message setting
+    /// (<see cref="IsMessage"/>) may be empty and up to <see cref="MaxMessageLength"/> chars.
+    /// </summary>
+    public static bool TryValidate(string section, string key, string? raw, out string value, out string error) =>
+        IsMessage(section, key)
+            ? TryValidate(raw, MaxMessageLength, allowEmpty: true, out value, out error)
+            : TryValidate(raw, MaxLength, allowEmpty: false, out value, out error);
+
+    private static bool TryValidate(string? raw, int maxLength, bool allowEmpty, out string value, out string error)
     {
         value = "";
         error = "";
         var t = raw?.Trim() ?? "";
-        if (t.Length == 0) { error = "A value is required."; return false; }
-        if (t.Length > MaxLength) { error = $"Values are limited to {MaxLength} characters."; return false; }
+        if (t.Length == 0 && !allowEmpty) { error = "A value is required."; return false; }
+        if (t.Length > maxLength) { error = $"Values are limited to {maxLength} characters."; return false; }
         foreach (var c in t)
         {
             if (char.IsControl(c)) { error = "Values must not contain control characters or line breaks."; return false; }
