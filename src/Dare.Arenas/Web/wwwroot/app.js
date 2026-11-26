@@ -607,7 +607,8 @@ async function runGenerator() {
   const dlg = $("gfxdlg");
   dlg.classList.add("busy");
   $("gfxuse").disabled = true; $("gfxagain").disabled = true; $("gfxdraw").disabled = true;
-  msg($("gfxdlgmsg"), "Drawing…", true);
+  msg($("gfxdlgmsg"), "", true);
+  const stopWait = waitingFor(run);
   try {
     const { body } = await postJson("/graphics/generate", { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
     if (gen !== run) return;
@@ -619,10 +620,28 @@ async function runGenerator() {
   } catch {
     msg($("gfxdlgmsg"), "Couldn't reach the generator.", false);
   } finally {
+    stopWait();
     dlg.classList.remove("busy");
     $("gfxagain").disabled = PROMPTED.has(run.mode) && !run.prompt;
     $("gfxdraw").disabled = false;
   }
+}
+
+// The spinner over the preview while the generator works: what it's doing and the time so far.
+function waitingFor(run) {
+  const prompted = PROMPTED.has(run.mode);
+  const what = run.mode === "ship" ? "Building a random ship" : run.mode === "ship-prompt" ? "Painting your ship"
+    : run.mode === "recolor" ? "Recolouring" : run.mode === "new" ? `Drawing a new ${run.slot.label.toLowerCase()}` : `Painting your ${run.slot.label.toLowerCase()}`;
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.round((Date.now() - started) / 1000);
+    $("gfxloadingtime").textContent = prompted ? `${s} s · usually 20–60 s` : `${s} s`;
+  };
+  $("gfxloadingtext").textContent = what + "…";
+  tick();
+  $("gfxloading").hidden = false;
+  const timer = setInterval(tick, 1000);
+  return () => { clearInterval(timer); $("gfxloading").hidden = true; };
 }
 
 function wireGraphics() {

@@ -209,7 +209,8 @@
     <input id="gfxprompt" maxlength="500" placeholder="e.g. a glowing purple plasma orb" aria-label="Describe what to draw" autocomplete="off">
     <button type="submit" id="gfxdraw">Draw</button>
   </form>
-  <div class="gfxpreview"><canvas id="gfxcanvas" width="640" height="160" aria-label="The generated picture"></canvas></div>
+  <div class="gfxpreview"><canvas id="gfxcanvas" width="640" height="160" aria-label="The generated picture"></canvas>
+    <div class="gfxloading" id="gfxloading" hidden><span class="gfxspin" aria-hidden="true"></span><b id="gfxloadingtext">Drawing…</b><span id="gfxloadingtime"></span></div></div>
   <p class="msg" id="gfxdlgmsg" role="status"></p>
   <div class="row dlg-actions">
     <button type="button" class="hot" id="gfxuse" disabled>Use this</button>

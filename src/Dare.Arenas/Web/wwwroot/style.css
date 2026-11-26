@@ -330,4 +330,15 @@ dialog.gfxdlg { width:min(720px, calc(100vw - 32px)); }
 .gfxpreview canvas { max-width:100%; image-rendering:pixelated; }
 .gfxprompt { display:flex; gap:8px; margin-bottom:10px; }
 .gfxprompt input { flex:1; min-width:0; }
-dialog.gfxdlg.busy .gfxpreview { opacity:.5; }
+dialog.gfxdlg.busy .gfxpreview canvas { opacity:.35; }
+
+/* the generator's wait: a spinner over the preview with the time so far */
+.gfxpreview { position:relative; min-height:170px; align-items:center; }
+.gfxloading { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  background:#000c; border-radius:6px; text-align:center; padding:12px; }
+.gfxloading[hidden] { display:none; }
+.gfxloading b { color:var(--accent); font-size:.95rem; }
+.gfxloading span:last-child { color:var(--dim); font-size:.8rem; font-variant-numeric:tabular-nums; }
+.gfxspin { width:38px; height:38px; border-radius:50%; border:3px solid #1f3a52; border-top-color:var(--accent); animation:gfxspin .9s linear infinite; }
+@keyframes gfxspin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gfxspin { animation:none; } }
