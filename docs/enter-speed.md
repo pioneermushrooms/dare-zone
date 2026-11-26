@@ -47,9 +47,10 @@ Site: `?v=16` (this branch).
 
 - **First-visit map download (5 s)** is the zone's bandwidth limiter, not the browser:
   SubspaceServer's `BandwidthDefault` starts every connection at `Net:LimitInitial` = 5000 B/s and
-  only grows it per ack. Setting `[Net] LimitInitial = 40000` in `conf/global.conf` would send this
-  map in under a second. It is read only when the module loads, so it needs a zone restart
-  (with nobody on). It applies to every client, native ones included.
+  only grows it per ack. `[Net] LimitInitial = 40000` was added to the live `conf/global.conf` on
+  2026-11-26 (backup: `/root/global.conf.pre-limitinitial`). It is read only when the module
+  loads, so it takes effect at the next zone restart; then re-time a first visit, expected under
+  a second for this map. It applies to every client, native ones included.
 - **Pressing Enter the moment the page opens** still waits for the rest of the 2.75 MB. Further
   cuts: graphics (1.6 MB compressed) as a separate pack fetched in parallel; `opt-level = "s"` or
   `wasm-opt` on the code (check the game's frame times first); brotli or zstd-19 precompressed
