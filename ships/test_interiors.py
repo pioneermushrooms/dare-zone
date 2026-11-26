@@ -68,6 +68,10 @@ class Interiors(unittest.TestCase):
             self.assertLessEqual(sum(wrap) / len(wrap), max(inner) , pack)
             self.assertLessEqual(sum(wrap) / len(wrap), sum(inner) / len(inner) * 2 + 1, pack)
 
+    def test_site_serves_the_same_tileset(self):
+        site = os.path.join(tg.WWWROOT, "standard-tiles.bmp")
+        self.assertEqual(open(site, "rb").read(), self.done)
+
     def test_refuses_a_colour_outside_the_palette(self):
         old = it.SPECS["navy"]
         it.SPECS["navy"] = {"kind": "flat", "base": (1, 2, 250), "dot": (1, 2, 250)}
