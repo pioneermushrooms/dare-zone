@@ -398,3 +398,6 @@ dialog label input, dialog label textarea { font:500 1rem Inter, system-ui, sans
 .card { background:linear-gradient(180deg, #13203ae6, #0b1422e6); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
   box-shadow:inset 0 1px 0 #ffffff12, 0 18px 40px -18px #000e; }
 @media (prefers-reduced-motion:reduce) { #start, .toplinks a, .pilot, .ghostbtn, .sayrow button, .join button, dialog button { transition:none; } }
+/* Armory: which ship a weapon sheet is for; a ship with its own shows a dot */
+.gfx .shiplist.forship button { font-size: .78rem; min-height: 30px; padding: 4px 8px; }
+.gfx .shiplist.forship button.has::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--cyan); vertical-align: 1px; }

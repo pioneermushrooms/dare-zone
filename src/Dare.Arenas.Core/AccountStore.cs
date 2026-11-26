@@ -140,6 +140,23 @@ public sealed partial class AccountStore : IDisposable
               account_id INTEGER NOT NULL PRIMARY KEY,
               use_own INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS armory_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              account_id INTEGER NOT NULL,
+              kind TEXT NOT NULL,
+              name TEXT NOT NULL,
+              source TEXT NOT NULL,
+              png BLOB NOT NULL,
+              created TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_armory_items_account ON armory_items(account_id);
+            CREATE TABLE IF NOT EXISTS armory_slots (
+              account_id INTEGER NOT NULL,
+              kind TEXT NOT NULL,
+              ship INTEGER NOT NULL,
+              item_id INTEGER NOT NULL,
+              PRIMARY KEY (account_id, kind, ship)
+            );
             CREATE TABLE IF NOT EXISTS account_meta (
               key TEXT NOT NULL PRIMARY KEY,
               value TEXT NOT NULL
@@ -150,6 +167,7 @@ public sealed partial class AccountStore : IDisposable
             Exec("ALTER TABLE accounts ADD COLUMN link_id INTEGER NULL;");
         Exec("CREATE INDEX IF NOT EXISTS ix_accounts_link ON accounts(link_id);");
         CreateWebSessionTable();
+        MoveWeaponGraphicsToArmory();
     }
 
     public void Dispose()

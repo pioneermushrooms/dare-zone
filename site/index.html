@@ -7,14 +7,15 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=18">
+<link rel="stylesheet" href="/play.css?v=19">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=16"></script>
+<script type="module" src="/play/start.mjs?v=17"></script>
 <script type="module" src="/chat.js?v=17"></script>
 <script type="module" src="/graphics.js?v=16"></script>
 <script type="module" src="/loading.js?v=16"></script>
-<script type="module" src="/graphics-other.js?v=16"></script>
+<script type="module" src="/graphics-other.js?v=17"></script>
+<script type="module" src="/graphics-armory.js?v=17"></script>
 <script>
 // zone staff see an Admin link (the server says who is staff; the page itself checks again)
 fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
@@ -147,7 +148,7 @@ setTimeout(function () {
 <dialog id="graphics" class="gfx" aria-labelledby="gfx-title">
   <header class="gfxhead">
     <h2 id="gfx-title">Graphics</h2>
-    <nav class="gfxtabs" aria-label="Graphics"><button type="button" class="tab" id="gfx-tab-ships" aria-current="page">Ships</button><button type="button" class="tab" id="gfx-tab-other">Other graphics</button></nav>
+    <nav class="gfxtabs" aria-label="Graphics"><button type="button" class="tab" id="gfx-tab-ships" data-panel="gfx-ships" aria-current="page">Ships</button><button type="button" class="tab" id="gfx-tab-armory" data-panel="gfx-armory">Armory</button><button type="button" class="tab" id="gfx-tab-other" data-panel="gfx-other">Other graphics</button></nav>
     <label class="useown" title="Off: you see the arena's ships and graphics; yours are kept for when you turn it back on"><input type="checkbox" id="gfx-useown" data-always checked> Use my own</label>
     <button type="button" class="ghostbtn" id="gfx-close" data-always aria-label="Close graphics">✕</button>
   </header>
@@ -203,9 +204,59 @@ setTimeout(function () {
       <button type="button" class="ghost" id="gfx-signin" hidden>Sign in to keep a shipyard</button>
     </aside>
   </div>
+  <div class="gfxbody gfxarmory" id="gfx-armory" hidden>
+    <section class="gfxmain" aria-label="Armory">
+      <div class="shiplist" id="gfx-a-kinds" role="group" aria-label="Weapon"></div>
+      <div class="shiplist forship" id="gfx-a-ships" role="group" aria-label="For"></div>
+      <div class="shipview">
+        <canvas class="spin" id="gfx-a-current" width="144" height="144" aria-hidden="true"></canvas>
+        <div class="sheetbox">
+          <p class="label" id="gfx-a-label"></p>
+          <canvas class="sheet wide" id="gfx-a-sheet" width="160" height="208" aria-hidden="true"></canvas>
+          <p class="small dim" id="gfx-a-hint"></p>
+        </div>
+      </div>
+      <div class="gfxactions" id="gfx-a-actions">
+        <button type="button" class="ghost" id="gfx-a-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-a-upload">Upload…</button>
+        <button type="button" id="gfx-a-generate" aria-controls="gfx-a-genchoice">Generate</button>
+        <input type="file" id="gfx-a-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>
+        <div class="genchoice" id="gfx-a-genchoice" hidden>
+          <button type="button" id="gfx-a-random">Random</button>
+          <button type="button" id="gfx-a-prompted">Prompt</button>
+        </div>
+      </div>
+      <form class="gfxprompt" id="gfx-a-prompt" hidden>
+        <label><span id="gfx-a-prompt-label">Describe it</span> <textarea id="gfx-a-prompt-text" maxlength="500" rows="2" placeholder="Crackling green plasma"></textarea></label>
+        <div class="row"><button type="submit">Draw it</button><button type="button" class="ghost" id="gfx-a-prompt-cancel">Cancel</button></div>
+      </form>
+      <div class="gfxreview" id="gfx-a-review" hidden>
+        <div class="shipview">
+          <canvas class="spin" id="gfx-a-review-spin" width="144" height="144" aria-hidden="true"></canvas>
+          <div class="sheetbox">
+            <p class="label" id="gfx-a-review-note"></p>
+            <canvas class="sheet wide" id="gfx-a-review-sheet" width="160" height="208" aria-hidden="true"></canvas>
+          </div>
+        </div>
+        <div class="row">
+          <label class="applyto">Apply to <select id="gfx-a-applyto"></select></label>
+          <button type="button" id="gfx-a-approve">Approve</button>
+          <button type="button" class="ghost" id="gfx-a-again">Try again</button>
+          <button type="button" class="ghost" id="gfx-a-decline">Decline</button>
+        </div>
+      </div>
+      <p class="gfxstatus" id="gfx-a-status" role="status"></p>
+    </section>
+    <aside class="gfxyard" id="gfx-a-yard" aria-label="Armory">
+      <h3>Armory <span class="dim" id="gfx-a-count"></span></h3>
+      <p class="small dim" id="gfx-a-note"></p>
+      <ul class="yardlist" id="gfx-a-list"></ul>
+      <button type="button" class="ghost" id="gfx-a-signin" hidden>Sign in to keep an armory</button>
+    </aside>
+  </div>
   <div class="gfxbody gfxother" id="gfx-other" hidden>
     <section class="gfxmain" aria-label="Other graphics">
-      <p class="small dim" id="gfx-o-intro">Your own bombs, bullets, items and effects. Only you see them, in every arena, over the arena's own.</p>
+      <p class="small dim" id="gfx-o-intro">Your own items and effects. Only you see them, in every arena, over the arena's own.</p>
       <div class="otherview">
         <p class="label" id="gfx-o-label"></p>
         <canvas class="sheet wide" id="gfx-o-sheet" width="160" height="16" aria-hidden="true"></canvas>

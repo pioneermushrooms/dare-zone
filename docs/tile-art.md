@@ -39,7 +39,8 @@ filled (a 3×3 block reads as one plate).
   previews; `styles-preview.png` shows every style's 47 pieces.
 - `src/Dare.Arenas/Web/wwwroot/tileart-styles.js`: generated; every style's pieces for the site.
 - `src/Dare.Arenas/Web/wwwroot/tileart.js`: slot inference, plans, BMP writing, the panel.
-- Tests: `cd ships && python3 -m unittest test_tilegen` (Pillow), `node --test tests/js/*.test.js`.
+- `ships/interiors.py`: plain interior pieces for the standard packs (thick walls), in tactical2 slots 128-133; output `ships/tilesets/tactical2-interior.bmp`.
+- Tests: `cd ships && python3 -m unittest test_tilegen test_interiors` (Pillow), `node --test tests/js/*.test.js`.
 
 Adding a style: add a `Style` (and a shader if it's a new kind) to `STYLES`, run `tilegen.py`.
 Replacing the standard layout: replace `tile-layout.json`; sheets and the editor read it.
