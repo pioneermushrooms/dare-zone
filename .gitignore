@@ -12,3 +12,5 @@ voice/.venv
 voice/takes/
 voice/takes-gen.log
 __pycache__/
+ships/*.egg-info/
+ships/build/

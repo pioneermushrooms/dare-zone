@@ -106,6 +106,8 @@ function route() {
   $("arena-context").hidden = !current.arena || shown === "make";
   if (shown === "bots") loadBots(current.arena);
   if (shown === "overview") loadBotSummary(current.arena);
+  if (shown === "map") loadLibrary();
+  if (shown === "graphics") loadGraphics();
 }
 
 function renderNoArena(body) {
@@ -135,13 +137,13 @@ function renderArena(body) {
   $("overview-bots-label").hidden = $("botnav").hidden;
   $("overview-bots").hidden = $("botnav").hidden;
   pick.replaceChildren(...body.arenas.map((a) => {
-    const o = el("option", { value: a.name, text: `${a.name} (${a.role})` });
+    const o = el("option", { value: a.name, text: `${a.name} (${a.staff ? "staff" : a.role})` });
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
   // make: up to maxPerPilot public arenas per pilot (drafts, named #..., don't count)
   const max = body.maxPerPilot || 3;
-  const owned = body.arenas.filter((a) => a.role === "owner" && !a.name.startsWith("#")).length;
+  const owned = body.arenas.filter((a) => a.role === "owner" && !a.staff && !a.name.startsWith("#")).length;
   const full = owned >= max;
   $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
   $("makeinfo").textContent = full
@@ -170,6 +172,150 @@ function renderArena(body) {
   const editor = "/arena/map?arena=" + encodeURIComponent(body.arena);
   $("openeditor").href = editor; $("viewmap").href = editor;
   drawThumb(body.arena);
+  renderRestart(body);
+}
+
+// ---- restart and enter: the top bar's buttons, the "not live yet" notes, the two dialogs ----------
+const enterUrl = (arena) => "/?arena=" + encodeURIComponent(arena) + "&enter=1"; // the home page presses Enter
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const andList = (xs) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
+let planTimer = 0;
+
+function renderRestart(body) {
+  const owner = body.role === "owner";
+  const r = body.restart || { running: false, online: 0, onlineNames: [], pending: [], plan: null };
+  const pending = owner && r.pending.length > 0;
+  $("enterarena").href = enterUrl(body.arena);
+  $("ctxonline").textContent = !r.running ? "Nobody in it" : r.online ? `${plural(r.online, "pilot")} in it` : "Only you in it";
+  $("restartenter").hidden = !owner;
+  $("restartenter").disabled = !pending;
+  $("restartenter").title = pending
+    ? `Restart so the running arena uses your saved ${andList(r.pending)}, then enter`
+    : "Nothing saved is waiting for a restart";
+  for (const n of document.querySelectorAll("[data-restart-note]")) {
+    n.hidden = !pending;
+    if (pending) n.querySelector("span").textContent = `Saved. The running arena isn't using your new ${andList(r.pending)} yet.`;
+  }
+  clearInterval(planTimer);
+  $("restartplan").hidden = !r.plan;
+  $("restartcancel").hidden = !owner;
+  if (r.plan) {
+    const at = new Date(r.plan.at);
+    const tick = () => {
+      const left = Math.max(0, Math.round((at - Date.now()) / 1000));
+      const inText = left >= 3600 ? `${Math.floor(left / 3600)}h ${Math.round(left % 3600 / 60)}m`
+        : left >= 60 ? `${Math.floor(left / 60)}m ${left % 60}s` : `${left}s`;
+      $("restartplantext").textContent = `Restart scheduled for ${at.toLocaleString()} (in ${inText}) by ${r.plan.by}.`;
+      if (left === 0) { clearInterval(planTimer); setTimeout(refreshRestart, 3000); }
+    };
+    tick();
+    planTimer = setInterval(tick, 1000);
+  }
+}
+
+// /api/me again, but only the restart part is redrawn (keeps the settings list as it is)
+async function refreshRestart() {
+  const arena = current?.arena;
+  if (!arena) return null;
+  const { body } = await getJson(API + "/me?arena=" + encodeURIComponent(arena));
+  if (!body || current?.arena !== arena) return null;
+  current.restart = body.restart;
+  renderRestart(current);
+  return body.restart;
+}
+
+// The web hides the in-game "?recyclearena" advice: the Restart button is right there.
+function webMessage(text) {
+  if (current?.role !== "owner") return text;
+  return (text || "").replace(/\s+The running arena isn't using[^.]*\?recyclearena\./, "")
+    .replace(/[;.]\s*[^;.]*\?recyclearena[^.]*\./, ".");
+}
+
+async function startRestart(enter) {
+  msg($("ctxmsg"), "", true);
+  const r = await refreshRestart();
+  if (!r) return msg($("ctxmsg"), "Could not reach the server.", false);
+  if (!r.running || r.online === 0) return restartNow(enter, null); // nobody to warn: just do it
+  openRestartDialog(r, enter);
+}
+
+async function restartNow(enter, message) {
+  const arena = current.arena;
+  const { body } = await postJson("/restart", { arena, message });
+  if (body?.ok && enter) { location.href = enterUrl(arena); return true; }
+  msg($("ctxmsg"), body?.message || "Could not restart.", !!body?.ok);
+  await refreshRestart();
+  return !!body?.ok;
+}
+
+let restartEnter = false;
+function openRestartDialog(r, enter) {
+  restartEnter = enter;
+  const names = r.onlineNames || [];
+  const more = r.online > names.length ? ` and ${r.online - names.length} more` : "";
+  $("restarttitle").textContent = `Restart ${current.arena}?`;
+  $("restartwho").textContent = `${plural(r.online, "pilot")} ${r.online === 1 ? "is" : "are"} in the arena right now`
+    + (names.length ? ` (${names.join(", ")}${more})` : "")
+    + ". Restarting disconnects them from the arena for a moment; they're put straight back in with your changes.";
+  $("restartnow").textContent = enter ? "Restart now and enter" : "Restart now";
+  if (!$("restartat").value) {
+    const d = new Date(Date.now() + 15 * 60000 - new Date().getTimezoneOffset() * 60000);
+    $("restartat").value = d.toISOString().slice(0, 16);
+  }
+  msg($("restartdlgmsg"), "", true);
+  $("restartdlg").showModal();
+  $("restartnow").focus();
+}
+
+function wireRestart() {
+  $("restartenter").addEventListener("click", () => startRestart(true));
+  for (const b of document.querySelectorAll("[data-restart]")) b.addEventListener("click", () => startRestart(false));
+  for (const b of document.querySelectorAll("dialog [data-close]")) b.addEventListener("click", () => b.closest("dialog").close());
+
+  $("enterarena").addEventListener("click", (e) => {
+    const r = current?.restart;
+    if (current?.role !== "owner" || !r?.pending?.length) return; // nothing waiting: just go
+    e.preventDefault();
+    $("entertext").textContent = `Your saved ${andList(r.pending)} isn't live in the running arena yet.`
+      + (r.online ? ` ${plural(r.online, "pilot")} ${r.online === 1 ? "is" : "are"} in it.` : "")
+      + " Restart it first?";
+    $("enterdlg").showModal();
+    $("enterrestart").focus();
+  });
+  $("enterrestart").addEventListener("click", () => { $("enterdlg").close(); startRestart(true); });
+  $("enteranyway").addEventListener("click", () => { location.href = enterUrl(current.arena); });
+
+  $("restartnow").addEventListener("click", async () => {
+    $("restartnow").disabled = true;
+    try {
+      const ok = await restartNow(restartEnter, $("restartmsg").value.trim() || null);
+      if (ok) { $("restartdlg").close(); $("restartmsg").value = ""; }
+      else msg($("restartdlgmsg"), $("ctxmsg").textContent, false);
+    } finally { $("restartnow").disabled = false; }
+  });
+  $("restartat").addEventListener("input", () => { document.querySelector('input[name="when"][value="at"]').checked = true; });
+  $("restartin").addEventListener("input", () => { document.querySelector('input[name="when"][value="in"]').checked = true; });
+  $("restartschedule").addEventListener("click", async () => {
+    const mode = document.querySelector('input[name="when"]:checked').value;
+    const at = mode === "in" ? new Date(Date.now() + Number($("restartin").value) * 60000) : new Date($("restartat").value);
+    if (isNaN(at) || at - Date.now() < 10000) return msg($("restartdlgmsg"), "Pick a time in the future.", false);
+    if (mode === "in" && !(Number($("restartin").value) >= 1)) return msg($("restartdlgmsg"), "Enter at least 1 minute.", false);
+    $("restartschedule").disabled = true;
+    try {
+      const { body } = await postJson("/restart", { arena: current.arena, message: $("restartmsg").value.trim() || null,
+        at: at.toISOString(), every: Number($("restartevery").value) });
+      if (!body?.ok) return msg($("restartdlgmsg"), body?.message || "Could not schedule it.", false);
+      $("restartdlg").close();
+      $("restartmsg").value = "";
+      msg($("ctxmsg"), body.message, true);
+      await refreshRestart();
+    } finally { $("restartschedule").disabled = false; }
+  });
+  $("restartcancel").addEventListener("click", async () => {
+    const { body } = await postJson("/restart/cancel", { arena: current.arena });
+    msg($("ctxmsg"), body?.message, !!body?.ok);
+    await refreshRestart();
+  });
 }
 
 // The arena's map, whole, on the overview (flat chart colours; lvl.js).
@@ -351,6 +497,171 @@ function wireBots() {
   };
 }
 
+// ---- game graphics: a card per replaceable picture (current thumbnail, upload, generate, reset) ----
+const GEN_LABELS = { recolor: "Recolour", new: "New look", prompt: "From a description…", ship: "Random ship", "ship-prompt": "Ship from a description…" };
+const PROMPTED = new Set(["prompt", "ship-prompt"]);
+let gfxArena = "";
+
+async function loadGraphics() {
+  const arena = current?.arena;
+  if (!arena) return;
+  const host = $("gfxgroups");
+  if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; }
+  const { body } = await getJson(API + "/graphics?arena=" + encodeURIComponent(arena));
+  if (current?.arena !== arena) return;
+  if (!body?.ok) { host.replaceChildren(el("p", { class: "msg bad", text: body?.message || "Couldn't load the graphics." })); return; }
+  const owner = current.role === "owner";
+  const groups = new Map();
+  for (const slot of body.graphics.slots) {
+    if (!groups.has(slot.group)) groups.set(slot.group, []);
+    groups.get(slot.group).push(slot);
+  }
+  host.replaceChildren(...[...groups].map(([group, slots]) =>
+    el("div", null, el("h3", { text: group }), el("div", { class: "gfxgrid" }, ...slots.map((s) => gfxCard(arena, s, owner))))));
+}
+
+function gfxCard(arena, slot, owner) {
+  const canvas = el("canvas", { width: "1", height: "1", "aria-label": slot.label + " now" });
+  const srcText = slot.source === "arena" ? "Yours" : slot.source === "lvz" ? "From " + slot.lvzFile : "Stock";
+  const card = el("div", { class: "gfxcard" },
+    el("div", { class: "head" }, el("b", { text: slot.label }), el("span", { class: "src " + slot.source, text: srcText })),
+    el("div", { class: "thumb" }, canvas),
+    el("span", { class: "hint", text: slot.hint }));
+  drawGraphic(canvas, arena, slot, false);
+  if (owner) {
+    const file = el("input", { type: "file", accept: ".png,.bmp,.bm2,image/png,image/bmp", hidden: "" });
+    const up = el("button", { type: "button", class: "small", text: "Upload" });
+    up.addEventListener("click", () => file.click());
+    file.addEventListener("change", async () => {
+      const f = file.files[0]; file.value = "";
+      if (f) await setGraphic(arena, slot, f);
+    });
+    const acts = el("div", { class: "acts" }, up, file);
+    if (slot.generate.length) {
+      const gen = el("select", { "aria-label": "Generate a new " + slot.label });
+      gen.append(el("option", { value: "", text: "Generate…" }), ...slot.generate.map((m) => el("option", { value: m, text: GEN_LABELS[m] || m })));
+      gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, slot, m); });
+      acts.append(gen);
+    }
+    if (slot.source === "arena") {
+      const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
+      reset.addEventListener("click", async () => {
+        if (!confirm(`Put ${slot.label} back to the game's own picture?`)) return;
+        const { body } = await postJson("/graphics/clear", { arena, name: slot.name });
+        msg($("gfxmsg"), webMessage(body?.message), body?.ok);
+        if (body?.ok) { loadGraphics(); refreshRestart(); }
+      });
+      acts.append(reset);
+    }
+    card.append(acts);
+  }
+  return card;
+}
+
+// The arena's current picture (or the stock one) onto a canvas; ships' stock pictures share one file.
+async function drawGraphic(canvas, arena, slot) {
+  try {
+    const r = await fetch(`${API}/graphics/image?arena=${encodeURIComponent(arena)}&name=${slot.name}`, { credentials: "same-origin" });
+    if (!r.ok) return;
+    const img = await createImageBitmap(await r.blob());
+    const ship = /^ship([1-8])$/.exec(slot.name);
+    let sx = 0, sy = 0, sw = img.width, sh = img.height;
+    if (ship && r.headers.get("X-Graphic-Source") === "stock") { sh = img.height / 8; sy = (Number(ship[1]) - 1) * sh; }
+    paintSheet(canvas, img, sx, sy, sw, sh);
+  } catch { /* leave it blank */ }
+}
+
+function paintSheet(canvas, img, sx = 0, sy = 0, sw = img.width, sh = img.height) {
+  const k = Math.max(1, Math.min(4, Math.floor(Math.min(640 / sw, 480 / sh)) || 1));
+  canvas.width = sw * k; canvas.height = sh * k;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw * k, sh * k);
+}
+
+async function setGraphic(arena, slot, blob) {
+  msg($("gfxmsg"), `Saving ${slot.label}…`, true);
+  const { body } = await post(`${API}/graphics/set?arena=${encodeURIComponent(arena)}&name=${slot.name}`, blob, "application/octet-stream");
+  msg($("gfxmsg"), webMessage(body?.message), body?.ok);
+  if (body?.ok) { loadGraphics(); refreshRestart(); }
+  return !!body?.ok;
+}
+
+// Generate: a preview first; "Use this" saves it to the arena.
+let gen = null; // { arena, slot, mode, prompt, png }
+function openGenerator(arena, slot, mode) {
+  gen = { arena, slot, mode, prompt: "", png: null };
+  $("gfxdlgtitle").textContent = `${GEN_LABELS[mode].replace("…", "")}: ${slot.label}`;
+  $("gfxpromptform").hidden = !PROMPTED.has(mode);
+  const c = $("gfxcanvas"); c.width = 1; c.height = 1;
+  $("gfxuse").disabled = true; $("gfxagain").disabled = true;
+  msg($("gfxdlgmsg"), PROMPTED.has(mode) ? "Describe it, then Draw. It takes up to a minute." : "", true);
+  $("gfxdlg").showModal();
+  if (PROMPTED.has(mode)) $("gfxprompt").focus(); else runGenerator();
+}
+
+async function runGenerator() {
+  if (!gen) return;
+  const run = gen;
+  const dlg = $("gfxdlg");
+  dlg.classList.add("busy");
+  $("gfxuse").disabled = true; $("gfxagain").disabled = true; $("gfxdraw").disabled = true;
+  msg($("gfxdlgmsg"), "", true);
+  const stopWait = waitingFor(run);
+  try {
+    const { body } = await postJson("/graphics/generate", { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
+    if (gen !== run) return;
+    if (!body?.ok || !body.sheet) { msg($("gfxdlgmsg"), body?.message || "Couldn't draw that.", false); return; }
+    run.png = Uint8Array.from(atob(body.sheet), (ch) => ch.charCodeAt(0));
+    paintSheet($("gfxcanvas"), await createImageBitmap(new Blob([run.png], { type: "image/png" })));
+    msg($("gfxdlgmsg"), "Use this, or try Again.", true);
+    $("gfxuse").disabled = false;
+  } catch {
+    msg($("gfxdlgmsg"), "Couldn't reach the generator.", false);
+  } finally {
+    stopWait();
+    dlg.classList.remove("busy");
+    $("gfxagain").disabled = PROMPTED.has(run.mode) && !run.prompt;
+    $("gfxdraw").disabled = false;
+  }
+}
+
+// The spinner over the preview while the generator works: what it's doing and the time so far.
+function waitingFor(run) {
+  const prompted = PROMPTED.has(run.mode);
+  const what = run.mode === "ship" ? "Building a random ship" : run.mode === "ship-prompt" ? "Painting your ship"
+    : run.mode === "recolor" ? "Recolouring" : run.mode === "new" ? `Drawing a new ${run.slot.label.toLowerCase()}` : `Painting your ${run.slot.label.toLowerCase()}`;
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.round((Date.now() - started) / 1000);
+    $("gfxloadingtime").textContent = prompted ? `${s} s · usually 20–60 s` : `${s} s`;
+  };
+  $("gfxloadingtext").textContent = what + "…";
+  tick();
+  $("gfxloading").hidden = false;
+  const timer = setInterval(tick, 1000);
+  return () => { clearInterval(timer); $("gfxloading").hidden = true; };
+}
+
+function wireGraphics() {
+  $("gfxpromptform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!gen) return;
+    gen.prompt = $("gfxprompt").value.trim();
+    if (!gen.prompt) return msg($("gfxdlgmsg"), "Describe what to draw.", false);
+    runGenerator();
+  });
+  $("gfxagain").addEventListener("click", runGenerator);
+  $("gfxuse").addEventListener("click", async () => {
+    if (!gen?.png) return;
+    $("gfxuse").disabled = true;
+    if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }))) $("gfxdlg").close();
+    else { msg($("gfxdlgmsg"), $("gfxmsg").textContent, false); $("gfxuse").disabled = false; }
+  });
+  $("gfxdlg").addEventListener("close", () => { gen = null; });
+}
+
 function renderLvz(files, max, owner) {
   $("lvzcount").textContent = `${files.length} of ${max} files.`;
   fill($("lvzlist"), files, (f) => {
@@ -402,8 +713,9 @@ function renderSettings(sections) {
       save.addEventListener("click", async () => {
         save.disabled = true;
         const { body } = await postJson("/settings", { arena: current.arena, section: s.section, key: st.key, value: input.value });
-        msg($("setmsg"), body.message, body.ok);
+        msg($("setmsg"), webMessage(body.message), body.ok);
         save.disabled = false;
+        if (body.ok && /recyclearena/.test(body.message || "")) refreshRestart();
       });
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") save.click(); });
       d.append(row);
@@ -428,17 +740,50 @@ function applyFilter() {
 async function removeLvz(name) {
   if (!confirm(`Remove ${name} from ${current.arena}? The file is deleted.`)) return;
   const { body } = await postJson("/rmlvz", { arena: current.arena, name });
-  msg($("lvzmsg"), body.message, body.ok);
+  msg($("lvzmsg"), webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
 }
 
+// ---- your maps: a dropped .lvl goes to the pilot's collection and opens as a draft in the editor ----
+const editorUrl = (arena, id) => "/arena/map?arena=" + encodeURIComponent(arena) + (id ? "&lib=" + id : "");
+const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+
+async function loadLibrary() {
+  const list = $("maplib");
+  if (!list || $("mapowner").hidden) return;
+  const { body } = await getJson(API + "/library");
+  if (!body?.ok) { list.replaceChildren(el("li", { class: "dim", text: "Couldn't load your maps." })); return; }
+  fill(list, body.maps, (m) => {
+    const open = el("a", { class: "btn small", href: editorUrl(current.arena, m.id), text: "Open in editor" });
+    const rm = el("button", { type: "button", class: "small danger", text: "Remove", "aria-label": "Remove " + m.name });
+    rm.addEventListener("click", async () => {
+      if (!confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`)) return;
+      const { body: r } = await postJson("/library/remove", { id: m.id });
+      msg($("mapmsg"), r?.message, r?.ok);
+      loadLibrary();
+    });
+    return el("li", null, el("span", { class: "name", text: m.name }),
+      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), open, rm);
+  }, "No maps yet. Drop a .lvl above, or use Save to my maps in the editor.");
+}
+
+async function addToLibrary(file, out) {
+  if (!file.name.toLowerCase().endsWith(".lvl")) { msg(out, "Choose a .lvl file.", false); return; }
+  msg(out, `Adding ${file.name} to your maps…`, true);
+  const { body } = await post(`${API}/library/save?name=${encodeURIComponent(file.name)}`, file, "application/octet-stream");
+  msg(out, body?.message, body?.ok);
+  if (body?.ok) location.href = editorUrl(current.arena, body.id); // a draft: nothing is published yet
+  else loadLibrary();
+}
+
 async function upload(file, kind, out) {
+  if (kind === "map") return addToLibrary(file, out);
   const lower = file.name.toLowerCase();
-  if (!lower.endsWith(kind === "map" ? ".lvl" : ".lvz")) { msg(out, kind === "map" ? "Choose a .lvl file." : "Choose a .lvz file.", false); return; }
+  if (!lower.endsWith(".lvz")) { msg(out, "Choose a .lvz file.", false); return; }
   msg(out, `Uploading ${file.name}…`, true);
   const url = `${API}/upload?kind=${kind}&arena=${encodeURIComponent(current.arena)}&name=${encodeURIComponent(file.name)}`;
   const { body } = await post(url, file, "application/octet-stream");
-  msg(out, body.message, body.ok);
+  msg(out, webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
 }
 
@@ -515,6 +860,6 @@ function wireHub() {
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
   // /arena/me?arena=%23name (from the builder page) opens that arena, e.g. your draft
-  if (page === "me") { wireBots(); wireHub(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
+  if (page === "me") { wireBots(); wireHub(); wireRestart(); wireGraphics(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
   else publicPage();
 });

@@ -63,6 +63,29 @@ window.Lvl = (() => {
     return c;
   }
 
+  // Tile slots (1..190) that are one flat, non-black colour in a tileset: map makers paint unused
+  // slots that way, and maps often place walls there that the arena's .lvz graphics draw over.
+  // Returns Map(tile -> "rgb(...)").
+  function blankSlots(ts) {
+    const out = new Map();
+    if (!ts) return out;
+    const d = ts.getContext("2d").getImageData(0, 0, Math.min(ts.width, 304), Math.min(ts.height, 160));
+    for (let t = 1; t <= 190; t++) {
+      const i = t - 1, x0 = (i % 19) * TS, y0 = Math.floor(i / 19) * TS;
+      if (x0 + TS > d.width || y0 + TS > d.height) continue;
+      const at = (x, y) => (y * d.width + x) * 4;
+      const p = at(x0, y0), r = d.data[p], g = d.data[p + 1], b = d.data[p + 2];
+      if (r + g + b < 24) continue; // black = empty, not a painted slot
+      let same = true;
+      for (let y = y0; y < y0 + TS && same; y++) for (let x = x0; x < x0 + TS; x++) {
+        const q = at(x, y);
+        if (d.data[q] !== r || d.data[q + 1] !== g || d.data[q + 2] !== b) { same = false; break; }
+      }
+      if (same) out.set(t, `rgb(${r}, ${g}, ${b})`);
+    }
+    return out;
+  }
+
   function parse(bytes) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const grid = new Uint8Array(N * N);
@@ -121,5 +144,5 @@ window.Lvl = (() => {
     }
   }
 
-  return { N, TS, SPECIAL, color, decodeBmp, parse, serialize, drawOverview };
+  return { N, TS, SPECIAL, color, decodeBmp, blankSlots, parse, serialize, drawOverview };
 })();

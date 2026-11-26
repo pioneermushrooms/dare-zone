@@ -107,11 +107,12 @@ public sealed partial class ArenaOwnership
     internal object ArenaData(string player, IReadOnlyList<(string Arena, string Role)> roles, string arena, string role, ConfigHandle? cfg)
     {
         var owned = Store.OwnedOrDraft(arena);
+        var own = Store.RolesFor(player).Select(r => r.Arena).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var levelFiles = cfg is null ? new List<string>() : LevelFiles.Parse(_configManager.GetStr(cfg, "General", "LevelFiles")).ToList();
         return new
         {
             player,
-            arenas = roles.Select(r => new { name = r.Arena, role = r.Role }),
+            arenas = roles.Select(r => new { name = r.Arena, role = r.Role, staff = !own.Contains(r.Arena) }), // staff: run as arena admin, not owned
             arena,
             role,
             owner = owned?.Owner,
@@ -126,6 +127,7 @@ public sealed partial class ArenaOwnership
             configMissing = cfg is null,
             maxPerPilot = ArenaStore.MaxPerPilot,
             staff = StaffFlags(player),
+            restart = RestartData(arena, player),
         };
     }
 
@@ -196,7 +198,7 @@ public sealed partial class ArenaOwnership
     /// <summary>Re-checks the role at the moment of writing (it may have changed since the request began).</summary>
     internal bool HasRole(string arena, string player, bool ownerOnly)
     {
-        var role = Store.RoleIn(arena, player);
+        var role = WebRoleIn(arena, player);
         return role is not null && (!ownerOnly || role == "owner");
     }
 
@@ -428,6 +430,9 @@ internal sealed partial class WebServer : IDisposable
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/restart": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
+                _m.WebRestart(p, a, Str(b, "message"), RestartAt(b), RestartEvery(b))).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/restart/cancel": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebCancelRestart(p, a)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/visibility": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebSetPrivate(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/discard": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebDiscard(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/bots": return method == "GET" ? ListBots(req) : MethodNotAllowed();
@@ -450,7 +455,10 @@ internal sealed partial class WebServer : IDisposable
             case "/api/chat/leave": return method == "POST" ? await ChatLeaveAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/requests/withdraw":
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
-            default: return Text(404, "Not found.");
+            default:
+                return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? Text(404, "Not found.");
         }
     }
 
@@ -558,7 +566,7 @@ internal sealed partial class WebServer : IDisposable
     {
         if (Gate(req, write: false, out var player) is { } denied) return denied;
 
-        var roles = _m.WebStore.RolesFor(player);
+        var roles = _m.WebRolesFor(player);
         var wanted = req.QueryString["arena"];
         var pick = Pick(roles, wanted);
         if (pick is null)
@@ -590,7 +598,7 @@ internal sealed partial class WebServer : IDisposable
         var key = Str(body, "key");
         var value = Str(body, "value");
 
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null)
             return JsonReply(403, new { ok = false, message = "Only this arena's owner or co-mods can change its settings." });
         if (section is null || key is null || value is null)
@@ -624,7 +632,7 @@ internal sealed partial class WebServer : IDisposable
         if (kind is null)
             return JsonReply(400, new { ok = false, message = "kind must be map or lvz." });
 
-        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        var pick = Pick(_m.WebRolesFor(player), req.QueryString["arena"]);
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can upload files." });
         var arena = pick.Value.Arena;
@@ -669,7 +677,7 @@ internal sealed partial class WebServer : IDisposable
         if (body is null) return error!;
         var name = Str(body, "name");
 
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can remove files." });
         if (string.IsNullOrWhiteSpace(name))
@@ -754,7 +762,7 @@ internal sealed partial class WebServer : IDisposable
     {
         if (Gate(req, write: false, out var player) is { } denied) return denied;
 
-        var pick = Pick(_m.WebStore.RolesFor(player), req.QueryString["arena"]);
+        var pick = Pick(_m.WebRolesFor(player), req.QueryString["arena"]);
         if (pick is null)
             return JsonReply(403, new { ok = false, message = "You are not an owner or co-mod of that arena." });
         var arena = pick.Value.Arena;
@@ -800,13 +808,22 @@ internal sealed partial class WebServer : IDisposable
         if (Gate(req, write: true, out var player) is { } denied) return denied;
         var (body, error) = await ReadJsonAsync(req, maxBytes).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can do that." });
         var arena = pick.Value.Arena;
         var json = body.Value;
         return ResultReply(await OnMain(() => act(player, arena, json)).ConfigureAwait(false));
     }
+
+    /// <summary>"at": an ISO 8601 time with an offset (the page sends UTC); missing or unreadable: now.</summary>
+    private static DateTimeOffset? RestartAt(JsonElement body) =>
+        Str(body, "at") is { Length: > 0 } at && DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var when) ? when.ToUniversalTime() : null;
+
+    /// <summary>"every": seconds between announcements, 0 when missing.</summary>
+    private static int RestartEvery(JsonElement body) =>
+        body.TryGetProperty("every", out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var n) ? n : 0;
 
     /// <summary>Owner only: recycles the arena so a newly published map loads (as ?recyclearena). Body {"arena"}.</summary>
     private async Task<Reply> RecycleAsync(HttpListenerRequest req)
@@ -815,7 +832,7 @@ internal sealed partial class WebServer : IDisposable
 
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can recycle it from the web." });
         var arena = pick.Value.Arena;
@@ -829,7 +846,7 @@ internal sealed partial class WebServer : IDisposable
 
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
         if (body is null) return error!;
-        var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
+        var pick = Pick(_m.WebRolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
             return JsonReply(403, new { ok = false, message = "Only the arena's owner can change co-mods." });
         var action = (Str(body, "action") ?? "").ToLowerInvariant();

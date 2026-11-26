@@ -5,7 +5,8 @@
 #
 #   --force       restart the zone even with players online (default: refuse)
 #
-#   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle and enable
+#   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle (arena bots). Without it the
+#                  server keeps the oss-bot it has (or the newest backed-up one), so bots stay on.
 #   DEPLOY_HOST   ssh target (default root@5.161.238.245)
 #
 # Builds the plugin (Release), copies it with deploy/ and site/ to

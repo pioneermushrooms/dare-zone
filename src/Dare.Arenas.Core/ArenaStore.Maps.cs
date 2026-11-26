@@ -1,0 +1,84 @@
+namespace Dare.Arenas.Core;
+
+/// <summary>One map in a pilot's collection (no bytes).</summary>
+public sealed record PilotMap(long Id, string Name, int Size, DateTimeOffset Updated);
+
+// A pilot's collected maps: .lvl files they uploaded or saved from the map editor. Nothing here
+// touches an arena; a map reaches one only when its owner publishes it from the editor.
+public sealed partial class ArenaStore
+{
+    public const int MaxPilotMaps = 25;
+    public const int MaxMapNameLength = 40;
+
+    /// <summary>A display name from an uploaded file name: no directory, no ".lvl", safe characters, at most 40.</summary>
+    public static string MapDisplayName(string? fileName)
+    {
+        var n = Path.GetFileName((fileName ?? "").Replace('\\', '/'));
+        if (n.EndsWith(".lvl", StringComparison.OrdinalIgnoreCase)) n = n[..^4];
+        n = new string(n.Where(c => char.IsLetterOrDigit(c) || c is ' ' or '#' or '-' or '_' or '.').ToArray()).Trim();
+        if (n.Length > MaxMapNameLength) n = n[..MaxMapNameLength].Trim();
+        return n.Length == 0 ? "map" : n;
+    }
+
+    public IReadOnlyList<PilotMap> Maps(string owner)
+    {
+        var list = new List<PilotMap>();
+        lock (_gate)
+        {
+            using var c = Cmd("SELECT id, name, length(data), updated FROM pilot_maps WHERE owner = $o ORDER BY updated DESC, id DESC", ("$o", owner));
+            using var r = c.ExecuteReader();
+            while (r.Read()) list.Add(new(r.GetInt64(0), r.GetString(1), r.GetInt32(2), Parse(r.GetString(3))));
+        }
+        return list;
+    }
+
+    /// <summary>The map's bytes and name, or null when it isn't <paramref name="owner"/>'s.</summary>
+    public (string Name, byte[] Data)? MapFile(string owner, long id)
+    {
+        lock (_gate)
+        {
+            using var c = Cmd("SELECT name, data FROM pilot_maps WHERE id = $id AND owner = $o", ("$id", id), ("$o", owner));
+            using var r = c.ExecuteReader();
+            return r.Read() ? (r.GetString(0), (byte[])r.GetValue(1)) : null;
+        }
+    }
+
+    /// <summary>
+    /// Saves a map: a new one when <paramref name="id"/> is null (at most <see cref="MaxPilotMaps"/>), else
+    /// replaces that one of <paramref name="owner"/>'s. The caller has checked the bytes (UploadPolicy).
+    /// </summary>
+    public Result SaveMap(string owner, long? id, string name, byte[] data, out long savedId)
+    {
+        savedId = 0;
+        var display = MapDisplayName(name);
+        long newId = 0;
+        var result = Tx(() =>
+        {
+            if (id is { } existing)
+            {
+                if (Scalar("SELECT COUNT(*) FROM pilot_maps WHERE id = $id AND owner = $o", ("$id", existing), ("$o", owner)) == 0)
+                    return Fail("That map isn't in your collection.");
+                Run("UPDATE pilot_maps SET name = $n, data = $d, updated = $t WHERE id = $id",
+                    ("$n", display), ("$d", data), ("$t", Now()), ("$id", existing));
+                newId = existing;
+                return Ok($"Saved {display} to your maps.");
+            }
+            if (Scalar("SELECT COUNT(*) FROM pilot_maps WHERE owner = $o", ("$o", owner)) >= MaxPilotMaps)
+                return Fail($"You have {MaxPilotMaps} maps; remove one to add another.");
+            Run("INSERT INTO pilot_maps(owner, name, data, updated) VALUES($o,$n,$d,$t)",
+                ("$o", owner), ("$n", display), ("$d", data), ("$t", Now()));
+            newId = Scalar("SELECT last_insert_rowid()");
+            return Ok($"Added {display} to your maps.");
+        });
+        savedId = newId;
+        return result;
+    }
+
+    public Result RemoveMap(string owner, long id) => Tx(() =>
+    {
+        var name = MapFile(owner, id)?.Name;
+        if (name is null) return Fail("That map isn't in your collection.");
+        Run("DELETE FROM pilot_maps WHERE id = $id", ("$id", id));
+        return Ok($"Removed {name} from your maps.");
+    });
+}

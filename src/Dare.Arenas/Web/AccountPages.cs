@@ -126,6 +126,10 @@ internal sealed partial class WebServer
             return Text(404, "Not found.");
         var api = path[(AccountPrefix.Length + 4)..];
 
+        if (api == "/shipyard" || api.StartsWith("/shipyard/", StringComparison.Ordinal))
+            return await ShipyardRouteAsync(req, api).ConfigureAwait(false);
+        if (api == "/graphics" || api.StartsWith("/graphics/", StringComparison.Ordinal))
+            return await PilotGraphicsRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/me")
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
         if (api == "/pilots" && method == "GET")

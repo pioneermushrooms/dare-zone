@@ -127,6 +127,7 @@ public sealed partial class ArenaOwnership
         var running = _arenaManager.FindArena(arenaName);
         if (running?.Cfg is null || ArenaConfigFile.IsLive(_configManager.GetStr(running.Cfg, section, key), value))
             return "";
+        MarkPendingRestart(arenaName, "settings");
         return " The running arena isn't using its own settings file yet, so this takes effect after ?recyclearena.";
     }
 
