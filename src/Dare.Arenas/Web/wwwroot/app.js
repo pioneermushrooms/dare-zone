@@ -613,26 +613,109 @@ async function downloadGraphic(arena, slot) {
   }
 }
 
-// The first frame of a saved sheet, as the overlay's lists show it: cell size per weapon, ships 10×4.
-const FIRST_FRAME = { bullets: [4, 10], bombs: [10, 13], mines: [10, 8], shrapnel: [10, 6], repel: [5, 2], rocket: [13, 2] };
+// ---- animated icons: one frame of a sheet at a time, in a fixed box ----
+// How each sheet is cut (the stock layout, as the game and ships/graphics.py read it): columns,
+// rows, and what plays: "all" frames in order, "row" (row 0 only: level 1, the enemy's...) or
+// "sheet" (tiles and tables: the whole picture, still). A cell is the picture's size / cols × rows.
+const SPRITES = {
+  bullets: [4, 10, "row"], bombs: [10, 13, "row"], mines: [10, 8, "row"], shrapnel: [10, 6, "row"],
+  repel: [5, 2, "all"], rocket: [13, 2, "all"],
+  prizes: [10, 1, "all"], powerb: [10, 3, "row"], flag: [10, 2, "row"], goal: [9, 2, "row"],
+  explode0: [7, 1, "all"], explode1: [6, 6, "all"], explode2: [4, 11, "all"], empburst: [5, 2, "all"],
+  warp: [6, 3, "all"], warppnt: [10, 1, "all"], exhaust: [19, 2, "row"], shield: [10, 1, "all"], super: [10, 1, "all"],
+  over1: [15, 2, "all"], over2: [10, 3, "all"], over3: [15, 2, "all"], over4: [5, 2, "all"], over5: [4, 6, "all"],
+  wall: [10, 2, "sheet"], gradient: [1, 1, "sheet"],
+};
+// Ships: 40 headings in 10 columns and 4 rows, frame 0 nose-up, each next one 9° clockwise.
+const layoutOf = (name) => (isShipSlot(name) ? [10, 4, "all"] : SPRITES[name] ?? [1, 1, "sheet"]);
 
-/** The pilot's saved weapons (or ships) that fit this card: click one to put it on the arena. */
+const icons = new WeakMap(); // canvas -> { img, sx, sy, sw, sh, cols, n }
+const shown = new Set(); // icons on screen; only these are redrawn
+const observed = new Set();
+const stillMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let iconTick = 0, iconTimer = 0;
+const onScreen = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) shown.add(e.target); else shown.delete(e.target);
+  runIcons();
+}, { rootMargin: "64px" }) : null;
+
+/** A canvas for an icon `size` CSS pixels square, drawn at the screen's own pixel density. */
+function iconCanvas(size, label) {
+  const k = Math.min(3, Math.max(1, Math.round(globalThis.devicePixelRatio || 1)));
+  const c = el("canvas", { class: "icon", width: String(size * k), height: String(size * k), role: "img", "aria-label": label });
+  c.style.width = c.style.height = size + "px";
+  return c;
+}
+
+/** Shows `img` (the part `src` of it, if given) on `canvas` as graphic `name`'s animated icon. */
+function showIcon(canvas, img, name, src = null) {
+  const [cols, rows, mode] = layoutOf(name);
+  const r = src ?? { sx: 0, sy: 0, sw: img.width, sh: img.height };
+  const still = mode === "sheet";
+  icons.set(canvas, { img, ...r, cols: still ? 1 : cols, rows: still ? 1 : rows, n: still ? 1 : mode === "row" ? cols : cols * rows });
+  drawIcon(canvas, 0);
+  if (onScreen) { onScreen.observe(canvas); observed.add(canvas); } else shown.add(canvas);
+  runIcons();
+}
+
+function drawIcon(canvas, t) {
+  const p = icons.get(canvas);
+  if (!p) return;
+  const fw = p.sw / p.cols, fh = p.sh / p.rows, f = t % p.n;
+  const W = canvas.width, H = canvas.height;
+  // Whole-number scale where the frame fits (tiny sprites at about half the box), else shrink to fit.
+  let s = Math.min(W / fw, H / fh) * (fw <= 8 ? 0.55 : 1);
+  if (s >= 1) s = Math.floor(s);
+  const w = Math.round(fw * s), h = Math.round(fh * s);
+  const g = canvas.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, W, H);
+  g.drawImage(p.img, p.sx + (f % p.cols) * fw, p.sy + Math.floor(f / p.cols) * fh, fw, fh,
+    Math.floor((W - w) / 2), Math.floor((H - h) / 2), w, h);
+}
+
+/** Plays the icons on screen (one timer for all of them), or stops when none can move. */
+function runIcons() {
+  const move = !stillMotion.matches && !document.hidden && [...shown].some((c) => (icons.get(c)?.n ?? 1) > 1);
+  if (move && !iconTimer) {
+    iconTimer = setInterval(() => {
+      iconTick++;
+      for (const c of shown) if (c.isConnected) drawIcon(c, iconTick); else forgetIcon(c);
+    }, 70); // the overlay's own preview speed
+  } else if (!move && iconTimer) {
+    clearInterval(iconTimer);
+    iconTimer = 0;
+  }
+}
+
+function forgetIcon(c) { shown.delete(c); observed.delete(c); onScreen?.unobserve(c); }
+/** Lets go of icons whose cards were replaced. */
+function sweepIcons() { for (const c of [...observed, ...shown]) if (!c.isConnected) forgetIcon(c); }
+
+stillMotion.addEventListener?.("change", () => { for (const c of shown) drawIcon(c, 0); runIcons(); });
+document.addEventListener("visibilitychange", runIcons);
+
+/** The pilot's saved weapons (or ships) that fit this card: click one to use it here. */
 function savedList(arena, slot) {
   const where = isShipSlot(slot.name) ? "shipyard" : "armory";
   const mine = savedFor(slot);
-  const box = el("div", { class: "saved" }, el("span", { class: "hint", text: mine.length
-    ? `Your ${where} (${mine.length}): click one to use it here.`
-    : saved ? `Ones you make or upload land in your ${where}.` : `Sign in to keep them in your ${where}.` }));
-  if (!mine.length) return box;
-  const [cols, rows] = isShipSlot(slot.name) ? [10, 4] : FIRST_FRAME[slot.name] ?? [1, 1];
-  const list = el("div", { class: "savedlist", role: "group", "aria-label": `Your ${where}` });
+  const head = el("div", { class: "savedhead" }, el("span", { class: "title", text: `Your ${where}` }));
+  if (saved) head.append(el("span", { class: "count", text: String(mine.length) }));
+  const box = el("div", { class: "saved" }, head);
+  const list = el("ul", { class: "savedlist", "aria-label": `Your ${where}` });
+  if (!mine.length) {
+    list.append(el("li", { class: "empty", text: saved ? `Ones you make or upload land here.` : `Sign in to keep them in your ${where}.` }));
+    box.append(list);
+    return box;
+  }
   for (const it of mine) {
-    const art = el("span", { class: "art" });
-    art.style.backgroundImage = `url("${it.url}")`;
-    art.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
+    const art = iconCanvas(40, it.name);
+    const img = new Image();
+    img.addEventListener("load", () => showIcon(art, img, slot.name));
+    img.src = it.url;
     const b = el("button", { type: "button", class: "savedthumb", title: `${it.name}: use it for ${slot.label}` }, art, el("span", { class: "name", text: it.name }));
     b.addEventListener("click", () => void useSaved(arena, slot, it));
-    list.append(b);
+    list.append(el("li", null, b));
   }
   box.append(list);
   return box;
@@ -650,7 +733,7 @@ async function loadGraphics() {
   const arena = current?.arena;
   if (!arena) return;
   const host = $("gfxgroups");
-  if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; }
+  if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; sweepIcons(); }
   const [{ body }] = await Promise.all([getJson(API + "/graphics?arena=" + encodeURIComponent(arena)), loadSaved()]);
   if (current?.arena !== arena) return;
   if (!body?.ok) { host.replaceChildren(el("p", { class: "msg bad", text: body?.message || "Couldn't load the graphics." })); return; }
@@ -662,10 +745,11 @@ async function loadGraphics() {
   }
   host.replaceChildren(...[...groups].map(([group, slots]) =>
     el("div", null, el("h3", { text: group }), el("div", { class: "gfxgrid" }, ...slots.map((s) => gfxCard(arena, s, owner))))));
+  sweepIcons();
 }
 
 function gfxCard(arena, slot, owner) {
-  const canvas = el("canvas", { width: "1", height: "1", "aria-label": slot.label + " now" });
+  const canvas = iconCanvas(88, slot.label + " now");
   const srcText = slot.source === "arena" ? "Yours" : slot.source === "lvz" ? "From " + slot.lvzFile : "Stock";
   const card = el("div", { class: "gfxcard" },
     el("div", { class: "head" }, el("b", { text: slot.label }), el("span", { class: "src " + slot.source, text: srcText })),
@@ -706,16 +790,15 @@ function gfxCard(arena, slot, owner) {
   return card;
 }
 
-// The arena's current picture (or the stock one) onto a canvas; ships' stock pictures share one file.
+// The arena's current picture (or the stock one) as the card's icon; ships' stock pictures share one file.
 async function drawGraphic(canvas, arena, slot) {
   try {
     const r = await fetch(`${API}/graphics/image?arena=${encodeURIComponent(arena)}&name=${slot.name}`, { credentials: "same-origin" });
     if (!r.ok) return;
     const img = await createImageBitmap(await r.blob());
     const ship = /^ship([1-8])$/.exec(slot.name);
-    let sx = 0, sy = 0, sw = img.width, sh = img.height;
-    if (ship && r.headers.get("X-Graphic-Source") === "stock") { sh = img.height / 8; sy = (Number(ship[1]) - 1) * sh; }
-    paintSheet(canvas, img, sx, sy, sw, sh);
+    const h = img.height / 8; // a stock ship is one of the eight in the shared sheet
+    showIcon(canvas, img, slot.name, ship && r.headers.get("X-Graphic-Source") === "stock" ? { sx: 0, sy: (Number(ship[1]) - 1) * h, sw: img.width, sh: h } : null);
   } catch { /* leave it blank */ }
 }
 

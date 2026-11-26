@@ -330,22 +330,36 @@ dialog .warn { color:var(--hot); }
 
 /* arena graphics: a card per replaceable picture, and the generator's preview */
 .gfxgroups h3 { margin:18px 0 8px; font-size:.85rem; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
-.gfxgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
-.gfxcard { display:grid; gap:6px; padding:10px; border:1px solid #344762; border-radius:8px; background:var(--panel2); }
-.gfxcard .thumb { display:flex; align-items:center; justify-content:center; height:96px; background:#000; border-radius:4px; overflow:hidden; }
-.gfxcard canvas { max-width:100%; max-height:96px; image-rendering:pixelated; }
-.gfxcard .head { display:flex; justify-content:space-between; align-items:baseline; gap:6px; }
-.gfxcard .head b { font-size:.95rem; }
+.gfxgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap:10px; }
+.gfxcard { display:grid; gap:8px; align-content:start; min-width:0; overflow:hidden; padding:10px; border:1px solid #344762; border-radius:8px; background:var(--panel2); }
+/* the current picture: one animated icon in a fixed box, never the whole sheet, never past the card */
+.gfxcard .thumb { display:flex; align-items:center; justify-content:center; height:104px; min-width:0; overflow:hidden; contain:strict;
+  background:#000; border:1px solid #05090f; border-radius:5px; box-shadow:inset 0 2px 8px #000c, 0 1px 0 #ffffff0a; }
+canvas.icon { display:block; flex:none; max-width:100%; max-height:100%; image-rendering:pixelated; image-rendering:crisp-edges; }
+.gfxcard .head { display:flex; justify-content:space-between; align-items:baseline; gap:6px; min-width:0; }
+.gfxcard .head b { font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .gfxcard .src { font-size:.72rem; padding:1px 6px; border-radius:3px; border:1px solid #344762; color:var(--dim); white-space:nowrap; }
 .gfxcard .src.arena { color:#07131e; background:var(--hot); border-color:var(--hot); }
 .gfxcard .hint { font-size:.75rem; color:var(--dim); }
 .gfxcard .acts { display:flex; flex-wrap:wrap; gap:6px; }
-.gfxcard .saved { display:grid; gap:4px; border-top:1px solid #344762; padding-top:6px; }
-.gfxcard .savedlist { display:grid; grid-template-columns:repeat(auto-fill, minmax(56px, 1fr)); gap:4px; max-height:150px; overflow-y:auto; }
-.gfxcard .savedthumb { display:grid; justify-items:center; gap:2px; padding:4px 2px; min-height:0; background:#070d18; border:1px solid #263449; border-radius:3px; color:var(--dim); cursor:pointer; box-shadow:none; text-shadow:none; }
-.gfxcard .savedthumb:hover, .gfxcard .savedthumb:focus-visible { border-color:var(--hot); background:#12223a; }
-.gfxcard .savedthumb .art { width:40px; height:40px; background-repeat:no-repeat; background-position:0 0; image-rendering:pixelated; }
-.gfxcard .savedthumb .name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.62rem; text-transform:none; letter-spacing:0; }
+/* the pilot's armory / shipyard on the card: as the game's Graphics overlay lists them */
+.gfxcard .saved { display:grid; gap:6px; min-width:0; padding:8px; background:#0a121f; border:1px solid #1d2c42; border-radius:5px; box-shadow:inset 0 1px 0 #ffffff08; }
+.gfxcard .savedhead { display:flex; align-items:baseline; gap:8px; }
+.gfxcard .savedhead .title { font:700 .8rem/1 var(--label); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+.gfxcard .savedhead .count { font:500 .72rem/1 var(--sans); color:var(--dim); }
+.gfxcard .savedlist { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(58px, 1fr)); gap:6px; max-height:168px; overflow-y:auto; overscroll-behavior:contain; }
+.gfxcard .savedlist li { min-width:0; }
+.gfxcard .savedlist li.empty { grid-column:1 / -1; padding:10px 6px; text-align:center; font-size:.78rem; color:var(--dim); border:1px dashed #344762; border-radius:4px; }
+.gfxcard .savedthumb { width:100%; min-height:0; min-width:0; padding:5px 3px 4px; display:grid; justify-items:center; gap:3px; overflow:hidden; cursor:pointer;
+  color:var(--text); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320; border-radius:5px;
+  background:linear-gradient(180deg, #1b2a40, #111d2e); box-shadow:inset 0 1px 0 #ffffff14, 0 2px 0 #04080e; }
+.gfxcard .savedthumb:hover:not(:disabled), .gfxcard .savedthumb:focus-visible { color:#fff; border-color:var(--accent); border-bottom-color:#0a1320;
+  background:linear-gradient(180deg, #22385a, #172a42); }
+.gfxcard .savedthumb:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.gfxcard .savedthumb canvas.icon { background:#000; border-radius:3px; }
+.gfxcard .savedthumb .name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font:500 .68rem/1.2 var(--sans); letter-spacing:0; text-transform:none; color:var(--dim); }
+.gfxcard .savedthumb:hover .name { color:var(--text); }
 .gfxcard .acts select { font-size:.8rem; padding:2px 6px; max-width:100%; }
 dialog.gfxdlg { width:min(720px, calc(100vw - 32px)); }
 .gfxpreview { background:#000; border-radius:6px; padding:8px; display:flex; justify-content:center; min-height:80px; }
