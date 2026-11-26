@@ -12,26 +12,36 @@ const TIPS = [
   "Your keys and macros live on your <b>Pilot</b> account and come with you to any computer.",
   "No pilot name? Fly as a <b>guest</b>: you'll get a quirky space name, new every time.",
 ];
-// Each step's share of the progress line, in order, and the ship's preparations the line under it picks
-// from while the step lasts (the desktop game has the same, in connect_screen.rs).
+// Each step's share of the progress line, in order, and the ship's preparations for it, in the order they
+// make sense in. A load shows as many as its time allows (see say); the desktop game has the same, in
+// connect_screen.rs.
 const STEPS = {
-  game: [0, 0.45, ["Refuelling", "Loading the cargo bay", "Warming up the reactor", "Bolting on the wings",
-    "Topping up the coolant", "Unpacking the hangar", "Stocking the galley"]],
-  connect: [0.45, 0.6, ["Plotting a course", "Hailing the zone", "Aligning the antenna",
-    "Calibrating the nav computer", "Locking onto the beacon"]],
-  signin: [0.6, 0.7, ["Checking your pilot licence", "Clearing docking control", "Scanning your ID badge",
-    "Confirming flight clearance"]],
-  enter: [0.7, 0.78, ["Testing the hyperdrive", "Opening the jump gate", "Spooling up the warp core",
-    "Charging the thrusters"]],
-  download: [0.78, 1, ["Checking your engines", "Charting the arena", "Mapping the asteroid fields",
-    "Downloading star charts", "Polishing the hull", "Arming the guns"]],
+  game: [0, 0.45, ["Running pre-flight diagnostics", "Powering up the main bus", "Running reactor self-test",
+    "Venting the cryo lines", "Bleeding the coolant loop", "Refuelling", "Priming the fuel injectors",
+    "Pressurising the cockpit", "Booting the flight computer", "Checking oxygen reserves",
+    "Loading weapons firmware", "Calibrating inertial dampers", "Spinning up the gyros", "Warming up the thrusters",
+    "Checking your engines", "Clearing debris from the intakes", "Charging the capacitor banks",
+    "Topping off the afterburner", "Checking hull integrity", "Checking the thermal shielding",
+    "Bringing shields online"]],
+  connect: [0.45, 0.6, ["Tuning the radar", "Aligning the comms array", "Hailing the zone",
+    "Locking onto the nav beacon", "Syncing the ship's clock"]],
+  signin: [0.6, 0.7, ["Transmitting pilot credentials", "Verifying flight clearance", "Requesting a launch window",
+    "Docking control: cleared"]],
+  enter: [0.7, 0.78, ["Releasing the docking clamps", "Testing the hyperdrive", "Arming the hyperdrive",
+    "Spooling up the warp core", "Engaging hyperdrive"]],
+  download: [0.78, 1, ["Downloading star charts", "Mapping the sector", "Plotting the jump exit",
+    "Scanning for hostiles", "Marking the safe zones", "Testing the repel generator", "Loading the bursts",
+    "Stocking decoys and portals", "Arming weapons"]],
 };
+const LAST_PHRASE = "Ready for launch";
 const ORDER = Object.keys(STEPS);
-const PHRASE_EVERY = 2200; // ms
+const PHRASE_EVERY = 2600; // ms a phrase stays up while its step lasts
+const PHRASE_MIN = 1200; // ms one stays up at least, even when the step moves on
+const SEEN_KEY = "foundation.loading.seen";
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let active = false, tipTimer = 0, tip = Math.floor(Math.random() * TIPS.length), lastPercent = 0;
 let heard = false, fallback = 0, stage = "game", stageAt = 0, stagePercent = null, shown = 0, ending = 0;
-let phrase = "", phraseAt = 0;
+let phrase = "", phraseAt = 0, phraseStage = "", phraseIndex = -1, shownThisLoad = new Set();
 
 // ---- the warp --------------------------------------------------------------------------------
 const canvas = $("loader-warp"), ctx = canvas?.getContext("2d");
@@ -117,15 +127,44 @@ function advance(dt) {
     shown = Math.max(shown, Math.min(cap, Math.max(eased, crept)));
   }
   $("loader-bar").style.setProperty("--p", `${(shown * 100).toFixed(2)}%`);
-  if (performance.now() - phraseAt > PHRASE_EVERY && $("loader-error").hidden) say();
+  const due = phraseAt + (phraseStage === stage ? PHRASE_EVERY : PHRASE_MIN);
+  if (!ending && performance.now() >= due && $("loader-error").hidden) say();
 }
 
-// The next of the ship's preparations for this step, never the one just shown.
-function say() {
-  const pool = (STEPS[stage] ?? STEPS.game)[2];
-  let next = phrase;
-  while (pool.length > 1 && next === phrase) next = pool[Math.floor(Math.random() * pool.length)];
-  phrase = next;
+// The preparations this browser has shown before, so the next load leans on the ones it hasn't; forgotten
+// once every one has been seen.
+function seen() {
+  try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")); } catch { return new Set(); }
+}
+function remember(text) {
+  try {
+    const all = seen();
+    all.add(text);
+    const total = Object.values(STEPS).reduce((n, [, , list]) => n + list.length, 0);
+    localStorage.setItem(SEEN_KEY, JSON.stringify(all.size >= total ? [] : [...all]));
+  } catch {}
+}
+
+// The next of the ship's preparations: further on in this step's list (when the step is new, from the first
+// one this browser has not shown yet), one of the next few, preferring one it has not shown before. Nothing
+// comes round again in a load until the step's list is used up, which only a long wait does.
+function say(text) {
+  if (!text) {
+    const list = (STEPS[stage] ?? STEPS.game)[2];
+    const old = seen();
+    // a new step picks up where this browser left off in its list last time, while at least half the list
+    // lies ahead (so a step doesn't run off its end and come round to the start out of order)
+    let from = phraseStage === stage ? phraseIndex + 1 : Math.max(0, list.findIndex((p) => !old.has(p)));
+    if (phraseStage !== stage && list.length - from < Math.ceil(list.length / 2)) from = 0;
+    if (list.slice(from).every((p) => shownThisLoad.has(p))) { from = 0; for (const p of list) shownThisLoad.delete(p); }
+    const ahead = list.slice(from, from + 3).filter((p) => !shownThisLoad.has(p));
+    text = ahead.find((p) => !old.has(p)) ?? ahead[0] ?? list[from];
+    phraseIndex = list.indexOf(text);
+    phraseStage = stage;
+    shownThisLoad.add(text);
+    remember(text);
+  }
+  phrase = text;
   phraseAt = performance.now();
   const el = $("loader-text");
   el.classList.add("fade");
@@ -135,7 +174,7 @@ function say() {
 function step(name, percent = null) {
   if (!STEPS[name]) return;
   stagePercent = percent;
-  if (name !== stage) { stage = name; stageAt = performance.now(); say(); }
+  if (name !== stage) { stage = name; stageAt = performance.now(); }
 }
 
 function showTip() {
@@ -153,6 +192,9 @@ function open() {
   stage = "game";
   stageAt = performance.now();
   phrase = "";
+  phraseStage = "";
+  phraseIndex = -1;
+  shownThisLoad = new Set();
   say();
   $("loader-arena").textContent = $("arena")?.value || "public";
   $("loader-error").hidden = true;
@@ -186,8 +228,9 @@ function finish(flash = true) {
   clearTimeout(fallback);
   if (!flash) { loader.classList.add("done"); setTimeout(close, 600); return; }
   ending = performance.now();
-  setTimeout(() => loader.classList.add("done"), 380);
-  setTimeout(close, 1000);
+  say(LAST_PHRASE);
+  setTimeout(() => loader.classList.add("done"), 750);
+  setTimeout(close, 1400);
 }
 
 // The game's word on where it has got to: a step, the line it shows under its bar and how far through this
