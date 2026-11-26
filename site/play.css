@@ -291,3 +291,110 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 .gfx .frontrow { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .8rem; }
 .gfx .frontrow .dim { color: var(--muted); margin-right: 4px; }
 .gfx .frontrow .ghostbtn { min-height: 0; }
+
+/* ======================================================================================================
+   HANGAR: the site's look since 2026-11-26 (same as /arena/style.css; draft: docs/design/site-drafts.html).
+   Bevelled metal controls lit from above that press down on click, condensed uppercase labels, layered
+   panels, inset fields. This block comes last and overrides the flat styles above. The loader is untouched.
+   ====================================================================================================== */
+:root { --label:'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; --well:#070d18; --well-line:#1a2840; }
+
+/* the top bar: brand, links and the pilot button */
+.brand .logo { text-shadow:0 0 8px #71e4fa40; }
+.toplinks a, .pilot, .ghostbtn, dialog button.ghost, .gfx .shiplist button, .gfxtabs .tab, .gfx .slotlist button, .gfx .yardlist .thumb {
+  color:var(--ink); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320; border-radius:5px;
+  background:linear-gradient(180deg, #22344f, #172539); backdrop-filter:none;
+  box-shadow:inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000;
+  transition:transform .08s, box-shadow .15s, background .15s, border-color .15s, color .15s; }
+.toplinks a:hover, .pilot:hover, .pilot[aria-expanded="true"], .ghostbtn:hover, dialog button.ghost:hover:not(:disabled),
+.gfx .shiplist button:hover:not(:disabled), .gfxtabs .tab:hover, .gfx .slotlist button:hover, .gfx .yardlist .thumb:hover:not(:disabled) {
+  color:#fff; border-color:#4f7298; border-bottom-color:#0a1320; background:linear-gradient(180deg, #2a4062, #1b2c44); }
+.toplinks a, .ghostbtn, .gfxtabs .tab { font:700 1rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
+.toplinks a { min-height:44px; padding:8px 16px; }
+.pilot-label { font:700 .78rem/1 var(--label); letter-spacing:.2em; }
+.pilot-name { font-weight:600; }
+.ghostbtn { padding:6px 12px; font-size:.88rem; letter-spacing:.08em; }
+/* chosen: pressed in, lit cyan */
+.gfxtabs .tab[aria-current="page"], .gfx .shiplist button[aria-pressed="true"], .gfx .slotlist button[aria-pressed="true"] {
+  color:var(--cyan); background:linear-gradient(180deg, #0c1a2a, #12243a); border-color:#3f6a8c; border-top-color:#05090f;
+  box-shadow:inset 0 2px 6px #000c, inset 0 -2px 0 var(--cyan); }
+.pilotmenu { background:linear-gradient(180deg, #13203a, #0b1422); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
+  box-shadow:inset 0 1px 0 #ffffff12, 0 24px 50px -18px #000e; }
+.pilotmenu .menuhead { font:700 .8rem/1.2 var(--label); letter-spacing:.2em; }
+
+/* the title */
+h1 { font-weight:800; background:linear-gradient(180deg, #fff 30%, #a9bdd4); -webkit-background-clip:text; background-clip:text;
+  color:transparent; filter:drop-shadow(0 2px 0 #000) drop-shadow(0 10px 24px #000a); }
+h1 em { color:var(--cyan); -webkit-text-fill-color:var(--cyan); }
+
+/* the arena picker: a sunk well with a themed chevron */
+.arena { background:var(--well); border-color:var(--well-line); border-top-color:#05090f; border-radius:6px;
+  box-shadow:inset 0 2px 6px #000a, 0 1px 0 #ffffff0a; }
+.arena span { font:700 .85rem/1 var(--label); letter-spacing:.2em; }
+.arena select, .gfx select { appearance:none; -webkit-appearance:none; padding-right:30px;
+  background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2371e4fa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 8px center / 12px 8px no-repeat; }
+.arena select { font:700 1.15rem var(--label); letter-spacing:.08em; text-transform:uppercase; }
+.gfx select { background-color:#060b15; padding-right:32px; }
+
+/* Enter: the big cyan bevel */
+#start { font:800 1.45rem/1 var(--label); letter-spacing:.14em; text-transform:uppercase; border-radius:6px;
+  color:#03222c; text-shadow:0 1px 0 #ffffff60; border:1px solid #9cf0ff; border-bottom-color:#1f8aa3;
+  background:linear-gradient(180deg, #93e8f8, #5fd3ec 55%, #48c1dd);
+  box-shadow:inset 0 1px 0 #ffffff80, inset 0 -3px 0 #2ea6c4, 0 3px 0 #0b4a5c, 0 12px 22px -10px #000;
+  transition:transform .08s, box-shadow .15s, background .15s; }
+#start:hover:not(:disabled) { background:linear-gradient(180deg, #adf2fa, #72dbf1 55%, #55c9e4); border-color:#adf2fa; border-bottom-color:#1f8aa3; }
+#start:active:not(:disabled) { transform:translateY(3px); box-shadow:inset 0 1px 0 #ffffff60, inset 0 -2px 0 #2ea6c4, 0 0 0 #0b4a5c, 0 6px 12px -8px #000; }
+.play-icon { box-shadow:inset 0 2px 4px #000c, 0 1px 0 #ffffff60; }
+/* downloading: dark metal with the progress line along the bottom; still pressable */
+#start.downloading { color:var(--ink); text-shadow:0 1px 0 #000a; border-color:#34496a; border-bottom-color:#0a1320;
+  background:linear-gradient(var(--cyan), var(--cyan)) left bottom / var(--p) 4px no-repeat, linear-gradient(180deg, #22344f, #172539);
+  box-shadow:inset 0 1px 0 #ffffff1f, 0 3px 0 #04080e, 0 12px 22px -10px #000; }
+#start.downloading:hover:not(:disabled) { border-color:#4f7298; border-bottom-color:#0a1320;
+  background:linear-gradient(var(--cyan), var(--cyan)) left bottom / var(--p) 4px no-repeat, linear-gradient(180deg, #2a4062, #1b2c44); }
+#start:disabled { color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
+
+/* the chat panel */
+.chat { background:linear-gradient(180deg, #13203ae6, #0b1422d9 160px); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
+  box-shadow:inset 0 1px 0 #ffffff12, 0 1px 0 #000, 0 24px 50px -18px #000e; }
+.chathead { border-bottom-color:#000; box-shadow:0 1px 0 #ffffff0d; }
+.chathead b { font:700 1rem/1 var(--label); letter-spacing:.2em; }
+.players { background:#050a13b0; border-right-color:#000; box-shadow:1px 0 0 #ffffff0a, inset 0 2px 6px #0008; }
+.players h3, .players li.freq { font-family:var(--label); font-size:.82rem; letter-spacing:.18em; }
+.say, .join { border-top-color:#000; box-shadow:inset 0 1px 0 #ffffff0d; }
+.sayrow input, dialog input, .gfxprompt textarea { color:#fff; background:#060b15; border:1px solid #22324a; border-top-color:#05090f; border-radius:5px;
+  box-shadow:inset 0 2px 5px #000c, 0 1px 0 #ffffff0d; }
+.sayrow input:focus, dialog input:focus, .gfxprompt textarea:focus { outline:0; border-color:var(--cyan); box-shadow:inset 0 2px 5px #000c, 0 0 0 3px #71e4fa33; }
+
+/* cyan buttons: Send, Chat, and the dialogs' main actions */
+.sayrow button, .join button, dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove)) {
+  font:700 1.02rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; border-radius:5px;
+  color:#03222c; text-shadow:0 1px 0 #ffffff60; border:1px solid #9cf0ff; border-bottom-color:#1f8aa3;
+  background:linear-gradient(180deg, #93e8f8, #5fd3ec 55%, #48c1dd);
+  box-shadow:inset 0 1px 0 #ffffff80, inset 0 -2px 0 #2ea6c4, 0 2px 0 #0b4a5c, 0 8px 16px -8px #000;
+  transition:transform .08s, box-shadow .15s, background .15s; }
+.sayrow button:hover, .join button:hover:not(:disabled), dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove)):hover:not(:disabled) {
+  background:linear-gradient(180deg, #adf2fa, #72dbf1 55%, #55c9e4); border-color:#adf2fa; border-bottom-color:#1f8aa3; }
+dialog button.ghost { font:700 1.02rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
+/* the graphics overlay's list buttons keep normal case: they are ship and picture names */
+.gfx .shiplist button, .gfx .slotlist button { font:600 .85rem Inter, system-ui, sans-serif; text-transform:none; letter-spacing:0; }
+.gfx .yardlist .thumb { box-shadow:inset 0 1px 0 #ffffff12, 0 2px 0 #04080e; }
+.gfx .yardlist .remove { box-shadow:none; text-shadow:none; }
+/* pressed */
+.toplinks a:active, .pilot:active, .ghostbtn:active, .sayrow button:active, .join button:active:not(:disabled), dialog button:active:not(:disabled) {
+  transform:translateY(2px); box-shadow:inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
+dialog button:disabled { opacity:1; color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
+
+/* dialogs: layered panels */
+dialog { background:linear-gradient(180deg, #13203a 0, #0d1728 140px, #0b1422); border-color:#22324a; border-top-color:#3a5576; border-radius:10px;
+  box-shadow:inset 0 1px 0 #ffffff12, 0 1px 0 #000, 0 30px 70px -20px #000; }
+dialog h2 { font-weight:800; text-shadow:0 2px 0 #000; }
+dialog label { font:700 .85rem/1.2 var(--label); letter-spacing:.18em; text-transform:uppercase; }
+dialog label input, dialog label textarea { font:500 1rem Inter, system-ui, sans-serif; letter-spacing:0; text-transform:none; }
+.gfx label.check, .gfx .useown, .gfx .applyto { font:600 .85rem Inter, system-ui, sans-serif; letter-spacing:0; text-transform:none; }
+.gfxhead { border-bottom-color:#000; box-shadow:0 1px 0 #ffffff0d; }
+.gfxyard { background:var(--well); border-left-color:#000; box-shadow:inset 0 2px 8px #000a; }
+.gfxyard h3, .gfx .slotlist h4 { font-family:var(--label); font-size:.85rem; letter-spacing:.2em; }
+.gfxreview, .genchoice { background:var(--well); border-color:var(--well-line); box-shadow:inset 0 2px 6px #000a; }
+.card { background:linear-gradient(180deg, #13203ae6, #0b1422e6); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
+  box-shadow:inset 0 1px 0 #ffffff12, 0 18px 40px -18px #000e; }
+@media (prefers-reduced-motion:reduce) { #start, .toplinks a, .pilot, .ghostbtn, .sayrow button, .join button, dialog button { transition:none; } }
