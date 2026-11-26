@@ -221,9 +221,18 @@
         owner.set(t, `${id}/${role}`);
         tiles.set(role, t);
       }
+      // optional plain piece for cells with wall on all eight sides (a thick wall's inside), instead of the decorated fill
+      let interior = null;
+      if (p && p.interior !== undefined && p.interior !== null) {
+        const t = p.interior;
+        if (!Number.isInteger(t) || t < 1 || t > maxTile) errors.push(`pack ${id}: interior tile ${t} is not 1-${maxTile}`);
+        else if (t >= reserved[0] && t <= reserved[1]) errors.push(`pack ${id}: interior uses reserved tile ${t}`);
+        else if (owner.has(t)) errors.push(`tile ${t} is in ${owner.get(t)} and ${id}/interior`);
+        else { owner.set(t, `${id}/interior`); interior = t; }
+      }
       const missing = [...roles.keys()].filter((r) => !tiles.has(r));
       if (missing.length && tiles.size) warnings.push(`pack ${id} has no ${missing.join(", ")}`);
-      packs.push({ id, name: (p && p.name) || id, origin: p && Array.isArray(p.origin) ? p.origin.slice(0, 2) : null, tiles });
+      packs.push({ id, name: (p && p.name) || id, origin: p && Array.isArray(p.origin) ? p.origin.slice(0, 2) : null, tiles, interior });
     }
     let template = null;
     if (j.packTemplate && j.packTemplate.cells) {
@@ -249,7 +258,7 @@
       roles: Object.fromEntries([...layout.roles.values()].map((r) => [r.name, { open: r.open, label: r.label }])),
     };
     if (layout.template) o.packTemplate = { size: layout.template.size, cells: Object.fromEntries(layout.template.cells) };
-    o.packs = layout.packs.map((p) => ({ id: p.id, name: p.name, ...(p.origin ? { origin: p.origin } : {}), tiles: Object.fromEntries(p.tiles) }));
+    o.packs = layout.packs.map((p) => ({ id: p.id, name: p.name, ...(p.origin ? { origin: p.origin } : {}), tiles: Object.fromEntries(p.tiles), ...(p.interior ? { interior: p.interior } : {}) }));
     if (layout.other.length) o.other = layout.other;
     o.reserved = { from: layout.reserved[0], to: layout.reserved[1], label: "Doors, flag, safe zone, goal, fly-over and fly-under" };
     return JSON.stringify(o, null, 1) + "\n";
@@ -284,7 +293,7 @@
       const c = col + dx, r = row + dy;
       if (c < COLS && r < ROWS) tiles.set(role, r * COLS + c + 1);
     }
-    return { id, name, origin: [col, row], tiles };
+    return { id, name, origin: [col, row], tiles, interior: null };
   }
 
   // ---- tile ops --------------------------------------------------------------------------------------
