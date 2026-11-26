@@ -613,8 +613,34 @@ async function downloadGraphic(arena, slot) {
   }
 }
 
+// The first frame of a saved sheet, as the overlay's lists show it: cell size per weapon, ships 10×4.
+const FIRST_FRAME = { bullets: [4, 10], bombs: [10, 13], mines: [10, 8], shrapnel: [10, 6], repel: [5, 2], rocket: [13, 2] };
+
+/** The pilot's saved weapons (or ships) that fit this card: click one to put it on the arena. */
+function savedList(arena, slot) {
+  const where = isShipSlot(slot.name) ? "shipyard" : "armory";
+  const mine = savedFor(slot);
+  const box = el("div", { class: "saved" }, el("span", { class: "hint", text: mine.length
+    ? `Your ${where} (${mine.length}): click one to use it here.`
+    : saved ? `Ones you make or upload land in your ${where}.` : `Sign in to keep them in your ${where}.` }));
+  if (!mine.length) return box;
+  const [cols, rows] = isShipSlot(slot.name) ? [10, 4] : FIRST_FRAME[slot.name] ?? [1, 1];
+  const list = el("div", { class: "savedlist", role: "group", "aria-label": `Your ${where}` });
+  for (const it of mine) {
+    const art = el("span", { class: "art" });
+    art.style.backgroundImage = `url("${it.url}")`;
+    art.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
+    const b = el("button", { type: "button", class: "savedthumb", title: `${it.name}: use it for ${slot.label}` }, art, el("span", { class: "name", text: it.name }));
+    b.addEventListener("click", () => void useSaved(arena, slot, it));
+    list.append(b);
+  }
+  box.append(list);
+  return box;
+}
+
 /** Puts one of the pilot's saved items on the arena's `slot`. */
 async function useSaved(arena, slot, item) {
+  msg($("gfxmsg"), `Putting ${item.name} on ${slot.label}…`, true);
   const r = await fetch(item.url, { credentials: "same-origin" });
   if (!r.ok) return msg($("gfxmsg"), `Couldn't load ${item.name}.`, false);
   await setGraphic(arena, slot, await r.blob());
@@ -661,18 +687,7 @@ function gfxCard(arena, slot, owner) {
       gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, slot, m); });
       acts.append(gen);
     }
-    const mine = savedFor(slot);
-    if (mine.length) {
-      const where = isShipSlot(slot.name) ? "shipyard" : "armory";
-      const pick = el("select", { "aria-label": `Put one from your ${where} on ${slot.label}` });
-      pick.append(el("option", { value: "", text: `Your ${where}…` }), ...mine.map((it) => el("option", { value: String(it.id), text: it.name })));
-      pick.addEventListener("change", () => {
-        const it = mine.find((m) => String(m.id) === pick.value);
-        pick.value = "";
-        if (it) void useSaved(arena, slot, it);
-      });
-      acts.append(pick);
-    }
+    if (keepsOnAccount(slot)) card.append(savedList(arena, slot));
     if (slot.source === "arena") {
       const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
       reset.addEventListener("click", async () => {

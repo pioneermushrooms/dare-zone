@@ -340,6 +340,12 @@ dialog .warn { color:var(--hot); }
 .gfxcard .src.arena { color:#07131e; background:var(--hot); border-color:var(--hot); }
 .gfxcard .hint { font-size:.75rem; color:var(--dim); }
 .gfxcard .acts { display:flex; flex-wrap:wrap; gap:6px; }
+.gfxcard .saved { display:grid; gap:4px; border-top:1px solid #344762; padding-top:6px; }
+.gfxcard .savedlist { display:grid; grid-template-columns:repeat(auto-fill, minmax(56px, 1fr)); gap:4px; max-height:150px; overflow-y:auto; }
+.gfxcard .savedthumb { display:grid; justify-items:center; gap:2px; padding:4px 2px; min-height:0; background:#070d18; border:1px solid #263449; border-radius:3px; color:var(--dim); cursor:pointer; box-shadow:none; text-shadow:none; }
+.gfxcard .savedthumb:hover, .gfxcard .savedthumb:focus-visible { border-color:var(--hot); background:#12223a; }
+.gfxcard .savedthumb .art { width:40px; height:40px; background-repeat:no-repeat; background-position:0 0; image-rendering:pixelated; }
+.gfxcard .savedthumb .name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.62rem; text-transform:none; letter-spacing:0; }
 .gfxcard .acts select { font-size:.8rem; padding:2px 6px; max-width:100%; }
 dialog.gfxdlg { width:min(720px, calc(100vw - 32px)); }
 .gfxpreview { background:#000; border-radius:6px; padding:8px; display:flex; justify-content:center; min-height:80px; }
