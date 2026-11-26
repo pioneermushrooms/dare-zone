@@ -39,7 +39,7 @@ filled (a 3×3 block reads as one plate).
   previews; `styles-preview.png` shows every style's 47 pieces.
 - `src/Dare.Arenas/Web/wwwroot/tileart-styles.js`: generated; every style's pieces for the site.
 - `src/Dare.Arenas/Web/wwwroot/tileart.js`: slot inference, plans, BMP writing, the panel.
-- `ships/interiors.py`: plain interior pieces for the standard packs (thick walls), in tactical2 slots 128-133; output `ships/tilesets/tactical2-interior.bmp`.
+- `ships/interiors.py`: plain interior pieces for the standard packs (thick walls), in tactical2 slots 128-133, and calm edge pieces (rim kept, plain inside) for grey-plate 90-93, grey-round 109-112, green-lit 147-150, steel-blue 151, 152, 94, 113 (top, left, right, bottom); writes `ships/tilesets/tactical2-interior.bmp` and the site copy `wwwroot/standard-tiles.bmp`.
 - Tests: `cd ships && python3 -m unittest test_tilegen test_interiors` (Pillow), `node --test tests/js/*.test.js`.
 
 Adding a style: add a `Style` (and a shader if it's a new kind) to `STYLES`, run `tilegen.py`.

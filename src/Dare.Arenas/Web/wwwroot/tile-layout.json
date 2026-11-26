@@ -172,7 +172,13 @@
     "edge-bottom": 61,
     "corner-br": 62
    },
-   "interior": 128
+   "interior": 128,
+   "calm": {
+    "ESW": 90,
+    "NES": 91,
+    "NSW": 92,
+    "NEW": 93
+   }
   },
   {
    "id": "grey-round",
@@ -199,7 +205,13 @@
     "edge-bottom": 65,
     "corner-br": 66
    },
-   "interior": 129
+   "interior": 129,
+   "calm": {
+    "ESW": 109,
+    "NES": 110,
+    "NSW": 111,
+    "NEW": 112
+   }
   },
   {
    "id": "green-lit",
@@ -226,7 +238,13 @@
     "edge-bottom": 69,
     "corner-br": 70
    },
-   "interior": 130
+   "interior": 130,
+   "calm": {
+    "ESW": 147,
+    "NES": 148,
+    "NSW": 149,
+    "NEW": 150
+   }
   },
   {
    "id": "white-lit",
@@ -280,7 +298,13 @@
     "edge-bottom": 141,
     "corner-br": 142
    },
-   "interior": 132
+   "interior": 132,
+   "calm": {
+    "ESW": 151,
+    "NES": 152,
+    "NSW": 94,
+    "NEW": 113
+   }
   },
   {
    "id": "navy",
