@@ -74,7 +74,7 @@
     const b = new Uint8Array(size);
     b[0] = 0x42; b[1] = 0x4d; put32(b, 2, size); put32(b, 10, off);
     put32(b, 14, 40); put32(b, 18, w); put32(b, 22, h); put16(b, 26, 1); put16(b, 28, 8);
-    put32(b, 34, stride * h); put32(b, 38, 2835); put32(b, 42, 2835); put32(b, 46, 256); put32(b, 50, 256);
+    put32(b, 34, stride * h); put32(b, 38, 2835); put32(b, 42, 2835); put32(b, 46, 256); put32(b, 50, 0);
     for (let i = 0; i < 256; i++) {
       b[54 + i * 4] = palette[i * 3 + 2]; b[55 + i * 4] = palette[i * 3 + 1]; b[56 + i * 4] = palette[i * 3];
     }

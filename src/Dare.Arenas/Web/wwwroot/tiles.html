@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tile editor — SubSpace Foundation</title>
+<link rel="stylesheet" href="/arena/style.css">
+<link rel="stylesheet" href="/arena/tiles.css">
+<script src="/arena/tiles.js" defer></script>
+<script src="/arena/tiles-editor.js" defer></script>
+</head>
+<body class="editor tiled">
+<header class="edbar">
+  <a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a>
+  <span class="edname" id="edname">Tile editor</span>
+  <span class="tag draft" id="dirtytag" hidden title="Changed since you opened or saved it">Unsaved</span>
+  <div class="edtools" role="toolbar" aria-label="Tools">
+    <button type="button" class="ghost small on" id="tPencil" aria-pressed="true">Pencil <kbd>B</kbd></button>
+    <button type="button" class="ghost small" id="tFill" aria-pressed="false">Fill <kbd>G</kbd></button>
+    <button type="button" class="ghost small" id="tPick" aria-pressed="false">Colour picker <kbd>I</kbd></button>
+    <button type="button" class="ghost small" id="undo">Undo</button>
+    <button type="button" class="ghost small" id="redo">Redo</button>
+  </div>
+  <div class="edactions">
+    <button type="button" class="ghost small" id="saveLvl" title="The map with this tileset in it (its tiles and eLVL data kept)">Download .lvl</button>
+    <button type="button" class="ghost small" id="saveBmp">Download .bmp</button>
+    <button type="button" class="ghost small" id="saveRoles" title="Which slot is which piece, in the tile layout format">Download roles</button>
+    <button type="button" class="ghost small" id="saveLib" title="Keep the .lvl in your maps, to open in the map editor">Save to my maps</button>
+    <a class="btn ghost small" href="/arena/map">Map editor</a>
+  </div>
+</header>
+<div class="edbody">
+  <aside class="edside">
+    <p class="kicker">Open a tileset</p>
+    <div class="row"><select id="shared" aria-label="Open the tileset of a ready-made map"><option value="">from a ready-made map…</option></select></div>
+    <div class="row"><label class="btn ghost small">Open a file…<input type="file" id="file" accept=".lvl,.bmp,.bm2,.png" hidden></label>
+      <button type="button" class="ghost small" id="newSheet">New empty tileset</button></div>
+    <p class="hint">A .lvl, a .bmp/.bm2 or a .png, 304 × 160. Files stay in your browser until you save.</p>
+
+    <p class="kicker">Selected slot</p>
+    <div class="slotinfo">
+      <canvas id="tilePrev" class="px" width="16" height="16" aria-hidden="true"></canvas>
+      <div><b id="slotName">Tile 1</b><br><span class="hint" id="slotRole"></span></div>
+    </div>
+    <label class="hint">Pack <select id="slotPack" aria-label="Pack of the selected slot"></select></label>
+    <label class="hint">Piece <select id="slotRoleSel" aria-label="Piece of the selected slot"></select></label>
+    <p class="hint" id="slotSuggest"></p>
+    <div class="row wrap">
+      <button type="button" class="ghost small" id="copyT">Copy <kbd>C</kbd></button>
+      <button type="button" class="ghost small" id="pasteT">Paste <kbd>V</kbd></button>
+      <button type="button" class="ghost small" id="flipH">Flip ↔ <kbd>H</kbd></button>
+      <button type="button" class="ghost small" id="flipV">Flip ↕ <kbd>J</kbd></button>
+      <button type="button" class="ghost small" id="rotT">Rotate ↻ <kbd>R</kbd></button>
+      <button type="button" class="ghost small" id="clearT">Clear</button>
+    </div>
+    <label class="hint"><input type="checkbox" id="turnRole" checked> Flip and rotate turn the piece too (and move it to that piece's slot when pasting)</label>
+
+    <p class="kicker">Colours</p>
+    <div class="row"><span class="swatch big" id="curCol"></span><span id="curColName" class="hint"></span>
+      <label class="btn ghost small" title="Change this palette colour everywhere it is used">Change…<input type="color" id="colEdit" hidden></label></div>
+    <canvas id="pal" class="px" width="256" height="128" aria-label="Palette: click a colour to draw with it"></canvas>
+    <p class="hint">A tileset has one palette of 256 colours. Colour 0 is empty space: see-through in game. Right-click draws with colour 0.</p>
+
+    <p class="kicker">Layout</p>
+    <p class="hint" id="layoutName"></p>
+    <div class="row wrap"><label class="btn ghost small">Load roles…<input type="file" id="layoutFile" accept=".json" hidden></label>
+      <button type="button" class="ghost small" id="layoutStd">Standard layout</button></div>
+    <p class="hint warnnote" id="layoutWarn" hidden></p>
+    <ul class="packlist" id="packs"></ul>
+    <div class="row wrap">
+      <button type="button" class="ghost small" id="packNew" title="A new pack laid out like the standard one, starting at the selected slot">New pack at selected slot</button>
+      <button type="button" class="ghost small" id="packDel">Remove pack</button>
+    </div>
+    <div class="row wrap">
+      <button type="button" class="ghost small" id="suggest" title="Read each tile's edges and mark slots whose piece doesn't look like its role">Check edges</button>
+      <button type="button" class="ghost small" id="suggestApply" title="Set each slot of the selected pack to the piece its edges look like">Roles from edges</button>
+    </div>
+    <label class="hint"><input type="checkbox" id="showRoles" checked> Show roles on the sheet</label>
+  </aside>
+  <main class="edmain tilemain">
+    <section class="sheetwrap">
+      <canvas id="sheet" class="px" width="912" height="480" aria-label="Tileset: click a slot to select it"></canvas>
+      <div class="sheetzoom"><button type="button" class="ghost small" id="zOut" aria-label="Smaller">−</button>
+        <button type="button" class="ghost small" id="zIn" aria-label="Bigger">+</button></div>
+    </section>
+    <section class="workrow">
+      <div class="workcol">
+        <p class="kicker">Edit tile <span class="hint">(with its neighbours on the sheet, dimmed)</span></p>
+        <canvas id="tile" class="px" width="480" height="480" aria-label="Selected tile, zoomed: draw on it"></canvas>
+      </div>
+      <div class="workcol">
+        <p class="kicker">How the pack joins <span class="hint">click cells to add or remove wall</span></p>
+        <canvas id="prev" class="px" width="480" height="320" aria-label="Sample walls built from the selected pack"></canvas>
+        <div class="row wrap">
+          <select id="shape" aria-label="Sample shape">
+            <option value="sampler">Sampler</option><option value="box">Boxes</option><option value="lines">Lines and ends</option>
+            <option value="cross">Junctions</option><option value="maze">Maze</option><option value="clear">Empty</option></select>
+          <label class="hint"><input type="checkbox" id="prevGrid"> grid</label>
+        </div>
+        <p class="hint" id="prevNote"></p>
+      </div>
+    </section>
+    <div class="edstatus" id="status" aria-live="polite"></div>
+    <div class="edmsg" id="msg" role="status"></div>
+  </main>
+</div>
+</body>
+</html>
