@@ -619,3 +619,9 @@ dl.howto { margin:0; }
 dl.howto dt { color:#fff; font-weight:600; margin-top:14px; }
 dl.howto dt:first-child { margin-top:0; }
 dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }
+
+/* map editor drawing tools (drawtools.js) */
+.drawtools { display:contents; }
+.edside #dtSize { width:4em; }
+.edside #dtText { flex:1 1 120px; min-width:0; }
+.edside .seltools .small { padding-left:8px; padding-right:8px; }

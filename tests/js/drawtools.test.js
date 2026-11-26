@@ -61,6 +61,15 @@ test("ellipses and rounded boxes close up, one tile wide, edge-joined", () => {
     const r = S.roundRect(100, 100, 100 + w, 100 + h, 3);
     assert.ok(edgeJoined(r) && connected(r), `rounded ${w}x${h}`);
   }
+  // thick rims stay about as thick all round, and are joined
+  const thickE = S.ellipse(100, 100, 160, 140, 4);
+  assert.ok(connected(thickE));
+  for (const [x, y] of [[130, 120]]) assert.ok(!thickE.has(at(x, y)), "hollow");
+  const across = (y) => [...thickE].filter((i) => xy(i)[1] === y && xy(i)[0] < 130).length;
+  assert.ok(across(120) >= 4 && across(120) <= 5, `rim ${across(120)} across at the side`);
+  const thickR = S.roundRect(100, 100, 140, 130, 8, 4);
+  assert.ok(connected(thickR) && !thickR.has(at(120, 115)));
+  assert.ok(thickR.has(at(104, 104)) && !thickR.has(at(108, 108)), "the inside corner is rounded, not cut square");
   const c = S.ellipse(0, 0, 20, 20, 1, true);
   assert.ok(c.has(at(10, 10)) && !c.has(at(0, 0)), "a filled circle: middle in, corner out");
   assert.ok(!S.roundRect(0, 0, 20, 20, 5).has(at(0, 0)), "rounded corners are cut");

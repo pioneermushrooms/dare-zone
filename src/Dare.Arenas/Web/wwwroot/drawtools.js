@@ -84,13 +84,27 @@
       const cx = Math.min(Math.max(x, ax + r), bx - r), cy = Math.min(Math.max(y, ay + r), by - r);
       return Math.hypot(x - cx, y - cy) <= r + 0.3;
     };
-    return region(x0, y0, x1, y1, test, t, filled);
+    if (filled || t <= 1 || bx - ax + 1 <= 2 * t || by - ay + 1 <= 2 * t) return region(x0, y0, x1, y1, test, t, filled);
+    // a thick rim: the box less the same box inset t, its corners rounded r - t, so the rim keeps
+    // its thickness round the corners
+    const outer = region(x0, y0, x1, y1, test, 1, true);
+    const inner = roundRect(ax + t, ay + t, bx - t, by - t, Math.max(0, r - t), 1, true);
+    for (const i of inner) outer.delete(i);
+    return outer;
   }
   function ellipse(x0, y0, x1, y1, t = 1, filled = false) {
     const ax = Math.min(x0, x1), ay = Math.min(y0, y1), bx = Math.max(x0, x1), by = Math.max(y0, y1);
     const cx = (ax + bx) / 2, cy = (ay + by) / 2, rx = (bx - ax + 1) / 2, ry = (by - ay + 1) / 2;
     const test = (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
-    return region(x0, y0, x1, y1, test, t, filled);
+    if (filled || t <= 1 || rx <= t || ry <= t) return region(x0, y0, x1, y1, test, t, filled);
+    // a thick rim: the ellipse less one t smaller all round (even thickness, unlike square steps)
+    const outer = region(x0, y0, x1, y1, test, 1, true);
+    const ix = rx - t, iy = ry - t;
+    for (const i of [...outer]) {
+      const x = i % N, y = (i - x) / N;
+      if (((x - cx) / ix) ** 2 + ((y - cy) / iy) ** 2 <= 1) outer.delete(i);
+    }
+    return outer;
   }
   // a polygon through points (closed): filled, or its rim t tiles deep
   function polygon(points, t = 1, filled = false) {
