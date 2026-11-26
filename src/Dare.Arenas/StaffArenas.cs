@@ -1,4 +1,5 @@
 using Dare.Arenas.Core;
+using SS.Core.ComponentInterfaces;
 
 namespace Dare.Arenas;
 
@@ -38,8 +39,30 @@ public sealed partial class ArenaOwnership
         catch (IOException) { folders = []; }
         catch (UnauthorizedAccessException) { folders = []; }
         return folders
-            .Where(n => n.Length > 0 && n[0] is not ('_' or '(' or '#' or '.') && !inactive.Contains(n)
+            .Where(n => n.Length > 0 && (n == PublicCounts.PublicGroup || n[0] is not ('_' or '(' or '#' or '.')) && !inactive.Contains(n)
                         && ArenaConfigFile.OwnPath(ArenasDir, n) is not null)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(n => n != PublicCounts.PublicGroup).ThenBy(n => n, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Gives the public arenas their own arenas/(public)/arena.conf, a copy of arenas/(default)/arena.conf,
+    /// so staff can edit them without changing every arena that falls back to the default. Same content,
+    /// so nothing changes in play; relative #includes (flags.conf, balls.conf) still find the default's files.
+    /// </summary>
+    private void EnsurePublicConf()
+    {
+        try
+        {
+            var own = Path.Combine(ArenasDir, PublicCounts.PublicGroup, ArenaConfigFile.FileName);
+            var fallback = Path.Combine(ArenasDir, "(default)", ArenaConfigFile.FileName);
+            if (File.Exists(own) || !File.Exists(fallback)) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(own)!);
+            File.Copy(fallback, own);
+            Log(LogLevel.Info, $"Created {own} from {fallback}, so the public arena has settings of its own to edit.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log(LogLevel.Warn, $"Could not give the public arena its own arena.conf: {ex.Message}");
+        }
     }
 }
