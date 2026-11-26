@@ -150,3 +150,68 @@ one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/ar
   and its files are stored away at the next server restart, not deleted. Staff can bring it back with `?arenaadmin revive`.
 - Every decision (request, approval, decline, staff create, transfer, suspend, revive, archive, co-mod change)
   is public in `?arenalog` and on the web page.
+
+## Arena bots
+
+Owners can use **Arena editor → Bots** to add, edit, or remove bots. Choose a
+behavior and ship, and click the arena map to add waypoints. The editor also
+accepts greetings and keyword replies. Save stores the bot
+in the selected arena. Click **Deploy** to enable it or **Stop** to take it out
+while keeping its settings.
+
+In the Open SubSpace client, choose **Esc → Manage bots**. The panel lists bots
+in chat and opens the input line for save and remove. The same commands work
+directly in chat:
+
+```text
+?bots list
+?bots save fighter Sparring
+?bots deploy Sparring
+?bots stop Sparring
+?bots remove Sparring
+```
+
+Saving a bot in game updates its behavior and keeps its existing settings.
+Bots run while a pilot is in the arena and for about a minute after the last
+pilot leaves.
+
+For a zone install, set `OSS_BOT_LINUX` to the Linux x86-64 `oss-bot` executable
+when running `deploy/deploy.sh`. The deploy bundles it with the plugin. The
+`[DareArenas]` settings `BotProgram`, `BotServer`, and `MaxBots` override the
+bundled executable, loopback game address, and zone-wide cap (30 by default).
+Set `MaxBots = 0` to disable launches.
+
+### Optional generated bot banter
+
+Deploy the updated plugin with a fresh Linux build of `oss-bot`. On the zone
+server, create `conf/bot-chat-secrets.conf` with mode 0600, readable by the zone
+service account. Restart the zone after setting or changing the key.
+
+```ini
+[OpenAI]
+ApiKey = <project API key>
+Model = gpt-4.1-mini
+```
+
+Players can address a deployed bot in public chat with
+`Sparring anyone up for a round?` (use the saved bot label). Public messages that
+mention a bot can go to the API, along with at most the previous exchange from
+the same pilot. Replies are public. The zone allows at most 12 conversation
+requests per hour. The activity slider controls the per-bot cooldown. Ordinary
+chat and private flight orders stay local. Replies use a brief typing delay
+that scales with message length. Enable **Chat with other bots** on two bots in the
+same arena for occasional two-line public exchanges while pilots are present.
+These exchanges use a separate zone-wide limit of one every 20 minutes.
+
+### Private flight orders
+
+The arena owner can send a private message to a deployed bot while both are in
+the arena. For example, type `:Sparring [bot]:follow me` in game.
+
+- **Come here** flies to where your ship was when you sent the message.
+- **Follow me** follows your ship until you leave the arena or give a new order.
+- **Stay here** or **stay here until I say go** holds the bot's current position.
+- **Go** or **resume** restores its configured behavior.
+
+These orders run locally and take priority over configured flight and combat.
+Updating the zone plugin requires a matching Linux build of `oss-bot`.

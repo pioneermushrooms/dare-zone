@@ -33,6 +33,7 @@ public sealed partial class ArenaOwnership
         Add("putlvz", Command_putlvz);
         Add("rmlvz", Command_rmlvz);
         Add("weblogin", Command_weblogin);
+        Add("bots", Command_bots);
 
         // drafts (any signed-in pilot)
         RegisterDraftCommands();

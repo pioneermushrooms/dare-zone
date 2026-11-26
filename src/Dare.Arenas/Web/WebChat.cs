@@ -43,6 +43,7 @@ public sealed partial class ArenaOwnership
         if (type is not (ChatMessageType.Pub or ChatMessageType.PubMacro or ChatMessageType.Arena)) return;
         if (type != ChatMessageType.Arena && player is null) return;
         if (message.IsEmpty || message[0] is '?' or '*') return;
+        if (type == ChatMessageType.Pub && player is not null) AddressBot(arena, player, message);
         var line = new ChatLine(0, DateTimeOffset.UtcNow, type == ChatMessageType.Arena ? "ARENA" : "PUB",
             type == ChatMessageType.Arena ? null : player!.Name, message.ToString());
         lock (_chatLock)

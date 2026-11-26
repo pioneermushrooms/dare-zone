@@ -53,6 +53,15 @@ public sealed partial class ArenaStore : IDisposable
               created TEXT NOT NULL,
               last_entered TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS bots (
+              arena TEXT NOT NULL COLLATE NOCASE,
+              label TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+              script TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_bots_arena ON bots(arena);
+            CREATE TABLE IF NOT EXISTS stopped_bots (
+              label TEXT NOT NULL PRIMARY KEY COLLATE NOCASE
+            );
             CREATE TABLE IF NOT EXISTS comods (
               arena TEXT NOT NULL COLLATE NOCASE,
               player TEXT NOT NULL COLLATE NOCASE,

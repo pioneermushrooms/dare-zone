@@ -33,6 +33,7 @@ public sealed partial class ArenaOwnership : IModule
     private readonly IFileTransfer _fileTransfer;
     private readonly ICapabilityManager _capabilityManager;
     private readonly IMainloop _mainloop;
+    private readonly IGame _game;
 
     private ArenaStore? _store;
     // Foundation accounts (same db file, own connection). Game logins are answered by the
@@ -57,7 +58,8 @@ public sealed partial class ArenaOwnership : IModule
         IMainloopTimer mainloopTimer,
         IFileTransfer fileTransfer,
         ICapabilityManager capabilityManager,
-        IMainloop mainloop)
+        IMainloop mainloop,
+        IGame game)
     {
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -72,6 +74,7 @@ public sealed partial class ArenaOwnership : IModule
         _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
         _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        _game = game ?? throw new ArgumentNullException(nameof(game));
     }
 
     private ArenaStore Store => _store ?? throw new InvalidOperationException("Dare.Arenas store is not open.");
@@ -122,6 +125,7 @@ public sealed partial class ArenaOwnership : IModule
         LoadZoneList(broker);
         LoadWebChat(broker);
         StartWeb();
+        StartBots();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
         return true;
@@ -129,6 +133,7 @@ public sealed partial class ArenaOwnership : IModule
 
     bool IModule.Unload(IComponentBroker broker)
     {
+        StopBots();
         StopWeb(); // first: no new web work reaches the mainloop after this
         UnloadWebChat(broker);
         UnloadZoneList(broker);
@@ -155,7 +160,7 @@ public sealed partial class ArenaOwnership : IModule
 
     private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
     {
-        if (action != PlayerAction.EnterArena || arena is null || player.Name is null || _store is null)
+        if (action != PlayerAction.EnterArena || arena is null || player.Name is null || IsBot(player.Name) || _store is null)
             return;
 
         try

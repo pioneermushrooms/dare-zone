@@ -272,6 +272,7 @@ public sealed partial class ArenaOwnership
 internal sealed partial class WebServer : IDisposable
 {
     private const int MaxJsonBytes = 4096;
+    private const int MaxBotJsonBytes = 8192;
     private const int MaxConcurrent = 16;
     // A request body must arrive within these, so slow senders can't hold the 16 slots.
     private static readonly TimeSpan JsonBodyTimeout = TimeSpan.FromSeconds(10);
@@ -429,6 +430,15 @@ internal sealed partial class WebServer : IDisposable
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/visibility": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebSetPrivate(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/discard": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebDiscard(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/bots": return method == "GET" ? ListBots(req) : MethodNotAllowed();
+            case "/api/bots/save": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
+                _m.SaveBot(a, p, Str(b, "label") ?? "", Str(b, "script") ?? ""), MaxBotJsonBytes).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/bots/deploy":
+            case "/api/bots/stop":
+                return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
+                    _m.WebStore.SetBotDeployment(a, p, Str(b, "label") ?? "", path == "/api/bots/deploy")).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/bots/remove": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
+                _m.SaveBot(a, p, Str(b, "label") ?? "", null)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/comod": return method == "POST" ? await CoModAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/maps": return method == "GET" ? SharedMaps() : MethodNotAllowed();
             case "/api/maps/file": return method == "GET" ? await SharedMapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
@@ -774,11 +784,21 @@ internal sealed partial class WebServer : IDisposable
         return JsonReply(404, new { ok = false, message = "This arena has no map file yet; start from an empty map or upload one." });
     }
 
+    private Reply ListBots(HttpListenerRequest req)
+    {
+        if (Gate(req, write: false, out var player) is { } denied) return denied;
+        var arena = req.QueryString["arena"];
+        if (arena is null || _m.WebStore.Get(arena) is not { Status: ArenaStatus.Active } owned ||
+            !string.Equals(owned.Owner, player, StringComparison.OrdinalIgnoreCase))
+            return JsonReply(403, new { ok = false, message = "Only the active arena's owner can manage bots." });
+        return JsonReply(200, new { ok = true, bots = _m.WebStore.Bots(owned.Name) });
+    }
+
     /// <summary>Owner only, body {"arena", ...}: runs <paramref name="act"/> on the mainloop with the body.</summary>
-    private async Task<Reply> OwnerActionAsync(HttpListenerRequest req, Func<string, string, JsonElement, Result> act)
+    private async Task<Reply> OwnerActionAsync(HttpListenerRequest req, Func<string, string, JsonElement, Result> act, int maxBytes = MaxJsonBytes)
     {
         if (Gate(req, write: true, out var player) is { } denied) return denied;
-        var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
+        var (body, error) = await ReadJsonAsync(req, maxBytes).ConfigureAwait(false);
         if (body is null) return error!;
         var pick = Pick(_m.WebStore.RolesFor(player), Str(body, "arena"));
         if (pick is null || pick.Value.Role != "owner")
@@ -980,13 +1000,13 @@ internal sealed partial class WebServer : IDisposable
         return ms.ToArray();
     }
 
-    private static async Task<(JsonElement? Body, Reply? Error)> ReadJsonAsync(HttpListenerRequest req)
+    private static async Task<(JsonElement? Body, Reply? Error)> ReadJsonAsync(HttpListenerRequest req, int maxBytes = MaxJsonBytes)
     {
-        if (req.ContentLength64 > MaxJsonBytes)
+        if (req.ContentLength64 > maxBytes)
             return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
         if (req.ContentType is null || !req.ContentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
             return (null, JsonReply(415, new { ok = false, message = "Send JSON (Content-Type: application/json)." }));
-        var bytes = await ReadBodyAsync(req, MaxJsonBytes, JsonBodyTimeout).ConfigureAwait(false);
+        var bytes = await ReadBodyAsync(req, maxBytes, JsonBodyTimeout).ConfigureAwait(false);
         if (bytes is null)
             return (null, JsonReply(413, new { ok = false, message = "Request too large." }));
         try

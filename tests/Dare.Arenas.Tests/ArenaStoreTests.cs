@@ -34,6 +34,24 @@ public sealed class ArenaStoreTests : IDisposable
     }
 
     [Fact]
+    public void bot_settings_are_owner_only_and_cannot_override_launch_fields()
+    {
+        var store = Owned();
+        Assert.False(store.SaveBot("bigarena", "Other", "Patrol", "behaviour idle").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "Patrol", "behaviour idle\npassword override").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "_Patrol", "behaviour idle").Ok);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Patrol", "behaviour patrol\npoint 512 512").Ok);
+        Assert.False(Assert.Single(Open().Bots("bigarena")).Deployed);
+        Assert.False(store.SetBotDeployment("bigarena", "Other", "Patrol", true).Ok);
+        Assert.True(store.SetBotDeployment("bigarena", "Big Chris", "patrol", true).Ok);
+        Assert.True(Assert.Single(Open().Bots("bigarena")).Deployed);
+        Assert.True(store.SetBotDeployment("bigarena", "Big Chris", "Patrol", false).Ok);
+        Assert.False(Assert.Single(store.Bots("bigarena")).Deployed);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "patrol", null).Ok);
+        Assert.Empty(store.Bots("bigarena"));
+    }
+
+    [Fact]
     public void request_then_approve_makes_owner_and_events()
     {
         var s = Open();

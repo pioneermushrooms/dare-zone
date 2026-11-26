@@ -93,6 +93,8 @@ async function mePage(arena) {
 
   const hasArena = !!body.arena;
   for (const a of document.querySelectorAll('nav.side a[data-needs="arena"]')) a.hidden = !hasArena;
+  $("arena-context").hidden = !hasArena;
+  $("botnav").hidden = !hasArena || body.role !== "owner" || body.status !== "Active" || body.arena.startsWith("#");
   if (hasArena) renderArena(body); else renderNoArena(body);
   route();
 }
@@ -101,6 +103,9 @@ function route() {
   if (!current) return;
   const want = location.hash.slice(1);
   const shown = showView(want, current.arena ? "overview" : "make");
+  $("arena-context").hidden = !current.arena || shown === "make";
+  if (shown === "bots") loadBots(current.arena);
+  if (shown === "overview") loadBotSummary(current.arena);
 }
 
 function renderNoArena(body) {
@@ -120,10 +125,15 @@ function renderArena(body) {
   const st = $("arenastatus");
   st.textContent = body.status || ""; st.className = "tag " + (body.status || "");
   $("arenameta").textContent = `${owner ? "You own it" : "You are a co-mod"} · owner ${body.owner}`
-    + ` · co-mods ${body.coMods.length}/5 · last visited ${when(body.lastEntered)}`;
+    + ` · last visited ${when(body.lastEntered)}`;
   $("gocmd").textContent = `?go ${body.arena}`;
   const pick = $("arenapick");
-  pick.hidden = body.arenas.length < 2;
+  $("overview-comods").textContent = body.coMods.join(", ") || "None";
+  $("overview-map").textContent = body.map || "No map";
+  $("overview-graphics").textContent = String(body.levelFiles.length);
+  $("botstile").hidden = $("botnav").hidden;
+  $("overview-bots-label").hidden = $("botnav").hidden;
+  $("overview-bots").hidden = $("botnav").hidden;
   pick.replaceChildren(...body.arenas.map((a) => {
     const o = el("option", { value: a.name, text: `${a.name} (${a.role})` });
     if (a.name === body.arena) o.selected = true;
@@ -163,15 +173,182 @@ function renderArena(body) {
 }
 
 // The arena's map, whole, on the overview (flat chart colours; lvl.js).
-async function drawThumb(arena) {
-  const c = $("thumb");
+async function drawThumb(arena, c = $("thumb")) {
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#04070e"; ctx.fillRect(0, 0, c.width, c.height);
   try {
     const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
     if (!r.ok || current?.arena !== arena) return;
-    Lvl.drawOverview(c, Lvl.parse(new Uint8Array(await r.arrayBuffer())).grid, true);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (current?.arena !== arena) return;
+    const grid = Lvl.parse(bytes).grid;
+    if (c.id === "botmap") {
+      botMapGrid = grid;
+      drawBotWaypoints();
+    } else Lvl.drawOverview(c, grid, true);
+    return true;
   } catch { /* leave it dark */ }
+}
+
+async function loadBotSummary(arena) {
+  if ($("botnav").hidden) return;
+  const summary = $("overview-bots");
+  summary.textContent = "Loading…";
+  try {
+    const { body } = await getJson(API + "/bots?arena=" + encodeURIComponent(arena));
+    if (current?.arena !== arena) return;
+    summary.textContent = body?.ok
+      ? `${body.bots.filter(bot => bot.deployed).length} deployed / ${body.bots.length} saved`
+      : "Unavailable";
+  } catch {
+    if (current?.arena === arena) summary.textContent = "Unavailable";
+  }
+}
+
+let botsArena = "";
+let botMapGrid = null;
+function drawBotWaypoints() {
+  if (!botMapGrid) return;
+  const c = $("botmap");
+  Lvl.drawOverview(c, botMapGrid, false);
+  const ctx = c.getContext("2d");
+  const points = botLines($("botpoints").value);
+  const shown = $("botmode").value === "sentry" ? points.slice(0, 1) : points;
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const [i, point] of shown.entries()) {
+    const xy = point.split(/\s+/).map(Number);
+    if (xy.length !== 2 || xy.some(n => !Number.isInteger(n) || n < 0 || n > 1023)) continue;
+    const x = Math.max(8, Math.min(c.width - 8, xy[0] * c.width / 1024));
+    const y = Math.max(8, Math.min(c.height - 8, xy[1] * c.height / 1024));
+    ctx.fillStyle = "#68e7fa";
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillStyle = "#06101a";
+    ctx.fillText(String(i + 1), x, y);
+  }
+}
+async function loadBots(arena) {
+  if (botsArena !== arena) {
+    botsArena = arena;
+    botMapGrid = null;
+    $("botform").reset();
+    $("botlist").replaceChildren();
+    msg($("botmsg"), "", true);
+  }
+  $("botmap").dataset.arena = "";
+  try {
+    const { body } = await getJson(API + "/bots?arena=" + encodeURIComponent(arena));
+    if (current?.arena !== arena) return;
+    if (!body?.ok) return msg($("botmsg"), body?.message || "Could not load bots.", false);
+    fill($("botlist"), body.bots, (bot) => {
+      const edit = el("button", { type: "button", text: bot.label });
+      const remove = el("button", { type: "button", class: "small danger", text: "Remove",
+        "aria-label": "Remove " + bot.label });
+      edit.onclick = () => editBot(bot);
+      remove.onclick = () => changeBot("remove", { arena, label: bot.label });
+      edit.className = "bot-name";
+      const input = el("input", { type: "checkbox", role: "switch", "aria-label": "Deploy " + bot.label });
+      input.checked = bot.deployed;
+      const status = el("span", { class: "dim", text: bot.deployed ? "Deployed" : "Stopped" });
+      input.onchange = async () => {
+        input.disabled = true;
+        if (!await changeBot(input.checked ? "deploy" : "stop", { arena, label: bot.label })) {
+          input.checked = bot.deployed;
+          input.disabled = false;
+        }
+      };
+      const toggle = el("label", { class: "switch bot-switch" }, input, el("span", { class: "track", "aria-hidden": "true" }), status);
+      return el("li", { class: "bot-row" }, edit, toggle, remove);
+    }, "No bots configured.");
+    if (await drawThumb(arena, $("botmap"))) $("botmap").dataset.arena = arena;
+  } catch {
+    if (current?.arena === arena) msg($("botmsg"), "Could not load bots.", false);
+  }
+}
+const botLines = (value) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+function botFields() {
+  const mode = $("botmode").value;
+  $("botrangefield").hidden = mode !== "sentry";
+  $("botwaypointsfield").hidden = mode === "idle";
+  $("botwaypointhint").textContent = {
+    patrol: "The bot flies the points in order, then loops.",
+    sentry: "The first point is the guard post. Without one, it guards its spawn.",
+    fighter: "The bot follows this route when there are no enemies to chase.",
+  }[mode] || "";
+  $("botchatfields").hidden = !$("botcasual").checked;
+  $("botactivitylabel").textContent = ["Rare", "Occasional", "Regular", "Frequent", "Chatty"][$("botactivity").value - 1];
+  drawBotWaypoints();
+}
+function editBot(bot) {
+  $("botform").reset();
+  $("botlabel").value = bot.label;
+  for (const line of botLines(bot.script)) {
+    const [, key, value] = /^(\S+) +(.*)$/.exec(line) || [];
+    switch (key) {
+      case "ship": $("botship").value = value; break;
+      case "behaviour": $("botmode").value = value; break;
+      case "range": $("botrange").value = value; break;
+      case "greet": $("botgreet").value = value; break;
+      case "botchat": $("botchat").checked = value === "on"; break;
+      case "casual":
+        [$("botactivity").value, $("botpersonality").value] = value.split(/\s+/);
+        $("botcasual").checked = true;
+        break;
+      case "point": case "reply": {
+        const field = $(key === "point" ? "botpoints" : "bot" + key);
+        field.value = [field.value, key === "point" ? value : value.replace(/\s+/, " | ")].filter(Boolean).join("\n");
+        break;
+      }
+    }
+  }
+  botFields();
+}
+async function changeBot(action, payload) {
+  try {
+    const { body } = await postJson("/bots/" + action, payload);
+    if (current?.arena !== payload.arena) return false;
+    msg($("botmsg"), body?.message, body?.ok);
+    if (body?.ok) await loadBots(payload.arena);
+    return !!body?.ok;
+  } catch {
+    if (current?.arena === payload.arena) msg($("botmsg"), "Could not update bots.", false);
+    return false;
+  }
+}
+function wireBots() {
+  for (const id of ["botmode", "botcasual", "botactivity"]) $(id).addEventListener("input", botFields);
+  $("botpoints").addEventListener("input", drawBotWaypoints);
+  $("botform").addEventListener("reset", () => setTimeout(botFields, 0));
+  botFields();
+  $("botform").onsubmit = (event) => {
+    event.preventDefault();
+    const script = ["ship " + $("botship").value, "behaviour " + $("botmode").value];
+    for (const point of botLines($("botpoints").value)) script.push("point " + point);
+    if ($("botrange").value) script.push("range " + $("botrange").value);
+    if ($("botgreet").value.trim()) script.push("greet " + $("botgreet").value.trim());
+    if ($("botcasual").checked) script.push("casual " + $("botactivity").value + " " + $("botpersonality").value);
+    if ($("botcasual").checked && $("botchat").checked) script.push("botchat on");
+    for (const line of botLines($("botreply").value)) {
+      const match = /^(\S+)\s*\|\s*(.+)$/.exec(line);
+      if (!match) return msg($("botmsg"), "Use | between the trigger and the custom message.", false);
+      script.push("reply " + match[1] + " " + match[2]);
+    }
+    changeBot("save", { arena: current.arena, label: $("botlabel").value, script: script.join("\n") });
+  };
+  $("botmap").onclick = (event) => {
+    const c = $("botmap");
+    if (c.dataset.arena !== current?.arena) return;
+    const r = c.getBoundingClientRect();
+    const tile = (v, origin, size) => Math.max(0, Math.min(1023, Math.floor((v - origin) * 1024 / size)));
+    const point = tile(event.clientX, r.left, r.width) + " " + tile(event.clientY, r.top, r.height);
+    const settings = $("botpoints");
+    const points = botLines(settings.value);
+    settings.value = ($("botmode").value === "sentry" ? [point, ...points.slice(1)] : [...points, point]).join("\n");
+    drawBotWaypoints();
+  };
 }
 
 function renderLvz(files, max, owner) {
@@ -304,7 +481,22 @@ function wireHub() {
   });
   window.addEventListener("hashchange", route);
   $("filter").addEventListener("input", applyFilter);
-  $("arenapick").addEventListener("change", (e) => mePage(e.target.value));
+  $("arenapick").addEventListener("change", async (e) => {
+    const pick = e.currentTarget;
+    const arena = pick.value;
+    pick.value = current.arena;
+    pick.disabled = true;
+    try {
+      await mePage(arena);
+      if (current?.arena === arena) {
+        const url = new URL(location.href);
+        url.searchParams.set("arena", arena);
+        history.replaceState(null, "", url);
+      }
+    } finally {
+      pick.disabled = false;
+    }
+  });
   wireDrop($("mapdrop"), $("mapfile"), "map", $("mapmsg"));
   wireDrop($("lvzdrop"), $("lvzfile"), "lvz", $("lvzmsg"));
   $("comodform").addEventListener("submit", (e) => { e.preventDefault(); changeCoMod("add", $("comodname").value.trim()); });
@@ -323,6 +515,6 @@ function wireHub() {
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
   // /arena/me?arena=%23name (from the builder page) opens that arena, e.g. your draft
-  if (page === "me") { wireHub(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
+  if (page === "me") { wireBots(); wireHub(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
   else publicPage();
 });

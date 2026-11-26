@@ -216,7 +216,7 @@ label.switch input:checked + .track::after { left:23px; background:#aebcd0; }
 label.switch input:focus-visible + .track { outline:2px solid var(--accent); outline-offset:3px; }
 details.discard summary { cursor:pointer; color:var(--bad); font-size:.9rem; }
 details.discard form { margin-top:8px; }
-form.stack [hidden] { display:none; }
+[hidden] { display:none !important; }
 /* account page: a compact "Your account" card, then one folded section per task (Pilot names, Recovery email,
    Change password, Keys and macros); each opens on demand so the whole page fits one screen */
 main.acct { width:min(760px, calc(100% - 32px)); margin:0 auto; display:grid; gap:10px; }
@@ -255,3 +255,28 @@ main.acct > .card .links { margin:0; white-space:nowrap; }
   .fold > summary { padding:14px 16px; }
   .fold > .foldbody { padding:4px 16px 18px; }
 }
+
+.arena-context { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 14px; margin-bottom:14px; border:1px solid #344762; border-radius:8px; background:var(--panel2); }
+.arena-context label { font-weight:650; }
+.arena-context select { max-width:100%; }
+.arena-facts { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:5px 14px; }
+.arena-facts dt { color:var(--muted,#aebcd0); }
+.arena-facts dd { margin:0; overflow-wrap:anywhere; }
+#botlist { padding:0; list-style:none; }
+.bot-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid #344762; }
+button.bot-name {
+  margin-right:auto; padding:6px 10px; background:transparent; color:var(--text);
+  border:1px solid transparent; font-weight:650;
+  text-decoration:underline; text-decoration-color:#7289a4; text-underline-offset:3px;
+}
+button.bot-name:hover:not(:disabled) {
+  background:#172438; color:var(--text); border-color:#344762;
+  text-decoration-color:#aebcd0;
+}
+label.bot-switch .track { background:#2a2f3f; border-color:#6b7d90; }
+label.bot-switch .track::after { background:#aebcd0; }
+label.bot-switch input:checked + .track { background:#1d4a5a; border-color:var(--accent); }
+label.bot-switch input:checked + .track::after { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+label.bot-switch input:disabled + .track { opacity:.6; }
+#botform details label, #botwaypointsfield label { display:grid; gap:4px; margin-top:8px; }
+#botmap { display:block; max-width:100%; height:auto; cursor:crosshair; }

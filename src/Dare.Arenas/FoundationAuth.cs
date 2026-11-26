@@ -196,6 +196,15 @@ public sealed class FoundationAuth : IModule, IAuth
             return;
         }
 
+        // the zone's own bots: a one-time pass from the bot supervisor
+        if (ArenaOwnership.IsBot(name))
+        {
+            result.Authenticated = BotPasses.Redeem(name, password);
+            result.Code = result.Authenticated ? AuthCode.OK : AuthCode.BadPassword;
+            authRequest.Done();
+            return;
+        }
+
         var token = new object();
         lock (_pendingLock) _pending[player] = token;
 

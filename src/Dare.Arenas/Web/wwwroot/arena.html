@@ -26,6 +26,7 @@
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
+    <a href="#bots" id="botnav" data-view="bots" data-needs="arena" hidden>Bots</a>
     <a href="#crew" data-view="crew" data-needs="arena">Crew</a>
     <a href="#make" data-view="make">Make an arena</a>
     <hr>
@@ -34,6 +35,11 @@
   </nav>
 
   <div class="content">
+    <div class="arena-context" id="arena-context" hidden>
+      <label for="arenapick">Editing arena</label>
+      <select id="arenapick"></select>
+      <span class="tag" id="arenastatus"></span>
+    </div>
     <!-- no arena yet: launch one (staff can also make one for someone else) -->
     <section data-view="make" hidden>
       <h2 id="maketitle">Make an arena</h2>
@@ -58,19 +64,66 @@
       </div>
     </section>
 
+    <section data-view="bots" hidden>
+      <h2>Bots</h2>
+      <p class="hint">Bots belong to the selected arena. Save a bot, then select Deploy to let it join when a pilot is here.</p>
+      <ul id="botlist"></ul>
+      <div class="split">
+        <form class="stack" id="botform">
+          <label>Bot label <input id="botlabel" maxlength="14" required></label>
+          <label>Behavior <select id="botmode">
+            <option value="idle">Idle</option><option value="patrol">Patrol</option>
+            <option value="sentry">Sentry</option><option value="fighter">Fighter</option>
+          </select></label>
+          <label>Ship <input id="botship" type="number" min="1" max="8" value="1" required></label>
+          <label id="botrangefield" hidden>Sentry range (tiles) <input id="botrange" type="number" min="1" max="200" placeholder="30"></label>
+          <label class="switch bot-switch"><input type="checkbox" id="botcasual" role="switch"><span class="track" aria-hidden="true"></span> Casual chat</label>
+          <div class="stack" id="botchatfields" hidden>
+            <label>Personality <select id="botpersonality"><option value="friendly">Friendly</option><option value="dry">Dry</option><option value="competitive">Competitive</option></select></label>
+            <label>Reply frequency <output id="botactivitylabel" for="botactivity"></output>
+              <input id="botactivity" type="range" min="1" max="5" value="2"></label>
+            <label><input type="checkbox" id="botchat"> Chat with other bots</label>
+            <span class="hint">Enable this on two bots to let them occasionally chat with each other in public.</span>
+            <span class="hint">Mention the bot by name in public chat, for example <code>Bodder what ship do you fly?</code> Messages that name a bot may be sent to the chat provider.</span>
+          </div>
+          <details>
+            <summary>Custom chat</summary>
+            <label>Greeting <input id="botgreet" maxlength="200" placeholder="Welcome, {name}!"></label>
+            <label>Keyword replies <textarea id="botreply" rows="2" placeholder="!rules | Practice arena"></textarea><span class="hint">One per line. Enter a keyword, then | and the reply.</span></label>
+          </details>
+          <div class="row"><button class="hot" type="submit">Save bot</button>
+            <button type="reset">New bot</button></div>
+        </form>
+        <div id="botwaypointsfield">
+          <h3>Waypoints</h3>
+          <canvas id="botmap" class="px" width="256" height="256" aria-label="Arena map for choosing bot waypoints"></canvas>
+          <p class="hint" id="botwaypointhint"></p>
+          <label>Tile coordinates <textarea id="botpoints" rows="4" placeholder="512 512"></textarea>
+            <span class="hint">Click the map or enter one X Y pair per line.</span></label>
+        </div>
+      </div>
+      <p class="msg" id="botmsg" role="status"></p>
+    </section>
+
     <section data-view="overview" hidden>
       <div class="split">
         <div class="thumb"><canvas id="thumb" class="px" width="256" height="256" aria-label="Map of your arena"></canvas></div>
         <div class="info">
-          <div class="row"><h2 id="arenatitle"></h2><span class="tag" id="arenastatus"></span>
-            <select id="arenapick" hidden aria-label="Choose arena"></select></div>
+          <h2 id="arenatitle"></h2>
           <p class="dim" id="arenameta"></p>
           <div class="tiles">
             <a class="btn" href="#map">Edit map</a>
             <a class="btn ghost" href="#graphics">Graphics</a>
             <a class="btn ghost" href="#settings">Settings</a>
             <a class="btn ghost" href="#crew" id="crewtile">Crew</a>
+            <a class="btn ghost" href="#bots" id="botstile" hidden>Bots</a>
           </div>
+          <dl class="arena-facts">
+            <dt>Co-mods</dt><dd id="overview-comods"></dd>
+            <dt>Map</dt><dd id="overview-map"></dd>
+            <dt>Graphics</dt><dd id="overview-graphics"></dd>
+            <dt id="overview-bots-label">Bots</dt><dd id="overview-bots"></dd>
+          </dl>
           <p class="dim">In game: <b class="name" id="gocmd"></b></p>
           <div id="ownerbox" hidden>
             <label class="switch"><input type="checkbox" id="privacy" role="switch"><span class="track" aria-hidden="true"></span>

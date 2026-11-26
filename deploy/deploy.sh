@@ -5,6 +5,7 @@
 #
 #   --force       restart the zone even with players online (default: refuse)
 #
+#   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle and enable
 #   DEPLOY_HOST   ssh target (default root@5.161.238.245)
 #
 # Builds the plugin (Release), copies it with deploy/ and site/ to
@@ -66,6 +67,11 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/plugin" "$STAGE/site"
 cp -R "$REPO/deploy" "$STAGE/deploy"
 cp "$PLUGIN"/* "$STAGE/plugin/"
+if [ -n "${OSS_BOT_LINUX:-}" ]; then
+  [ -f "$OSS_BOT_LINUX" ] && file -b "$OSS_BOT_LINUX" | grep -Eq '^ELF 64-bit.*executable.*x86-64' ||
+    { echo "OSS_BOT_LINUX must point to a Linux x86-64 executable" >&2; exit 1; }
+  install -m 0755 "$OSS_BOT_LINUX" "$STAGE/plugin/oss-bot"
+fi
 # The server's native SQLite comes from SQLitePCLRaw.lib.e_sqlite3 at the version the plugin builds
 # against (2.1.10, which the server shipped with, has a known high-severity flaw); same C API.
 SQLITE_VER=$(sed -n 's/.*SQLitePCLRaw.lib.e_sqlite3" Version="\([0-9.]*\)".*/\1/p' "$REPO/src/Dare.Arenas/Dare.Arenas.csproj" | head -1)

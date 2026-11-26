@@ -18,3 +18,4 @@ cmd_arenamap
 cmd_putlvz
 cmd_rmlvz
 cmd_weblogin
+cmd_bots
