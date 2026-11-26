@@ -52,6 +52,16 @@ public sealed class ArenaStoreTests : IDisposable
     }
 
     [Fact]
+    public void scripts_built_by_the_bots_command_are_accepted()
+    {
+        var store = Owned();
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Sparring", BotCommand.Apply(null, "fighter", 3)).Ok);
+        var saved = Assert.Single(store.Bots("bigarena"));
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Sparring", BotCommand.Apply(saved.Script, "sentry", null)).Ok);
+        Assert.Equal("sentry, Spider", BotCommand.Describe(Assert.Single(store.Bots("bigarena")).Script));
+    }
+
+    [Fact]
     public void request_then_approve_makes_owner_and_events()
     {
         var s = Open();
