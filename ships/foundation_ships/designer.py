@@ -19,8 +19,9 @@ from . import shipgen, stylegen
 
 log = logging.getLogger(__name__)
 
-# PixelLab style jobs running at once, across everything in this process.
-_style_slots = threading.BoundedSemaphore(2)
+# PixelLab style jobs running at once, across everything in this process (pool refills, prompts
+# and the next takes drawn ahead in the background).
+_style_slots = threading.BoundedSemaphore(4)
 
 
 class Busy(RuntimeError):
@@ -106,11 +107,11 @@ class Tries:
     With a prompt, ships come from batches drawn for it; with prompt=None, from `pool`.
     """
 
-    MAX_FROM_BATCH = 3      # then a fresh batch, so Try again doesn't circle one design
-    MIN_DIFFERENCE = 0.035  # below this a candidate is a near-twin or a repaint of one shown
+    MAX_FROM_BATCH = 2      # then a fresh take: one batch's ships are cousins of each other
+    MIN_DIFFERENCE = 0.045  # below this a candidate is a cousin, twin or repaint of one shown
     AGAIN = (
-        " Another take on the same brief: change the silhouette, wing layout and colour "
-        "accents from the usual version."
+        " Another take on the same brief, keeping what it asks for but built as a {hull} "
+        "with {wings}: a clearly different silhouette from the usual version."
     )
 
     def __init__(
@@ -123,17 +124,55 @@ class Tries:
         self.seen: list[list[float]] = []
         self._batch: list[Image.Image] = []
         self._from_batch = 0
-        self._takes = 0  # fresh batches drawn for this prompt
+        self._takes = 0  # batches drawn (or being drawn) for this prompt
         self.max_batches = max_batches  # each is a paid PixelLab call
         self._lock = threading.Lock()
+        # The next take, drawn in the background while the pilot looks at this one: PixelLab
+        # takes 1.5-4.5 minutes per batch, too long to wait for on Try again.
+        self._upcoming: list[Image.Image] | None = None
+        self._drawing: threading.Thread | None = None
+
+    def _brief(self, take: int) -> str:
+        if take == 0:
+            return self.prompt
+        rng = random.Random()
+        return self.prompt + self.AGAIN.format(
+            hull=rng.choice(stylegen.HULLS), wings=rng.choice(stylegen.WINGS)
+        )
+
+    def _draw_ahead(self) -> None:
+        """Starts drawing the next take in the background (once; within the paid cap)."""
+        if self._drawing is not None or self._upcoming is not None or self._takes >= self.max_batches:
+            return
+        brief = self._brief(self._takes)
+        self._takes += 1
+
+        def run():
+            try:
+                self._upcoming = draw(brief)
+            except Exception as exc:  # the next Try again draws in the foreground instead
+                log.warning("drawing ahead failed: %s", exc)
+                self._takes -= 1
+
+        self._drawing = threading.Thread(target=run, daemon=True)
+        self._drawing.start()
 
     def _fresh_batch(self) -> None:
-        if self._takes >= self.max_batches:
-            raise RuntimeError("That's a lot of tries for one description. Change it and draw again.")
-        brief = self.prompt + (self.AGAIN if self._takes else "")
-        self._batch = draw(brief)
+        if self._drawing is not None:
+            self._drawing.join()  # a take already under way: wait for it rather than pay twice
+            self._drawing = None
+        if self._upcoming is not None:
+            self._batch, self._upcoming = self._upcoming, None
+        else:
+            if self._takes >= self.max_batches:
+                raise RuntimeError(
+                    "That's a lot of tries for one description. Change it and draw again."
+                )
+            brief = self._brief(self._takes)
+            self._takes += 1
+            self._draw_ahead()  # the next take alongside this one (PixelLab runs them in parallel)
+            self._batch = draw(brief)
         self._from_batch = 0
-        self._takes += 1
 
     def _pick(self) -> Image.Image:
         if self.prompt is None:
@@ -152,7 +191,7 @@ class Tries:
         return self._batch.pop(i)
 
     def next(self) -> dict[str, bytes]:
-        """The next ship's files (see sheet_files). May call PixelLab, which takes 1-3 minutes."""
+        """The next ship's files (see sheet_files). May wait on PixelLab (1.5-4.5 minutes)."""
         with self._lock:
             for _ in range(6):
                 sprite = self._pick()
@@ -161,6 +200,8 @@ class Tries:
                 except ValueError:
                     continue  # not one clean shape; take another
                 self.seen.append(stylegen.features(sprite))
+                if self.prompt is not None:
+                    self._draw_ahead()  # so Try again rarely waits on PixelLab
                 return files
         raise RuntimeError("PixelLab drew nothing usable. Try again.")
 
@@ -169,6 +210,8 @@ class Tries:
         """Whether next() can answer without drawing (a ship different enough is waiting)."""
         if self.prompt is None:
             return len(self.pool) > 0
+        if self._upcoming is not None:
+            return True
         if not self._batch or self._from_batch >= self.MAX_FROM_BATCH:
             return False
         i = stylegen.most_distinct(self._batch, self.seen)

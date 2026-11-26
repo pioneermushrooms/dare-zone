@@ -339,15 +339,15 @@ function showReview(next) {
 async function generate(request, name) {
   if (busy || !needYard()) return;
   setBusy(true, request.batch ? "Finding a different one…"
-    : request.mode === "prompt" ? "Drawing your ship… this takes 1–3 minutes."
-    : "Drawing a ship… (when none are waiting, this takes 1–3 minutes)");
+    : request.mode === "prompt" ? "Drawing your ship… PixelLab takes a few minutes."
+    : "Drawing a ship… (when none are waiting, PixelLab takes a few minutes)");
   try {
     const data = await call("/generate", request);
     const sheet = await sheetFromBase64(data.sheet);
     // Try again continues this run (data.batch): the server picks a ship unlike the ones shown,
     // from ships already drawn when it can (instant), or draws a fresh batch (1-3 minutes).
     say(data.ready === false && data.batch
-      ? "Approve it to add it to your shipyard. Try again draws a fresh batch (1–3 minutes)."
+      ? "Approve it to add it to your shipyard. Try again may take a few minutes (a fresh batch)."
       : "Approve it to add it to your shipyard, or Try again for a different one.");
     const fresh = request.batch ? request.fresh : request;
     showReview({

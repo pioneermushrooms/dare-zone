@@ -25,8 +25,8 @@ internal sealed partial class WebServer
 {
     private const int MaxShipJsonBytes = 400 * 1024; // a base64 sheet is at most ~350 KB
 
-    // PixelLab's queue can take a few minutes for a fresh batch.
-    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(300) };
+    // PixelLab's queue takes 1.5-4.5 minutes for a fresh batch (the ship service gives up at 7).
+    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(450) };
 
     /// <summary>The ship service's base URL: DARE_SHIPS_URL, else the loopback default.</summary>
     private static readonly string ShipServiceUrl =

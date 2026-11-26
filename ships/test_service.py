@@ -116,21 +116,20 @@ class StockStyleTries(unittest.TestCase):
         hues = {max(range(3), key=lambda k: self.colour(r)[k]) for r in (first, again, third)}
         self.assertEqual(len(hues), 3)
 
-    def test_prompt_try_again_skips_near_twins_then_draws_a_fresh_take(self):
+    def test_prompt_try_again_gives_different_ships_and_draws_the_next_take_ahead(self):
         reply = service.generate({"mode": "prompt", "prompt": "a bronze gunship"})
-        self.assertEqual(len(self.calls), 1)
-        self.assertIn("bronze gunship", self.calls[0])
-        seen = [self.colour(reply)]
-        for _ in range(2):
-            reply = service.generate({"mode": "prompt", "batch": reply["batch"]})
-            seen.append(self.colour(reply))
-        self.assertEqual(len(self.calls), 1, "three different ships came from the first batch")
-        hues = {max(range(3), key=lambda k: c[k]) for c in seen}
-        self.assertEqual(len(hues), 3)
-        # Only near-twins of a shown ship are left: the next try draws another take.
-        service.generate({"mode": "prompt", "batch": reply["batch"]})
+        tries = service._found(reply["batch"])
+        tries._drawing.join()  # the next take is drawn alongside the first, in the background
         self.assertEqual(len(self.calls), 2)
-        self.assertIn("Another take", self.calls[1])
+        self.assertTrue(all("bronze gunship" in c for c in self.calls))
+        self.assertEqual(sum("Another take" in c for c in self.calls), 1)
+        second = service.generate({"mode": "prompt", "batch": reply["batch"]})
+        hues = {max(range(3), key=lambda k: self.colour(r)[k]) for r in (reply, second)}
+        self.assertEqual(len(hues), 2, "the second isn't a repaint of the first")
+        self.assertTrue(second["ready"], "the next take is already drawn")
+        service.generate({"mode": "prompt", "batch": reply["batch"]})  # uses the take drawn ahead
+        tries._drawing and tries._drawing.join()
+        self.assertEqual(len(self.calls), 3, "and draws the one after that ahead")
 
     def test_a_run_of_tries_has_a_cap_on_paid_batches(self):
         from foundation_ships import designer

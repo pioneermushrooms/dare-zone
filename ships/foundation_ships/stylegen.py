@@ -93,7 +93,7 @@ def _refs(rng: random.Random, count: int) -> list[dict]:
 
 
 def draw_batch(
-    description: str, *, seed: int | None = None, refs: int | None = None, timeout: float = 270
+    description: str, *, seed: int | None = None, refs: int | None = None, timeout: float = 420
 ) -> list[Image.Image]:
     """One PixelLab call: up to ~36 nose-up 36x36 ships for `description`, in the stock style.
 
