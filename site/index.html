@@ -23,12 +23,30 @@ setTimeout(function () {
     s.className = "error";
   }
 }, 15000);
+// /?arena=<name>&enter=1 (the arena editor's Enter arena): press Enter once the page is ready, so the
+// link drops you straight into that arena. The flag comes off the address so a reload doesn't repeat it.
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get("enter") !== "1") return;
+  q.delete("enter");
+  history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+  var tries = 0, timer = setInterval(function () {
+    var b = document.getElementById("start");
+    if (b && !b.disabled && window.foundationSignIn) { clearInterval(timer); b.click(); }
+    else if (++tries > 120) clearInterval(timer); // 30 s: leave it to the player
+  }, 250);
+})();
 </script>
 </head>
 <body>
 <div id="entry">
   <header class="bar">
     <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span></a>
+    <div class="topright">
+    <nav class="toplinks" aria-label="Site">
+      <a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a>
+      <a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a>
+    </nav>
     <div class="pilotbox">
       <button type="button" class="pilot" id="pilot" aria-haspopup="menu" aria-expanded="false">
         <span class="pilot-label" id="pilot-label" hidden>Pilot</span><span class="pilot-name" id="pilot-name">Sign in</span><span class="caret" id="pilot-caret" aria-hidden="true" hidden>▾</span>
@@ -39,6 +57,7 @@ setTimeout(function () {
         <a role="menuitem" href="/account/#pilots">Names, keys and macros</a>
         <button type="button" role="menuitem" id="signout">Sign out</button>
       </div>
+    </div>
     </div>
   </header>
 
@@ -60,7 +79,8 @@ setTimeout(function () {
       <button type="button" class="ghostbtn" id="chatfold" aria-expanded="true" aria-controls="chatbody">Hide</button>
     </header>
     <div class="chatbody" id="chatbody">
-      <details class="players" open><summary>Players</summary><ul id="chatplayers"></ul></details>
+      <section class="players" aria-label="Players"><h3>Players</h3><ul id="chatplayers"></ul></section>
+      <div class="chatmain">
       <ol class="lines" id="chatlines" aria-live="polite"></ol>
       <form class="say" id="chatform" hidden>
         <p class="to" id="chatto" hidden><span>To <b id="chattoname"></b></span><button type="button" class="ghostbtn" id="chattoclear" aria-label="Back to public chat">✕</button></p>
@@ -69,13 +89,10 @@ setTimeout(function () {
         <button type="button" class="ghostbtn leave" id="chatleave">Leave chat</button>
       </form>
       <div class="join" id="chatjoin"><button type="button" id="chatgo">Chat</button><span class="dim" id="chatnote">Read along, or join to talk.</span></div>
+      </div>
     </div>
   </aside>
 
-  <nav class="cards" aria-label="Site">
-    <a class="card" href="/arena/me#overview"><b>Arena Editor</b><span>Make an arena; draw its map, set its rules, graphics and crew.</span></a>
-    <a class="card" href="/account/#pilots"><b>Pilot account</b><span>Your names, keys and macros, password and email.</span></a>
-  </nav>
 </div>
 
 <dialog id="signin" aria-labelledby="signin-title">

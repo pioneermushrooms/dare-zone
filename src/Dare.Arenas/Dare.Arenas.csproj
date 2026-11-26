@@ -30,6 +30,8 @@
   <!-- Web pages, served from the assembly (no files to deploy beside the dll). -->
   <ItemGroup>
     <EmbeddedResource Include="Web/wwwroot/*" LogicalName="wwwroot/%(Filename)%(Extension)" />
+    <!-- Stock game graphics, shown as an arena's current graphics until it replaces them. -->
+    <EmbeddedResource Include="Web/gfx/*.bm2" LogicalName="gfx/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!--

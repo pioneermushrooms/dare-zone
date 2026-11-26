@@ -165,7 +165,11 @@
 
     <section data-view="graphics" hidden>
       <p class="kicker">Graphics</p>
-      <h2>Graphics files</h2>
+      <h2>Game graphics</h2>
+      <p class="dim">Give this arena its own ships, bombs, bullets, items and effects: upload a picture or generate one. Each keeps the game's frame layout, shown under its name. Players see them after the arena restarts.</p>
+      <div id="gfxgroups" class="gfxgroups"></div>
+      <p class="msg" id="gfxmsg" role="status"></p>
+      <h2>Graphics files (.lvz)</h2>
       <p class="dim" id="lvzcount"></p>
       <div class="drop" id="lvzdrop">Drop a <b>.lvz</b> file here (5 MB max; the same name replaces the old one), or <label><u>choose a file</u><input type="file" id="lvzfile" accept=".lvz" hidden></label></div>
       <ul class="files" id="lvzlist"></ul>
@@ -198,6 +202,21 @@
     </section>
   </div>
 </div>
+
+<dialog id="gfxdlg" class="gfxdlg" aria-labelledby="gfxdlgtitle">
+  <h3 id="gfxdlgtitle">Generate</h3>
+  <form class="row gfxprompt" id="gfxpromptform" hidden>
+    <input id="gfxprompt" maxlength="500" placeholder="e.g. a glowing purple plasma orb" aria-label="Describe what to draw" autocomplete="off">
+    <button type="submit" id="gfxdraw">Draw</button>
+  </form>
+  <div class="gfxpreview"><canvas id="gfxcanvas" width="640" height="160" aria-label="The generated picture"></canvas></div>
+  <p class="msg" id="gfxdlgmsg" role="status"></p>
+  <div class="row dlg-actions">
+    <button type="button" class="hot" id="gfxuse" disabled>Use this</button>
+    <button type="button" class="ghost" id="gfxagain" disabled>Again</button>
+    <button type="button" class="ghost" data-close>Cancel</button>
+  </div>
+</dialog>
 
 <dialog id="enterdlg" aria-labelledby="entertitle">
   <h3 id="entertitle">Restart first?</h3>

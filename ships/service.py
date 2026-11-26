@@ -25,6 +25,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import graphics
 import shipgen
 
 MAX_BODY = 512 * 1024
@@ -102,6 +103,47 @@ def generate(body: dict) -> dict:
     }
 
 
+def graphic(body: dict) -> dict:
+    """A new sheet for one of the game's other graphics, from the arena's current one (the template)."""
+    global _next_paid
+    kind, mode = body.get("kind"), body.get("mode")
+    if not isinstance(kind, str) or not kind.isalnum() or len(kind) > 16:
+        raise Refused(400, "Unknown graphic.")
+    try:
+        template = base64.b64decode(body.get("template") or "", validate=True)
+    except binascii.Error:
+        template = b""
+    if not template or len(template) > 2 * 1024 * 1024:
+        raise Refused(400, "Send the current picture.")
+    seed = body.get("seed")
+    seed = seed if isinstance(seed, int) and 0 <= seed < 2**31 else None
+    try:
+        if mode != "prompt":
+            return {"ok": True, "sheet": _b64(graphics.generate(kind, mode, template, seed=seed))}
+        prompt = body.get("prompt")
+        prompt = prompt.strip() if isinstance(prompt, str) else ""
+        if not prompt:
+            raise Refused(400, "Describe what you want.")
+        if len(prompt) > MAX_PROMPT or any(ord(ch) < 32 and ch not in "\t\n" for ch in prompt):
+            raise Refused(400, f"Use plain text, under {MAX_PROMPT + 1} characters.")
+        if not os.environ.get("PIXEL_LAB_API_KEY", "").strip():
+            raise Refused(503, "Drawing from a description is not set up on this server yet. Try New look.")
+        if not _paid.acquire(blocking=False):
+            raise Refused(429, "Something else is being drawn. Try again in a few seconds.")
+        try:
+            wait = _next_paid - time.monotonic()
+            if wait > 0:
+                raise Refused(429, f"The painter is cooling down. Try again in {int(wait) + 1} s.")
+            _next_paid = time.monotonic() + PAID_GAP_SECONDS
+            return {"ok": True, "sheet": _b64(graphics.generate(kind, mode, template, prompt=prompt, seed=seed))}
+        finally:
+            _paid.release()
+    except graphics.GraphicError as exc:
+        raise Refused(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise Refused(502, str(exc)) from exc
+
+
 def flip(body: dict) -> dict:
     sheet = body.get("sheet")
     try:
@@ -135,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(404, {"ok": False, "message": "Not found."})
 
     def do_POST(self) -> None:  # noqa: N802
-        routes = {"/generate": generate, "/flip": flip}
+        routes = {"/generate": generate, "/flip": flip, "/graphic": graphic}
         handler = routes.get(self.path)
         if handler is None:
             self._reply(404, {"ok": False, "message": "Not found."})
