@@ -781,6 +781,12 @@ public sealed partial class AccountStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// True when a login under this name is the zone's own bot: it is in the bot register and no
+    /// account holds it. A pilot who already has the name keeps it (the bot is not launched).
+    /// </summary>
+    public bool IsBotLogin(string name) => Find(name) is null && BotNameTaken(name);
+
     private void Run(string sql, params (string, object)[] ps)
     {
         using var c = Cmd(sql, ps);

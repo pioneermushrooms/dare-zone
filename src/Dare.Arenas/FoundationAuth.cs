@@ -197,7 +197,7 @@ public sealed class FoundationAuth : IModule, IAuth
         }
 
         // the zone's own bots: a one-time pass from the bot supervisor
-        if (store.BotNameTaken(name))
+        if (store.IsBotLogin(name))
         {
             result.Authenticated = BotPasses.Redeem(name, password);
             result.Code = result.Authenticated ? AuthCode.OK : AuthCode.BadPassword;

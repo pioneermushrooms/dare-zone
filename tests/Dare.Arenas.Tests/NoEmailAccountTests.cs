@@ -194,4 +194,21 @@ public sealed class NoEmailAccountTests : IDisposable
         Assert.True(_s.BotNameTaken("Sparring"));
         Assert.False(_s.BotNameTaken("Nomad"));
     }
+
+    [Fact]
+    public void a_pilot_who_shares_a_name_with_an_old_bot_still_logs_in_as_a_pilot()
+    {
+        Claim("Patrol");
+        using (var arenas = new ArenaStore(_db, () => _now))
+        {
+            Assert.True(arenas.Request("Big Chris", "bigarena", "pitch").Ok);
+            Assert.True(arenas.Approve("bigarena", "staff", _ => false).Ok);
+            Assert.True(arenas.SaveBot("bigarena", "Big Chris", "Patrol", "behaviour idle").Ok); // old data
+            Assert.True(arenas.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle").Ok);
+        }
+        Assert.False(_s.IsBotLogin("patrol"));
+        Assert.Equal(LoginResult.Ok, _s.CheckLogin("patrol", Pw, out _));
+        Assert.True(_s.IsBotLogin("Sparring"));
+        Assert.False(_s.IsBotLogin("Nobody"));
+    }
 }
