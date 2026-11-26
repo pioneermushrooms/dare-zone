@@ -201,3 +201,55 @@ test("one-tile walls are lines: no wall tile is part of a 2x2 block (outside the
   // corners of rock that is diagonal to open space can make a few; lines are the rule
   assert.ok(blocks < 200, `${blocks} 2x2 wall blocks`);
 });
+
+// ---- the standard tile layout file (dare-tile-layout) ----------------------------------------------
+
+// a pack in the spec's shape, with role names unlike ours: only "open" may be used to match
+const SPEC = {
+  format: "dare-tile-layout", version: 1, name: "Test standard (fixture)",
+  roles: {
+    solo: { open: "" }, l: { open: "E" }, h: { open: "EW" }, r: { open: "W" }, t: { open: "S" }, v: { open: "NS" }, b: { open: "N" },
+    tl: { open: "ES" }, top: { open: "ESW" }, tr: { open: "SW" }, left: { open: "NES" }, all: { open: "NESW" },
+    right: { open: "NSW" }, bl: { open: "NE" }, bottom: { open: "NEW" }, br: { open: "NW" },
+  },
+  packs: [
+    { id: "full", name: "Full", tiles: { solo: 2, l: 3, h: 4, r: 5, t: 21, v: 40, b: 59, tl: 22, top: 23, tr: 24, left: 41, all: 42, right: 43, bl: 60, bottom: 61, br: 62 } },
+    { id: "bars", name: "Bars only", tiles: { h: 7, v: 8, all: 9 } },
+  ],
+};
+
+test("the standard layout file gives one layout per pack, matched by open edges", () => {
+  const { layouts, errors } = Autotile.fromSpec(SPEC);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(layouts.map((l) => l.id), ["full", "bars"]);
+  const full = layouts[0];
+  assert.equal(full.name, "Test standard: Full");
+  const want = { lone: 2, "end-e": 3, "bar-h": 4, "end-w": 5, "end-s": 21, "bar-v": 40, "end-n": 59, "corner-es": 22, "block-es": 22,
+    "tee-esw": 23, "edge-n": 23, "corner-sw": 24, "tee-nes": 41, "edge-w": 41, cross: 42, fill: 42, "inner-ne": 42,
+    "tee-nsw": 43, "corner-ne": 60, "tee-new": 61, "edge-s": 61, "corner-nw": 62, "block-nw": 62 };
+  for (const [role, t] of Object.entries(want)) assert.equal(full.roles[role], t, role);
+  // a box drawn with it: corners, edges and fill where the spec's 3x3 box has them
+  const g = draw(["###", "###", "###"]);
+  Autotile.tidy(g, full);
+  const at = (x, y) => g[(100 + y) * N + 100 + x];
+  assert.deepEqual([at(0, 0), at(1, 0), at(2, 0), at(0, 1), at(1, 1), at(2, 1), at(0, 2), at(1, 2), at(2, 2)], [22, 23, 24, 41, 42, 43, 60, 61, 62]);
+});
+
+test("a pack missing pieces drops open edges like the spec says (straight bar first)", () => {
+  const bars = Autotile.fromSpec(SPEC).layouts[1];
+  assert.equal(bars.roles["end-e"], 9, "no end piece and no single: fill");
+  assert.equal(bars.roles["tee-nes"], 8, "NES keeps its NS through line");
+  assert.equal(bars.roles["tee-esw"], 7, "ESW keeps its EW through line");
+  assert.equal(bars.roles.cross, 9);
+  assert.equal(bars.roles["corner-ne"], 9, "no piece for a turn or its ends: fill");
+  assert.deepEqual(Autotile.fromSpec({ format: "other" }).layouts, []);
+});
+
+test("the real tile-layout.json, when present, gives usable layouts", (t) => {
+  const file = path.join(www, "tile-layout.json");
+  if (!require("node:fs").existsSync(file)) return t.skip("tile-layout.json not on this branch yet");
+  const { layouts, errors } = Autotile.fromSpec(JSON.parse(require("node:fs").readFileSync(file, "utf8")));
+  assert.deepEqual(errors, []);
+  assert.ok(layouts.length >= 1);
+  for (const l of layouts) assert.deepEqual(Autotile.check(l), [], l.id);
+});
