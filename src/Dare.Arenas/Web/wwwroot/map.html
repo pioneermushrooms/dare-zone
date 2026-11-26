@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
+<script src="/arena/dialogs.js" defer></script>
 <script src="/arena/editor.js" defer></script>
 </head>
 <body class="editor">
@@ -48,8 +49,8 @@
     <p class="hint" id="genseed"></p>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
-    <p class="kicker">Tiles</p>
-    <canvas id="palette" class="px" width="304" height="160" aria-label="Tile palette: click a tile to draw with it"></canvas>
+    <div class="row palhead"><p class="kicker">Tiles</p><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Show the tiles bigger">Bigger</button></div>
+    <canvas id="palette" class="px" width="608" height="320" tabindex="0" aria-label="Tile palette: click a tile, or use the arrow keys, to draw with it"></canvas>
     <p class="hint" id="tilesetnote"></p>
     <p class="hint warnnote" id="blanknote" hidden></p>
     <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>

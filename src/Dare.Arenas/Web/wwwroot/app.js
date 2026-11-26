@@ -550,7 +550,7 @@ function gfxCard(arena, slot, owner) {
     if (slot.source === "arena") {
       const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
       reset.addEventListener("click", async () => {
-        if (!confirm(`Put ${slot.label} back to the game's own picture?`)) return;
+        if (!await Dlg.confirm(`Put ${slot.label} back to the game's own picture?`, { title: "Reset picture", ok: "Reset", danger: true })) return;
         const { body } = await postJson("/graphics/clear", { arena, name: slot.name });
         msg($("gfxmsg"), webMessage(body?.message), body?.ok);
         if (body?.ok) { loadGraphics(); refreshRestart(); }
@@ -696,7 +696,7 @@ function renderCrew(coMods, owner) {
 }
 
 async function changeCoMod(action, name) {
-  if (action === "remove" && !confirm(`Remove ${name} as co-mod of ${current.arena}?`)) return;
+  if (action === "remove" && !await Dlg.confirm(`Remove ${name} as co-mod of ${current.arena}?`, { title: "Remove co-mod", ok: "Remove", danger: true })) return;
   const { body } = await postJson("/comod", { arena: current.arena, action, player: name });
   msg($("comodmsg"), body.message, body.ok);
   if (body.ok) { $("comodname").value = ""; mePage(current.arena); }
@@ -882,14 +882,14 @@ function periodicRow(slot, fresh) {
   });
   remove.addEventListener("click", async () => {
     if (fresh && slot.raw.trim() === "") { renderMessages(lastSettings); return; }
-    if (!confirm(`Remove timed message ${slot.i + 1}?`)) return;
+    if (!await Dlg.confirm(`Remove timed message ${slot.i + 1}?`, { title: "Remove message", ok: "Remove", danger: true })) return;
     if (await write("")) renderMessages(lastSettings);
   });
   return row;
 }
 
 async function removeLvz(name) {
-  if (!confirm(`Remove ${name} from ${current.arena}? The file is deleted.`)) return;
+  if (!await Dlg.confirm(`Remove ${name} from ${current.arena}? The file is deleted.`, { title: "Remove graphics file", ok: "Remove", danger: true })) return;
   const { body } = await postJson("/rmlvz", { arena: current.arena, name });
   msg($("lvzmsg"), webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
@@ -917,7 +917,7 @@ async function loadLibrary() {
     }
     const rm = el("button", { type: "button", class: "small danger", text: "Remove", "aria-label": "Remove " + m.name });
     rm.addEventListener("click", async () => {
-      if (!confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`)) return;
+      if (!await Dlg.confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`, { title: "Remove map", ok: "Remove", danger: true })) return;
       const { body: r } = await postJson("/library/remove", { id: m.id });
       msg($("mapmsg"), r?.message, r?.ok);
       loadLibrary();
@@ -948,7 +948,7 @@ async function appliedMapId(arena, maps) {
 // Apply: the map editor's Publish without opening the editor (save as <arena>.lvl, then restart).
 async function applyLibraryMap(m, button) {
   const arena = current.arena;
-  if (!confirm(`Apply ${m.name} to ${arena}? It replaces the arena's current map, then the arena restarts so it loads.`)) return;
+  if (!await Dlg.confirm(`Apply ${m.name} to ${arena}? It replaces the arena's current map, then the arena restarts so it loads.`, { title: "Apply map", ok: "Apply and restart" })) return;
   button.disabled = true;
   msg($("mapmsg"), `Applying ${m.name}…`, true);
   try {

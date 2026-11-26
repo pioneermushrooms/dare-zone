@@ -15,6 +15,19 @@ window.Lvl = (() => {
     [218, "Medium asteroid", "#728699"], [219, "Space station", "#67e8f9"],
     [220, "Wormhole", "#ec4899"],
   ];
+  // The special slots of the tileset (19 x 10 tiles of 16 px; tile t sits at slot t - 1), in
+  // Continuum's standard layout: [first, last, name, short label, colour].
+  const GROUPS = [
+    [162, 165, "Door (vertical)", "Door ↕", "#ff8a1f"], [166, 169, "Door (horizontal)", "Door ↔", "#ff8a1f"],
+    [170, 170, "Flag", "Flag", "#facc15"], [171, 171, "Safe zone", "Safe", "#4ade80"], [172, 172, "Goal", "Goal", "#a78bfa"],
+    [173, 175, "Fly-over", "Fly-over", "#7dd3fc"], [176, 190, "Fly-under", "Fly-under", "#94a3b8"],
+  ];
+  function tileName(t) {
+    const s = SPECIAL.find((x) => x[0] === t);
+    if (s) return s[1];
+    const g = GROUPS.find((x) => t >= x[0] && t <= x[1]);
+    return g ? g[2] : t >= 1 && t <= 161 ? "Wall" : "";
+  }
   function color(t) {
     const s = SPECIAL.find((x) => x[0] === t);
     if (s) return s[2];
@@ -144,5 +157,5 @@ window.Lvl = (() => {
     }
   }
 
-  return { N, TS, SPECIAL, color, decodeBmp, blankSlots, parse, serialize, drawOverview };
+  return { N, TS, SPECIAL, GROUPS, tileName, color, decodeBmp, blankSlots, parse, serialize, drawOverview };
 })();

@@ -12,6 +12,7 @@
   const $ = (id) => document.getElementById(id);
 
   let grid = new Uint8Array(N * N), prefix = null, mapTileset = null, ownTileset = null;
+  let defaultTileset = null; // Continuum's classic tiles.bm2: what players see when a map has no tileset
   let arena = new URLSearchParams(location.search).get("arena") || "";
   let role = null, tool = "pencil", cur = 1, dirty = false;
   let liveName = null; // set when editing the draft of a live arena: Publish also publishes it
@@ -19,7 +20,7 @@
   const undoStack = [], redoStack = [];
   let flatView = false; // "Plain colours": ignore the map's tileset
   let libId = null, libName = null; // the map from "Your maps" being edited, if any
-  const tileset = () => flatView ? null : (ownTileset || mapTileset);
+  const tileset = () => flatView ? null : (ownTileset || mapTileset || defaultTileset);
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
   const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
@@ -36,8 +37,22 @@
     if (tiles) note.textContent = `${tiles.toLocaleString()} wall tiles (${kinds.size} kinds) sit in slots this map's own tileset fills with one flat colour, so they show as solid blocks here and in game. Maps like this usually come with a .lvz graphics file that draws over them: add it under Graphics. Plain colours shows them as ordinary walls.`;
   }
 
+  function noteTileset() {
+    $("tilesetnote").textContent = ownTileset ? "Tiles from your own tileset (only in your browser)."
+      : mapTileset ? "Tiles from this map's own tileset."
+      : defaultTileset ? "This map has no tileset of its own: showing the standard tiles players see by default."
+      : "This map has no tileset of its own: tiles show as flat colours.";
+  }
+  async function loadDefaultTileset() {
+    try {
+      const r = await fetch("/arena/tiles.bm2");
+      if (r.ok) defaultTileset = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+    } catch { defaultTileset = null; }
+  }
+
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
+    await loadDefaultTileset();
     const me = await fetch(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""), { credentials: "same-origin" });
     if (me.status === 401) { location.href = "/account/login"; return; }
     const body = await me.json().catch(() => null);
@@ -55,7 +70,7 @@
       grid = m.grid; prefix = m.prefix; mapTileset = m.tileset;
       say(`Opened ${r.headers.get("X-Map-Name") || "the map"}: ${m.count} tiles.`, true);
     }
-    $("tilesetnote").textContent = mapTileset ? "Tiles from this map's own tileset." : "This map has no tileset of its own: tiles show as flat colours (players see their client's tiles).";
+    noteTileset();
     noteBlankSlots();
     centre();
     drawPalette(); drawMini(); draw();
@@ -63,13 +78,13 @@
   }
 
   // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
-  function replaceMap(next, nextPrefix, nextTileset, note) {
-    if (dirty && !confirm("Replace the map you're editing? (Undo brings it back.)")) return false;
+  async function replaceMap(next, nextPrefix, nextTileset, note) {
+    if (dirty && !await Dlg.confirm("Replace the map you're editing? Undo brings it back.", { title: "Replace the map?", ok: "Replace" })) return false;
     const change = [];
     for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
     for (const [i, , t] of change) grid[i] = t;
     if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); }
-    if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; drawPalette(); }
+    if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; noteTileset(); drawPalette(); }
     noteBlankSlots();
     centre(); drawMini(); draw();
     say(note, true);
@@ -146,7 +161,7 @@
     if (!r.ok) { say("Couldn't open that map from your maps.", false); return; }
     const name = decodeURIComponent(r.headers.get("X-Map-Name") || "map");
     const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
-    const changed = replaceMap(m.grid, m.prefix, m.tileset,
+    const changed = await replaceMap(m.grid, m.prefix, m.tileset,
       `Draft from your maps: ${name} (${m.count} tiles). ${arena || "The arena"} keeps its current map until you Publish.`);
     if (changed === false) return;
     libId = id; libName = name;
@@ -210,11 +225,11 @@
     const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
     replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name}: ${m.count} tiles. Publish to use it.`);
   });
-  $("randomize").addEventListener("click", () => {
+  $("randomize").addEventListener("click", async () => {
     const seed = (Math.random() * 2 ** 32) >>> 0;
     const g = Lvl.generate(seed, { size: $("gensize").value, symmetry: Number($("gensym").value), tile: cur > 0 && cur <= 161 ? cur : 1 });
-    replaceMap(g.grid, undefined, undefined, "A random map. Randomize again for another, or draw on it.");
-    $("genseed").textContent = `Seed ${seed}`;
+    if (await replaceMap(g.grid, undefined, undefined, "A random map. Randomize again for another, or draw on it."))
+      $("genseed").textContent = `Seed ${seed}`;
   });
 
   function centre() {
@@ -230,7 +245,7 @@
 
   // ---- drawing -----------------------------------------------------------------------------------
   const view = $("view"), vctx = view.getContext("2d");
-  function resize() { view.width = view.clientWidth * devicePixelRatio; view.height = view.clientHeight * devicePixelRatio; draw(); }
+  function resize() { view.width = view.clientWidth * devicePixelRatio; view.height = view.clientHeight * devicePixelRatio; draw(); drawPalette(); }
   function toTile(px, py) {
     const s = TS * cam.z, sx = px * devicePixelRatio, sy = py * devicePixelRatio;
     return [Math.floor((sx - view.width / 2 + cam.x * cam.z) / s), Math.floor((sy - view.height / 2 + cam.y * cam.z) / s)];
@@ -276,29 +291,91 @@
   const mini = $("mini"), mctx = mini.getContext("2d");
   function drawMini() { Lvl.drawOverview(mini, grid); }
 
+  // ---- tiles palette: the tileset itself (19 x 10 slots), scaled, special slots labelled ----------
   const pal = $("palette"), pctx = pal.getContext("2d");
+  let palHover = 0;
+  function palTileAt(e) {
+    const r = pal.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / r.width * 19), y = Math.floor((e.clientY - r.top) / r.height * 10);
+    return x >= 0 && x < 19 && y >= 0 && y < 10 ? y * 19 + x + 1 : 0;
+  }
   function drawPalette() {
+    // canvas pixels follow the shown size, so tiles and labels stay crisp at any zoom
+    const w = Math.max(19, Math.round(pal.clientWidth * devicePixelRatio)) || 608;
+    const h = Math.round(w * 10 / 19);
+    if (pal.width !== w || pal.height !== h) { pal.width = w; pal.height = h; }
+    const k = w / 19; // canvas pixels per tile
+    const at = (t) => { const i = t - 1; return [(i % 19) * k, Math.floor(i / 19) * k]; };
     pctx.imageSmoothingEnabled = false;
-    pctx.fillStyle = "#04070e"; pctx.fillRect(0, 0, 304, 160);
+    pctx.fillStyle = "#04070e"; pctx.fillRect(0, 0, w, h);
     const ts = tileset();
-    if (ts) pctx.drawImage(ts, 0, 0);
-    else {
-      pctx.font = "9px ui-monospace, monospace"; pctx.textAlign = "center"; pctx.textBaseline = "middle";
-      for (let t = 1; t <= 190; t++) {
-        const i = t - 1, x = (i % 19) * TS, y = Math.floor(i / 19) * TS;
-        pctx.fillStyle = Lvl.color(t); pctx.fillRect(x + 1, y + 1, TS - 2, TS - 2);
-        pctx.fillStyle = "#04070e"; pctx.fillText(String(t), x + 8, y + 8.5);
-      }
+    if (ts) pctx.drawImage(ts, 0, 0, 19 * TS, 10 * TS, 0, 0, w, h);
+    else for (let t = 1; t <= 190; t++) {
+      const [x, y] = at(t), g = Math.max(1, Math.round(k / 16));
+      pctx.fillStyle = Lvl.color(t); pctx.fillRect(x + g, y + g, k - 2 * g, k - 2 * g);
+    }
+    // special slots: a frame around each group and its name in a dark band along the bottom
+    const font = Math.max(7, Math.round(k * 0.3));
+    pctx.font = `600 ${font}px ui-sans-serif, system-ui, sans-serif`;
+    pctx.textAlign = "center"; pctx.textBaseline = "middle";
+    for (const [first, last, , label, col] of Lvl.GROUPS) {
+      const [x, y] = at(first), gw = (last - first + 1) * k;
+      const band = Math.round(font * 1.35);
+      pctx.fillStyle = "rgba(4, 7, 14, .78)"; pctx.fillRect(x, y + k - band, gw, band);
+      pctx.fillStyle = col;
+      const text = gw < pctx.measureText(label).width + 4 ? label.slice(0, Math.max(1, Math.floor(gw / (font * 0.6)))) : label;
+      pctx.fillText(text, x + gw / 2, y + k - band / 2 + 0.5, gw - 2);
+      const lw = Math.max(1, Math.round(k / 20));
+      pctx.strokeStyle = col; pctx.lineWidth = lw;
+      pctx.strokeRect(x + lw / 2, y + lw / 2, gw - lw, k - lw);
+    }
+    if (palHover && palHover !== cur) {
+      const [x, y] = at(palHover), lw = Math.max(1, Math.round(k / 16));
+      pctx.strokeStyle = "#e2f3ff"; pctx.lineWidth = lw; pctx.strokeRect(x + lw / 2, y + lw / 2, k - lw, k - lw);
     }
     if (cur >= 1 && cur <= 190) {
-      const i = cur - 1; pctx.strokeStyle = "#ff8a1f"; pctx.lineWidth = 2;
-      pctx.strokeRect((i % 19) * TS + 1, Math.floor(i / 19) * TS + 1, TS - 2, TS - 2);
+      const [x, y] = at(cur), lw = Math.max(2, Math.round(k / 8));
+      pctx.strokeStyle = "#04070e"; pctx.lineWidth = lw + 2; pctx.strokeRect(x + lw / 2, y + lw / 2, k - lw, k - lw);
+      pctx.strokeStyle = "#ff8a1f"; pctx.lineWidth = lw; pctx.strokeRect(x + lw / 2, y + lw / 2, k - lw, k - lw);
     }
     const c = $("current").getContext("2d"); c.imageSmoothingEnabled = false;
     c.fillStyle = "#04070e"; c.fillRect(0, 0, 16, 16); drawTile(c, cur, 0, 0, 16);
-    const sp = SPECIAL.find((s) => s[0] === cur);
-    $("curName").textContent = `Tile ${cur}` + (sp ? ` · ${sp[1]}` : "");
+    const name = Lvl.tileName(cur);
+    $("curName").textContent = `Tile ${cur}` + (name ? ` · ${name}` : "");
   }
+  pal.addEventListener("pointermove", (e) => {
+    const t = palTileAt(e);
+    if (t === palHover) return;
+    palHover = t;
+    const name = t ? Lvl.tileName(t) : "";
+    pal.title = t ? `Tile ${t}` + (name ? ` · ${name}` : "") : "";
+    drawPalette();
+  });
+  pal.addEventListener("pointerleave", () => { palHover = 0; drawPalette(); });
+  // keyboard: arrows move the selection around the palette
+  pal.addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -19, ArrowDown: 19 }[e.key];
+    if (!d) return;
+    e.preventDefault(); e.stopPropagation();
+    const base = cur >= 1 && cur <= 190 ? cur : 1;
+    const next = base + d;
+    if (next >= 1 && next <= 190) pickTile(next);
+  });
+  const palBig = (big) => {
+    document.querySelector(".edside").classList.toggle("bigpal", big);
+    $("palzoom").setAttribute("aria-pressed", String(big));
+    $("palzoom").textContent = big ? "Smaller" : "Bigger";
+    drawPalette();
+  };
+  $("palzoom").addEventListener("click", () => {
+    const big = !document.querySelector(".edside").classList.contains("bigpal");
+    try { localStorage.setItem("dare.mapeditor.bigpal", big ? "1" : "0"); } catch { /* fine */ }
+    palBig(big);
+  });
+  // bigger by default on wide screens, where it leaves the map plenty of room
+  let savedBig = null;
+  try { savedBig = localStorage.getItem("dare.mapeditor.bigpal"); } catch { /* fine */ }
+  if (savedBig ? savedBig === "1" : innerWidth >= 1500) palBig(true);
 
   // ---- editing -----------------------------------------------------------------------------------
   let stroke = null, panning = null, space = false;
@@ -368,12 +445,8 @@
   $("undo").addEventListener("click", undo);
   $("redo").addEventListener("click", redo);
 
-  pal.addEventListener("click", (e) => {
-    const r = pal.getBoundingClientRect();
-    const x = Math.floor((e.clientX - r.left) / r.width * 19), y = Math.floor((e.clientY - r.top) / r.height * 10);
-    const t = y * 19 + x + 1;
-    if (t >= 1 && t <= 190) { cur = t; if (tool === "erase" || tool === "pan") setTool("pencil"); drawPalette(); }
-  });
+  function pickTile(t) { cur = t; if (tool === "erase" || tool === "pan") setTool("pencil"); drawPalette(); }
+  pal.addEventListener("click", (e) => { const t = palTileAt(e); if (t) pickTile(t); });
   mini.addEventListener("click", (e) => {
     const r = mini.getBoundingClientRect();
     cam.x = (e.clientX - r.left) / r.width * N * TS; cam.y = (e.clientY - r.top) / r.height * N * TS; draw();
@@ -382,7 +455,8 @@
     const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = col;
     const b = document.createElement("button"); b.type = "button"; b.className = "ghost small";
     b.append(sw, document.createTextNode(name));
-    b.addEventListener("click", () => { cur = t; if (tool === "erase" || tool === "pan") setTool("pencil"); drawPalette(); });
+    b.title = `Tile ${t}`;
+    b.addEventListener("click", () => pickTile(t));
     $("specials").append(b);
   }
   function setTool(t) {
@@ -397,7 +471,7 @@
   $("tErase").addEventListener("click", () => setTool("erase"));
   $("tPan").addEventListener("click", () => setTool("pan"));
   window.addEventListener("keydown", (e) => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector("dialog[open]")) return;
     if (e.key === " ") { space = true; e.preventDefault(); }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
@@ -411,6 +485,7 @@
     const f = e.target.files[0]; if (!f) return;
     try { ownTileset = Lvl.decodeBmp(new Uint8Array(await f.arrayBuffer())); say(`Showing tiles from ${f.name} (only in your browser; not published).`, true); }
     catch (err) { say(`That tileset could not be read: ${err.message}`, false); }
+    noteTileset();
     drawPalette(); draw();
   });
 
@@ -443,7 +518,7 @@
     if (inside?.running && inside.online > 0) {
       choice = await askPublish(inside);
       if (!choice) return;
-    } else if (!confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`)) return;
+    } else if (!await Dlg.confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`, { title: "Publish map", ok: "Publish" })) return;
     $("publish").disabled = true;
     say("Publishing…", true);
     const hdr = { "X-Requested-With": "dare-arena" };

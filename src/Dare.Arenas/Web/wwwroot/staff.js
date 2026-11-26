@@ -102,9 +102,9 @@ function arenaActions(a) {
     b.addEventListener("click", async () => {
       let reason = "";
       if (ask) {
-        reason = prompt(`Why suspend ${a.name}? (shown to players)`) ?? "";
+        reason = await Dlg.prompt(`Why suspend ${a.name}? (shown to players)`, { title: "Suspend arena", ok: "Suspend", danger: true, maxLength: 200 }) ?? "";
         if (!reason.trim()) return;
-      } else if (!confirm(`${label} ${a.name}?`)) return;
+      } else if (!await Dlg.confirm(`${label} ${a.name}?`, { title: `${label} arena`, ok: label, danger: action === "archive" })) return;
       b.disabled = true;
       const { body } = await call("/staff/arena", { arena: a.name, action, reason });
       b.disabled = false;
