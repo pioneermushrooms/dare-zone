@@ -74,14 +74,16 @@ The rest of the sheet is listed under `other` (decor that is not a full pack) an
 }
 ```
 
-Rules a reader can rely on (checked by `TileLayout.parse` in `tiles.js` and its tests):
+Rules a reader can rely on (checked by `TileLayout.parse` in
+[`tiles.js`](../src/Dare.Arenas/Web/wwwroot/tiles.js); tests: `node --test tests/js/*.test.js`):
 - every pack lists its tiles explicitly; `packTemplate` is only a convenience for editors;
 - each `open` is a subset of `NESW` and no two roles share the same set;
 - tile numbers are 1–161, outside `reserved`, and no tile is in two packs;
 - a pack may leave roles out (a partial pack); tools fall back as below.
 
-**Fallbacks** when a pack lacks the exact role: drop open edges one at a time and take the
-first role that exists (a missing T becomes a corner or bar), else `single`, else `fill`.
+**Fallbacks** when a pack lacks the exact role: drop open edges, fewest first, and take the
+first role that exists; among two-edge pieces a straight bar comes before a corner, so a missing
+T keeps the line running through. Else `single`, else `fill`.
 `TileLayout.pick(layout, packId, openSet)` implements this.
 
 ## Role maps for one tileset
