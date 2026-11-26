@@ -92,6 +92,8 @@ dialog button:disabled { opacity: .6; cursor: default; }
 dialog button.ghost { color: var(--ink); background: transparent; border-color: #4a6179; }
 dialog .msg { min-height: 1.3em; margin: 0; color: var(--warn); font-size: .9rem; }
 dialog .forgot, dialog .small { margin: 0; font-size: .85rem; color: var(--muted); }
+dialog .guest { display: grid; gap: 8px; justify-items: start; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--line); }
+dialog .guest[hidden] { display: none; }
 
 @media (max-width: 760px) { .cards { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) {

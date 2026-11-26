@@ -64,7 +64,8 @@ public sealed partial class AccountStore : IDisposable
               last_login TEXT NULL,
               status TEXT NOT NULL DEFAULT 'active',
               isoj_name TEXT NULL,
-              legacy_hash TEXT NULL
+              legacy_hash TEXT NULL,
+              link_id INTEGER NULL
             );
             CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_name ON accounts(name COLLATE NOCASE);
             DROP INDEX IF EXISTS ux_accounts_email;
@@ -117,6 +118,10 @@ public sealed partial class AccountStore : IDisposable
               value TEXT NOT NULL
             );
             """);
+        // link_id (added later): names without an email are grouped by their first name's id
+        if (Scalar("SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'link_id'") == 0)
+            Exec("ALTER TABLE accounts ADD COLUMN link_id INTEGER NULL;");
+        Exec("CREATE INDEX IF NOT EXISTS ix_accounts_link ON accounts(link_id);");
     }
 
     public void Dispose()
@@ -134,7 +139,7 @@ public sealed partial class AccountStore : IDisposable
     public Result StartSignup(string name, string password, string email, out string code)
     {
         code = "";
-        if (!AccountRules.TryName(name, out var n, out var err)) return Fail(err);
+        if (!AccountRules.TryNewName(name, out var n, out var err)) return Fail(err);
         if (!AccountRules.TryPassword(password, out err)) return Fail(err);
         if (!AccountRules.TryEmail(email, out var e, out err)) return Fail(err);
         var (hash, salt, iter) = PasswordHasher.Hash(password); // slow; outside the lock
@@ -184,6 +189,31 @@ public sealed partial class AccountStore : IDisposable
                 ("$n", name), ("$h", hash), ("$s", salt), ("$i", iter), ("$e", e), ("$c", Now()));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok($"Welcome, {name}! Your account is ready.");
+        });
+        if (res.Ok) account = Get(id);
+        return res;
+    }
+
+    /// <summary>
+    /// Claims a name at once with only a password: no email, so the password can't be recovered.
+    /// A taken name is refused plainly (the account is made right away, so there is nothing to hide).
+    /// </summary>
+    public Result CreateWithoutEmail(string name, string password, out Account? account)
+    {
+        account = null;
+        if (!AccountRules.TryNewName(name, out var n, out var err)) return Fail(err);
+        if (!AccountRules.TryPassword(password, out err)) return Fail(err);
+        var (hash, salt, iter) = PasswordHasher.Hash(password); // slow; outside the lock
+        long id = 0;
+        var res = Tx(() =>
+        {
+            if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0)
+                return Fail($"The name '{n}' is taken.");
+            Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, email_verified, created, status) "
+                + "VALUES($n,$h,$s,$i,0,$c,'active')",
+                ("$n", n), ("$h", hash), ("$s", salt), ("$i", iter), ("$c", Now()));
+            id = Scalar("SELECT last_insert_rowid()");
+            return Ok($"Welcome, {n}! Your name is yours. Without an email, a forgotten password can't be recovered.");
         });
         if (res.Ok) account = Get(id);
         return res;
@@ -368,7 +398,7 @@ public sealed partial class AccountStore : IDisposable
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id", ("$id", accountId)) == 0)
                 return Fail("No such account.");
-            if (PilotsOn(e, accountId) >= MaxAccountsPerEmail)
+            if (PilotsOn(e, accountId) + LinkedMoving(accountId).Count > MaxAccountsPerEmail)
                 return Fail(TooManyPilots);
             issued = IssueCode(CodePurpose.AddEmail, e, accountId);
             return sent;
@@ -381,10 +411,17 @@ public sealed partial class AccountStore : IDisposable
     {
         var bad = UseCode(CodePurpose.AddEmail, null, accountId, code, out var e);
         if (bad is not null) return bad;
-        if (PilotsOn(e!, accountId) >= MaxAccountsPerEmail)
+        // an account without an email brings its other names along (they share it from now on)
+        var moving = LinkedMoving(accountId);
+        var others = moving.Where(id => id != accountId).ToList();
+        if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e AND id NOT IN (" + string.Join(",", moving) + ")", ("$e", e!))
+            + moving.Count > MaxAccountsPerEmail)
             return Fail(TooManyPilots);
-        Run("UPDATE accounts SET recovery_email = $e, email_verified = 1 WHERE id = $id", ("$e", e!), ("$id", accountId));
-        return Ok($"Your recovery email is now {e}.");
+        foreach (var id in moving)
+            Run("UPDATE accounts SET recovery_email = $e, email_verified = 1, link_id = NULL WHERE id = $id", ("$e", e!), ("$id", id));
+        return Ok(others.Count == 0
+            ? $"Your recovery email is now {e}."
+            : $"Your recovery email is now {e}, for all {moving.Count} of your names.");
     });
 
     // ---- password --------------------------------------------------------

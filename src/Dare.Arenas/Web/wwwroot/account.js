@@ -43,8 +43,32 @@ const NOTHING = "If nothing arrives in a few minutes, try again.";
 
 const pages = {
   signup() {
-    wire($("form"), $("msg"), "/signup", (b, v) => {
-      store.set("acct_email", v.email); store.set("acct_sent", b.message);
+    const form = $("form");
+    const noEmail = () => form.mode.value === "none";
+    const show = () => {
+      $("emailrow").hidden = noEmail();
+      form.email.required = !noEmail();
+      form.email.disabled = noEmail();
+      $("noemailwarn").hidden = !noEmail();
+      $("go").textContent = noEmail() ? "Claim name" : "Send code";
+    };
+    for (const r of form.querySelectorAll("input[name=mode]")) r.addEventListener("change", show);
+    if (location.hash === "#noemail") form.mode.value = "none";
+    show();
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("go");
+      const v = values(form);
+      btn.disabled = true;
+      msg($("msg"), "…", true);
+      const { body } = await post("/signup", noEmail()
+        ? { name: v.name, password: v.password, noEmail: true }
+        : { name: v.name, password: v.password, email: v.email });
+      btn.disabled = false;
+      msg($("msg"), body.message, body.ok);
+      if (!body.ok) return;
+      if (noEmail()) { setTimeout(() => { location.href = "/"; }, 1500); return; }
+      store.set("acct_email", v.email); store.set("acct_sent", body.message);
       location.href = "/account/verify";
     });
   },
@@ -78,15 +102,15 @@ const pages = {
     $("email").textContent = me.emailVerified ? me.email : "none yet";
     $("isoj").textContent = me.isojName || "not linked";
     $("emailbox").hidden = false;
-    $("emailsum").textContent = me.emailVerified ? me.email : "None yet: add one so you can recover your password.";
-    if (me.needsEmail) {
-      $("emailbox").open = true;
+    $("emailsum").textContent = me.emailVerified ? me.email : "None: a forgotten password can't be recovered. Add one any time.";
+    $("pwbox").hidden = false;
+    if (!me.emailVerified) {
+      $("email").textContent = "none (a forgotten password can't be recovered)";
       $("emailtitle").textContent = "Add a recovery email";
-      $("emailnote").textContent = "Your name came from the old zone. Add a recovery email before anything else; it is used only to recover your password.";
+      $("emailnote").textContent = "Optional. With one, you can reset a forgotten password; all your pilot names share it. We email a code to confirm it.";
     } else {
       $("emailtitle").textContent = "Recovery email";
       $("emailnote").textContent = "We email a code to the new address.";
-      $("pwbox").hidden = false;
     }
     wire($("emailform"), $("emailmsg"), "/email", () => { $("codeform").hidden = false; $("codeform").code.focus(); }, NOTHING);
     wire($("codeform"), $("emailmsg"), "/email/verify", () => { setTimeout(() => location.reload(), 900); });
@@ -121,11 +145,9 @@ async function pilots(me) {
     $("pilotssum").textContent = "Couldn't load your names.";
     return;
   }
-  $("pilotssum").textContent = `${data.pilots.length} name${data.pilots.length === 1 ? "" : "s"} on your email · signed in as ${data.current}`;
-  if (!data.emailVerified) {
-    $("pilotsnote").textContent = "Confirm a recovery email (below) to have more than one name: your names share it.";
-    $("addform").hidden = true;
-  }
+  $("pilotssum").textContent = `${data.pilots.length} name${data.pilots.length === 1 ? "" : "s"}${data.emailVerified ? " on your email" : ""} · signed in as ${data.current}`;
+  if (!data.emailVerified)
+    $("pilotsnote").textContent = "Fly as any of them; each keeps its own keys and macros. They share one account (no email: their passwords can't be recovered).";
   const names = data.pilots.map((p) => p.name);
   $("pilotlist").replaceChildren(...data.pilots.map((p) => {
     const current = p.name === data.current;

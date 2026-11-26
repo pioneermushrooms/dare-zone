@@ -85,6 +85,15 @@ form.stack input { width:100%; min-width:0; font-size:1rem; color:var(--text); }
 form.stack button { justify-self:start; padding:10px 20px; min-height:45px; }
 input.code { letter-spacing:8px; font-size:1.4rem; max-width:11ch; }
 .hint { font-size:.8rem; color:var(--dim); }
+/* sign-up: with or without a recovery email */
+fieldset.choice { border:0; margin:0; padding:0; display:grid; gap:8px; }
+fieldset.choice legend { color:var(--dim); font-size:.85rem; font-weight:500; margin-bottom:6px; padding:0; }
+form.stack label.option { display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line);
+        border-radius:3px; background:var(--panel2); cursor:pointer; color:var(--text); font-size:.95rem; }
+form.stack label.option:has(input:checked) { border-color:var(--accent); }
+form.stack label.option input { width:auto; margin-top:5px; accent-color:var(--accent); }
+label.option .hint { display:block; margin-top:2px; font-weight:400; }
+p.warn { margin:0; padding:10px 14px; border-left:3px solid var(--hot); background:#2a1f0c; color:var(--text); font-size:.88rem; }
 .links { margin:16px 0 0; font-size:.9rem; color:var(--dim); }
 dl.facts { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0 0 6px; }
 dl.facts dt { color:var(--dim); }
@@ -207,7 +216,7 @@ label.switch input:checked + .track::after { left:23px; background:#aebcd0; }
 label.switch input:focus-visible + .track { outline:2px solid var(--accent); outline-offset:3px; }
 details.discard summary { cursor:pointer; color:var(--bad); font-size:.9rem; }
 details.discard form { margin-top:8px; }
-[hidden] { display:none !important; }
+form.stack [hidden] { display:none; }
 /* account page: a compact "Your account" card, then one folded section per task (Pilot names, Recovery email,
    Change password, Keys and macros); each opens on demand so the whole page fits one screen */
 main.acct { width:min(760px, calc(100% - 32px)); margin:0 auto; display:grid; gap:10px; }

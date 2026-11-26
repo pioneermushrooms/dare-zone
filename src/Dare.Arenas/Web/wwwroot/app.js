@@ -82,11 +82,6 @@ let current = null; // /api/me body
 async function mePage(arena) {
   const { status, body } = await getJson(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""));
   if (status === 401) { $("signin").hidden = false; $("hub").hidden = true; return; }
-  if (status === 403 && body && body.needsEmail) {
-    $("signin").hidden = false; $("hub").hidden = true;
-    $("signinmsg").replaceChildren(el("a", { href: "/account/", text: "Add a recovery email" }), " to your account first.");
-    return;
-  }
   if (!body) return;
   current = body;
   $("signin").hidden = true;

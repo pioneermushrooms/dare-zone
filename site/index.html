@@ -7,11 +7,11 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=7">
+<link rel="stylesheet" href="/play.css?v=8">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=7"></script>
-<script type="module" src="/chat.js?v=7"></script>
+<script type="module" src="/play/start.mjs?v=8"></script>
+<script type="module" src="/chat.js?v=8"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 setTimeout(function () {
@@ -49,7 +49,7 @@ setTimeout(function () {
       <button id="start" type="button" disabled><span class="play-icon" aria-hidden="true"></span><span id="start-label">Enter</span></button>
     </div>
     <p role="status" id="status"></p>
-    <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a></p>
+    <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a> (email optional), or press Enter and fly as a guest.</p>
   </main>
 
   <aside class="chat" id="chat" aria-label="Arena chat">
@@ -87,7 +87,11 @@ setTimeout(function () {
       <button type="submit" id="signin-go">Sign in and enter</button>
       <button type="button" class="ghost" id="signin-cancel">Cancel</button>
     </div>
-    <p class="small">No pilot name yet? <a href="/account/signup">Claim one</a>.</p>
+    <div class="guest" id="signin-guestbox">
+      <p class="small">No pilot name yet? <a href="/account/signup">Claim one</a>: email optional, takes a few seconds.</p>
+      <button type="button" class="ghost" id="signin-guest">Fly as a guest</button>
+      <p class="small dim">Get a quirky space name, new every time. No password, nothing to set up.</p>
+    </div>
   </form>
 </dialog>
 </body>

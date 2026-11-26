@@ -17,6 +17,11 @@ namespace Dare.Arenas;
 /// checked on the thread pool (PBKDF2 is slow) and answered on the mainloop. Only a right password
 /// for an active account is let in, authenticated, with the account's stored name casing.
 /// </para>
+/// <para>
+/// Guests: the name <c>guest</c> (any password) flies unauthenticated under a fresh quirky space
+/// name each time (<see cref="GuestNames"/>, e.g. "Wobbly Nebula"), one nobody online or on file
+/// has. An unauthenticated player can't own arenas or take roles.
+/// </para>
 /// </summary>
 [ModuleInfo("Foundation accounts: game login (IAuth) from the account store; imports passwd.conf [Users] once.")]
 public sealed class FoundationAuth : IModule, IAuth
@@ -25,6 +30,7 @@ public sealed class FoundationAuth : IModule, IAuth
 
     private readonly IMainloop _mainloop;
     private readonly ILogManager _logManager;
+    private readonly IPlayerData _playerData;
 #if DEBUG
     private readonly ICommandManager _commandManager;
     private readonly IChat _chat;
@@ -40,7 +46,8 @@ public sealed class FoundationAuth : IModule, IAuth
 
     public FoundationAuth(
         IMainloop mainloop,
-        ILogManager logManager
+        ILogManager logManager,
+        IPlayerData playerData
 #if DEBUG
         , ICommandManager commandManager,
         IChat chat
@@ -49,6 +56,7 @@ public sealed class FoundationAuth : IModule, IAuth
     {
         _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 #if DEBUG
         _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -181,6 +189,13 @@ public sealed class FoundationAuth : IModule, IAuth
             return;
         }
 
+        // a guest, unless an old account really is named "guest"
+        if (string.Equals(name, AccountRules.GuestLogin, StringComparison.OrdinalIgnoreCase) && store.Find(name) is null)
+        {
+            LetGuestIn(authRequest, store);
+            return;
+        }
+
         var token = new object();
         lock (_pendingLock) _pending[player] = token;
 
@@ -243,6 +258,26 @@ public sealed class FoundationAuth : IModule, IAuth
                 + (c.Outcome == LoginResult.LockedOut ? " (too many wrong passwords; name locked for 10 minutes)." : "."));
         }
         c.Request.Done();
+    }
+
+    /// <summary>Mainloop: lets a guest in, unauthenticated, under a random space name nobody online or on file has.</summary>
+    private void LetGuestIn(IAuthRequest request, AccountStore store)
+    {
+        var result = request.Result;
+        var picked = GuestNames.PickFree(Random.Shared.Next, n => _playerData.FindPlayer(n) is not null || store.Find(n) is not null);
+        if (picked is null)
+        {
+            Refuse(request, request.Player?.Type == ClientType.Continuum, null);
+            Log(LogLevel.Warn, "Guest login refused: no free guest name.");
+            request.Done();
+            return;
+        }
+        result.Authenticated = false;
+        result.Code = AuthCode.OK;
+        result.SetName(picked);
+        result.SetSendName(picked);
+        Log(LogLevel.Info, $"Guest login: flying as '{picked}'.");
+        request.Done();
     }
 
     private static void Refuse(IAuthRequest request, bool continuum, LoginResult? outcome)

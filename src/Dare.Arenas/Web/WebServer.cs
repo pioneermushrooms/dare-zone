@@ -509,7 +509,7 @@ internal sealed partial class WebServer : IDisposable
 
     /// <summary>
     /// 401 without a session (a ?weblogin session or an account sign-in, both keyed by name); 403
-    /// for an account that has no verified recovery email yet; 403 for writes without the anti-CSRF
+    /// for writes without the anti-CSRF
     /// header or with an Origin that isn't this site.
     /// </summary>
     private Reply? Gate(HttpListenerRequest req, bool write, out string player)
@@ -524,8 +524,6 @@ internal sealed partial class WebServer : IDisposable
             var account = _m.Accounts.Get(id);
             if (account is null)
                 return JsonReply(401, new { ok = false, message = "Not signed in." });
-            if (!account.EmailVerified)
-                return JsonReply(403, new { ok = false, message = "Add a recovery email first at /account/.", needsEmail = true });
         }
         if (write && req.Headers[CsrfHeader] != CsrfValue)
             return JsonReply(403, new { ok = false, message = "Missing request header." });

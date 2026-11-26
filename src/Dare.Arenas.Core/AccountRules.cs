@@ -26,6 +26,31 @@ public static class AccountRules
         return true;
     }
 
+    /// <summary>The name typed in the game to fly as a guest (any password); the zone picks the real name.</summary>
+    public const string GuestLogin = "guest";
+
+    /// <summary>True for "guest" itself and "Guest" followed by digits (the names guests get): nobody can claim them.</summary>
+    public static bool IsGuestName(string? input)
+    {
+        var s = (input ?? "").Trim();
+        if (!s.StartsWith("guest", StringComparison.OrdinalIgnoreCase)) return false;
+        var rest = s.AsSpan(5);
+        foreach (var c in rest) if (c < '0' || c > '9') return false;
+        return true;
+    }
+
+    /// <summary>A name for a new account: <see cref="TryName"/> plus the names kept for guests.</summary>
+    public static bool TryNewName(string input, out string name, out string error)
+    {
+        if (!TryName(input, out name, out error)) return false;
+        if (IsGuestName(name))
+        {
+            name = "";
+            return Fail("Names like 'Guest' or 'Guest1234' are kept for guests; pick another.", out error);
+        }
+        return true;
+    }
+
     public static bool TryPassword(string input, out string error)
     {
         input ??= "";

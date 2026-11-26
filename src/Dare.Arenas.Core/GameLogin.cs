@@ -9,7 +9,7 @@ public enum GameRefusal { BadPassword, NoPermission, CustomText }
 /// </summary>
 public static class GameLogin
 {
-    public const string UnknownNameText = "This name isn't claimed. Claim it at subspacefoundation.com";
+    public const string UnknownNameText = "This name isn't claimed. Claim it at subspacefoundation.com (email optional), or log in as guest.";
     public const string LockedOutText = "Too many wrong passwords. Try again in 10 minutes.";
     public const string DisabledText = "This account is disabled.";
     public const string ErrorText = "Login is unavailable right now. Try again soon.";

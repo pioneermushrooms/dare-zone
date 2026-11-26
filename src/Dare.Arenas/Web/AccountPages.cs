@@ -89,7 +89,6 @@ internal sealed partial class WebServer
     private const string Busy = "Server busy, try again.";
     private const string WrongLogin = "Wrong name or password.";
     private const string LockedOut = "Too many wrong passwords. Try again in 10 minutes.";
-    private const string NeedEmail = "Add a recovery email first.";
     private const string NotSignedIn = "Not signed in.";
 
     // Sign-up, recovery and email-change answers take at least this long whether or not a code
@@ -203,7 +202,6 @@ internal sealed partial class WebServer
     }
 
     private static Reply NotSignedInReply() => JsonReply(401, new { ok = false, message = NotSignedIn });
-    private static Reply NeedEmailReply() => JsonReply(403, new { ok = false, message = NeedEmail, needsEmail = true });
 
     private static Reply Ok(string message) => JsonReply(200, new { ok = true, message });
 
@@ -268,7 +266,7 @@ internal sealed partial class WebServer
     {
         var session = _m.WebAuth.IssueSession(account.Name, account.Id);
         return new Reply(200, "application/json; charset=utf-8",
-            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message, name = account.Name, needsEmail = !account.EmailVerified }, Json),
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message, name = account.Name, hasEmail = account.EmailVerified }, Json),
             [("Set-Cookie", WebPaths.SessionCookie(session, secure: true))]);
     }
 
@@ -279,11 +277,22 @@ internal sealed partial class WebServer
         var name = Str(body, "name") ?? "";
         var password = Str(body, "password") ?? "";
         var email = Str(body, "email") ?? "";
-        if (!AccountRules.TryName(name, out var n, out var err)) return Bad(err);
+        if (!AccountRules.TryNewName(name, out var n, out var err)) return Bad(err);
         if (!AccountRules.TryPassword(password, out err)) return Bad(err);
+        var ip = ClientIp(req);
+
+        // no email: the name is claimed at once and signed in; the password can't be recovered
+        if (Str(body, "noEmail") is "true" or "on")
+        {
+            if (!_m.SignupPerIp.TryTake("signup:ip:" + ip)) return Bad(TooMany, 429);
+            var made = _m.Accounts.CreateWithoutEmail(name, password, out var account);
+            if (!made.Ok || account is null) return Bad(made.Message);
+            _m.Log(LogLevel.Info, $"Account created on the web without an email: '{account.Name}' ({ip}).");
+            return Signed(account, made.Message);
+        }
+
         if (!AccountRules.TryEmail(email, out var e, out err)) return Bad(err);
 
-        var ip = ClientIp(req);
         if (!_m.SignupPerIp.TryTake("signup:ip:" + ip)) return Bad(TooMany, 429);
         if (TakeSendLimits(e, ip) is { } limited) return limited;
 
@@ -324,8 +333,8 @@ internal sealed partial class WebServer
         {
             case LoginResult.Ok when account is not null:
                 _m.WebLogins.Success(name, ip);
-                _m.Log(LogLevel.Info, $"Web sign-in for account '{account.Name}'{(account.EmailVerified ? "" : " (no recovery email yet)")}.");
-                return Signed(account, account.EmailVerified ? "Signed in." : "Signed in. Add a recovery email to continue.");
+                _m.Log(LogLevel.Info, $"Web sign-in for account '{account.Name}'{(account.EmailVerified ? "" : " (no recovery email)")}.");
+                return Signed(account, "Signed in.");
             case LoginResult.UnknownName or LoginResult.Disabled:
                 // as slow as a real check, so the answer time doesn't tell which names exist
                 var d = DummyCred.Value;
@@ -490,7 +499,6 @@ internal sealed partial class WebServer
             name = a.Name,
             email = a.Email,
             emailVerified = a.EmailVerified,
-            needsEmail = !a.EmailVerified,
             isojName = a.IsojName,
             created = a.Created,
             lastLogin = a.LastLogin,
@@ -521,7 +529,6 @@ internal sealed partial class WebServer
     private Reply ChangePassword(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
-        if (!cur.Account.EmailVerified) return NeedEmailReply();
         var r = _m.Accounts.ChangePassword(cur.Account.Id, Str(body, "current") ?? "", Str(body, "next") ?? "");
         if (!r.Ok) return Bad(r.Message);
         _m.WebAuth.RevokeAllFor(cur.Account.Name, except: cur.Session); // other browsers are signed out
