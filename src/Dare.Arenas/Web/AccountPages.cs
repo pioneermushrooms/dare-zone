@@ -128,6 +128,8 @@ internal sealed partial class WebServer
 
         if (api == "/shipyard" || api.StartsWith("/shipyard/", StringComparison.Ordinal))
             return await ShipyardRouteAsync(req, api).ConfigureAwait(false);
+        if (api == "/armory" || api.StartsWith("/armory/", StringComparison.Ordinal))
+            return await ArmoryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/graphics" || api.StartsWith("/graphics/", StringComparison.Ordinal))
             return await PilotGraphicsRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/me")

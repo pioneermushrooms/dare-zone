@@ -46,7 +46,8 @@ internal sealed partial class WebServer
         {
             ok = true,
             useOwn,
-            slots = GameGraphics.Slots.Where(s => GameGraphics.ShipIndex(s.Name) == 0).Select(s => new
+            // Ships are in the shipyard, weapons in the armory.
+            slots = GameGraphics.Slots.Where(s => GameGraphics.ShipIndex(s.Name) == 0 && AccountStore.FindArmoryKind(s.Name) is null).Select(s => new
             {
                 name = s.Name,
                 label = s.Label,

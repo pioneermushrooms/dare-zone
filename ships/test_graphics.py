@@ -58,6 +58,19 @@ class Generators(unittest.TestCase):
             png = graphics.generate("prizes", "prompt", stock("prizes"), prompt="a red gem", seed=1)
         self.assertEqual(size(png), (160, 16))
 
+    def test_a_weapon_prompt_is_briefed_as_that_weapon(self):
+        sprite = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
+        sprite.paste((40, 220, 40, 255), (12, 12, 28, 28))
+        for kind, word in (("bombs", "bomb"), ("mines", "mine"), ("bullets", "bullet"), ("shrapnel", "shrapnel")):
+            with mock.patch.object(graphics, "pixel_lab_sprite", return_value=sprite) as drawn:
+                png = graphics.generate(kind, "prompt", stock(kind), prompt="green plasma", seed=2)
+            description = drawn.call_args.args[0]
+            self.assertTrue(description.startswith("green plasma"), description)
+            self.assertIn(word, description)
+            self.assertEqual(drawn.call_args.kwargs["px"], max(graphics.SPRITES[kind][:2]))
+            self.assertEqual(size(png), size(stock(kind)), kind)  # the stock layout, so the game reads it
+        self.assertEqual(graphics.sprite_description("prizes", "a red gem"), "a red gem")
+
     def test_service_refuses_clearly(self):
         with self.assertRaises(service.Refused):
             service.graphic({"kind": "bombs", "mode": "new", "template": ""})

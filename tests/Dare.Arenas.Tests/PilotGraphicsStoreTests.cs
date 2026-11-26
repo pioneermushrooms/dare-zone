@@ -46,15 +46,15 @@ public sealed class PilotGraphicsStoreTests : IDisposable
     public void set_replace_clear_per_pilot()
     {
         Assert.Empty(_s.PilotGraphics(_dare.Id).Updated);
-        Assert.True(_s.SetPilotGraphic(_dare.Id, "Bombs", Png(160, 208)).Ok);
-        Assert.True(_s.SetPilotGraphic(_dare.Id, "bombs", Png(320, 416)).Ok); // replaces
+        Assert.True(_s.SetPilotGraphic(_dare.Id, "Flag", Png(160, 32)).Ok);
+        Assert.True(_s.SetPilotGraphic(_dare.Id, "flag", Png(320, 64)).Ok); // replaces
         Assert.True(_s.SetPilotGraphic(_dare.Id, "prizes", Png(160, 16)).Ok);
-        Assert.Equal(["bombs", "prizes"], _s.PilotGraphics(_dare.Id).Updated.Keys.Order());
-        Assert.Equal(Png(320, 416), _s.PilotGraphic(_dare.Id, "BOMBS"));
-        Assert.Null(_s.PilotGraphic(_other.Id, "bombs")); // only this pilot's
+        Assert.Equal(["flag", "prizes"], _s.PilotGraphics(_dare.Id).Updated.Keys.Order());
+        Assert.Equal(Png(320, 64), _s.PilotGraphic(_dare.Id, "FLAG"));
+        Assert.Null(_s.PilotGraphic(_other.Id, "flag")); // only this pilot's
 
-        Assert.True(_s.ClearPilotGraphic(_dare.Id, "bombs").Ok);
-        Assert.Null(_s.PilotGraphic(_dare.Id, "bombs"));
+        Assert.True(_s.ClearPilotGraphic(_dare.Id, "flag").Ok);
+        Assert.Null(_s.PilotGraphic(_dare.Id, "flag"));
         Assert.NotNull(_s.PilotGraphic(_dare.Id, "prizes"));
     }
 
@@ -64,9 +64,10 @@ public sealed class PilotGraphicsStoreTests : IDisposable
         Assert.False(_s.SetPilotGraphic(_dare.Id, "ship3", Png(360, 144)).Ok); // the shipyard's
         Assert.False(_s.SetPilotGraphic(_dare.Id, "tiles", Png(304, 160)).Ok);
         Assert.False(_s.SetPilotGraphic(_dare.Id, null, Png(16, 16)).Ok);
-        Assert.False(_s.SetPilotGraphic(_dare.Id, "bombs", "GIF89a not a png or bmp at all......"u8.ToArray()).Ok);
-        Assert.False(_s.SetPilotGraphic(_dare.Id, "bombs", Png(5000, 16)).Ok);
-        Assert.False(_s.SetPilotGraphic(_dare.Id, "bombs", new byte[GameGraphics.MaxImageBytes + 1]).Ok);
+        Assert.False(_s.SetPilotGraphic(_dare.Id, "bombs", Png(160, 208)).Ok); // the armory's
+        Assert.False(_s.SetPilotGraphic(_dare.Id, "flag", "GIF89a not a png or bmp at all......"u8.ToArray()).Ok);
+        Assert.False(_s.SetPilotGraphic(_dare.Id, "flag", Png(5000, 16)).Ok);
+        Assert.False(_s.SetPilotGraphic(_dare.Id, "flag", new byte[GameGraphics.MaxImageBytes + 1]).Ok);
     }
 
     [Fact]

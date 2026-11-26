@@ -668,16 +668,31 @@ def new_burst(kind: str, template: Image.Image, rng: random.Random) -> Image.Ima
 
 SPRITE_PROMPT = (
     "Draw exactly one small game sprite, seen from above, centred on a transparent background: "
-    "{description}. Bold readable silhouette and strong colour, so it still reads at 16 pixels. "
+    "{description}. Bold readable silhouette and strong colour, so it still reads at {px} pixels. "
     "No text, no frame, no grid, no scenery, no shadow."
 )
+# What a sprite of each sheet is, so a description like "green plasma" comes back as a
+# projectile of the right kind and weight rather than a scene or a ship.
+BRIEFS = {
+    "bullets": "a tiny glowing energy bullet from a space fighter's gun, a simple round or "
+               "teardrop bolt with a bright core",
+    "bombs": "a round bomb fired by a space fighter, a compact orb or shell with a glowing core",
+    "mines": "a floating space mine, a compact armed orb or spiked device",
+    "shrapnel": "a tiny sharp shard of shrapnel, a jagged glowing fragment",
+}
 
 
-def pixel_lab_sprite(description: str) -> Image.Image:
+def sprite_description(kind: str, description: str) -> str:
+    """The pilot's description with what the sprite is for (a bomb, a mine...), when known."""
+    brief = BRIEFS.get(kind)
+    return f"{description}, drawn as {brief}" if brief else description
+
+
+def pixel_lab_sprite(description: str, px: int = 16) -> Image.Image:
     response = requests.post(
         shipgen.API_URL,
         headers={"Authorization": f"Bearer {shipgen._api_key()}"},
-        json={"description": SPRITE_PROMPT.format(description=description),
+        json={"description": SPRITE_PROMPT.format(description=description, px=px),
               "image_size": {"width": 64, "height": 64}, "no_background": True},
         timeout=(10, 90),
     )
@@ -715,6 +730,6 @@ def generate(kind: str, mode: str, template_bytes: bytes, prompt: str | None = N
     if mode == "prompt":
         if kind not in SHEETS:
             raise GraphicError("That graphic can't be drawn from a description.")
-        sprite = pixel_lab_sprite(prompt or "")
+        sprite = pixel_lab_sprite(sprite_description(kind, prompt or ""), px=max(SHEETS[kind].cell))
         return encode(new_sprites(kind, template, rng, sprite=sprite))
     raise GraphicError("Choose Recolour, New look or From a description.")
