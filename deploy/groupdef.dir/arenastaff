@@ -16,6 +16,7 @@ cmd_arenamap
 cmd_putlvz
 cmd_rmlvz
 cmd_weblogin
+cmd_bots
 
 ; Never add cmd_quickfix/changesettings here for arena purposes: changesettings edits shared
 ; config files zone-wide.
