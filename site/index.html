@@ -7,14 +7,14 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=10">
+<link rel="stylesheet" href="/play.css?v=13">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=10"></script>
-<script type="module" src="/chat.js?v=10"></script>
-<script type="module" src="/graphics.js?v=10"></script>
-<script type="module" src="/loading.js?v=10"></script>
-<script type="module" src="/graphics-other.js?v=10"></script>
+<script type="module" src="/play/start.mjs?v=13"></script>
+<script type="module" src="/chat.js?v=13"></script>
+<script type="module" src="/graphics.js?v=13"></script>
+<script type="module" src="/loading.js?v=13"></script>
+<script type="module" src="/graphics-other.js?v=13"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -75,23 +75,6 @@ setTimeout(function () {
     <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a> (email optional), or press Enter and fly as a guest.</p>
   </main>
 
-  <!-- after Enter, until the game takes the page (loading.js) -->
-  <section class="loader" id="loader" hidden aria-live="polite" aria-label="Loading the game">
-    <div class="loader-box">
-      <div class="loader-logo" aria-hidden="true"><span>◈</span></div>
-      <p class="loader-to">Entering <b id="loader-arena">public</b></p>
-      <ol class="loader-steps">
-        <li data-step="download">Download</li><li data-step="start">Start up</li><li data-step="join">Sign in and join</li>
-      </ol>
-      <div class="loader-bar" id="loader-bar"><span></span></div>
-      <p class="loader-text"><span id="loader-text">Getting ready</span> <b id="loader-pct"></b></p>
-      <p class="loader-tip" id="loader-tip"></p>
-      <div class="loader-error" id="loader-error" hidden>
-        <p id="loader-errortext"></p>
-        <button type="button" class="ghostbtn" id="loader-back">Back</button>
-      </div>
-    </div>
-  </section>
 
   <aside class="chat" id="chat" aria-label="Arena chat">
     <header class="chathead">
@@ -114,6 +97,24 @@ setTimeout(function () {
   </aside>
 
 </div>
+
+<!-- after Enter, until the pilot is in the arena (loading.js): a warp through the stars while the game
+     downloads, connects and loads the arena, over the game's canvas. Outside #entry, which the game's start hides. -->
+<section class="loader" id="loader" hidden aria-live="polite" aria-label="Loading the game">
+  <canvas class="ld-warp" id="loader-warp" aria-hidden="true"></canvas>
+  <div class="ld-center">
+    <p class="ld-kicker">Entering</p>
+    <h2 class="ld-arena" id="loader-arena">public</h2>
+    <div class="ld-progress" id="loader-bar"><span></span></div>
+    <p class="ld-status" id="loader-text">Getting ready</p>
+    <div class="ld-error" id="loader-error" hidden>
+      <p id="loader-errortext"></p>
+      <button type="button" class="ghostbtn" id="loader-back">Back</button>
+    </div>
+  </div>
+  <p class="ld-tip" id="loader-tip"></p>
+  <div class="ld-flash" aria-hidden="true"></div>
+</section>
 
 <dialog id="signin" aria-labelledby="signin-title">
   <form id="signin-form" method="dialog">
