@@ -4,14 +4,14 @@ Only the zone's web server talks to it (it listens on 127.0.0.1); the zone check
 pilot is signed in and rate-limits them before a request gets here. The PixelLab key is
 read from this process's environment (PIXEL_LAB_API_KEY), so it never leaves the server.
 
-    POST /generate  {"mode": "random"}                      a ship in the stock style, from a pool
-                    {"mode": "prompt", "prompt": "..."}       a batch of options in the stock style
-                    {"mode": "prompt", "batch": "<token>"}    the next option from that batch
+    POST /generate  {"mode": "random"}                      a stock-style ship from the pool
+                    {"mode": "prompt", "prompt": "..."}       a stock-style ship for the prompt
                     {"mode": "prompt", "prompt": "...", "creative": true}   any subject (Maigent's path)
+                    {..., "batch": "<token>"}                 Try again: a ship unlike those shown
       -> 200 {"ok": true, "sheet": <base64 ship-rotations.png>, "art": <base64>|null, "seed": n|null,
-              "batch": "<token>", "left": n}   (batch and left for prompts)
+              "batch": "<token>", "ready": <whether the next Try again is instant>}
       -> 4xx/5xx {"ok": false, "message": "..."}
-    POST /flip      {"sheet": <base64 ship-rotations.png>}
+    POST /front     {"sheet": <base64 ship-rotations.png>, "frame": 0-39}   that frame becomes the front
       -> 200 {"ok": true, "sheet": <base64>}
     GET  /health    -> 200 {"ok": true, "prompt": <whether a PixelLab key is set>}
 
@@ -24,15 +24,13 @@ import binascii
 import json
 import logging
 import os
-import random
 import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import graphics
-import shipgen
-import stylegen
+from foundation_ships import designer, shipgen
 
 MAX_BODY = 512 * 1024
 MAX_PROMPT = 500
@@ -59,141 +57,86 @@ def _b64(data: bytes | None) -> str | None:
     return base64.b64encode(data).decode("ascii") if data else None
 
 
-# Ships in the stock style come in batches of up to 36 (stylegen). Random hands out one at a time
-# from a shared pool and refills it in the background; a prompt's batch is kept under a token so
-# Try again is instant and free.
-POOL_LOW = 24        # refill below this; a batch shares one theme, so the pool mixes several
-KEEP_PER_BATCH = 12  # of the ~36 a batch draws
-BATCH_TTL = 30 * 60
-MAX_BATCHES = 200
-_pool: list = []
-_pool_lock = threading.Lock()
-_refill_lock = threading.Lock()
-_style_slots = threading.BoundedSemaphore(2)  # PixelLab style jobs at once
-_batches: dict[str, tuple[float, list]] = {}
-_batches_lock = threading.Lock()
+# Stock-style ships come from foundation_ships.designer, the same code the Discord bot uses.
+# Random hands ships out of a shared pool; each pilot's run of tries (a prompt, or Random) is
+# kept under a token so Try again shows a ship unlike the ones they've seen.
+TRIES_TTL = 30 * 60
+MAX_TRIES = 300
+_pool = designer.RandomPool()
+_tries: dict[str, tuple[float, designer.Tries]] = {}
+_tries_lock = threading.Lock()
 
 
 def _has_key() -> bool:
     return bool(os.environ.get("PIXEL_LAB_API_KEY", "").strip())
 
 
-def _sheet_reply(sprites: list) -> dict:
-    """The first sprite that turns cleanly, as a rotation sheet (Maigent's rotation and export)."""
-    while sprites:
-        sprite = sprites.pop(0)
-        try:
-            frames = shipgen._rotation_frames(sprite, preserve_detail=True)
-        except ValueError:
-            continue
-        files = shipgen._render_ship_files(frames)
-        return {"ok": True, "sheet": _b64(files["ship-rotations.png"]), "art": _b64(shipgen._encode(sprite, "PNG")), "seed": None}
-    raise Refused(502, "PixelLab drew nothing usable. Try again.")
+def _keep(tries: designer.Tries) -> str:
+    token = secrets.token_urlsafe(18)
+    with _tries_lock:
+        now = time.monotonic()
+        for key in [k for k, (t, _) in _tries.items() if t < now]:
+            del _tries[key]
+        if len(_tries) >= MAX_TRIES:
+            _tries.pop(next(iter(_tries)))
+        _tries[token] = (now + TRIES_TTL, tries)
+    return token
 
 
-def _draw(description: str) -> list:
-    if not _style_slots.acquire(timeout=1):
-        raise Refused(429, "The ship painter is busy. Try again in a few seconds.")
+def _found(token) -> designer.Tries | None:
+    if not isinstance(token, str) or not token:
+        return None
+    with _tries_lock:
+        entry = _tries.get(token)
+        if entry is None:
+            return None
+        _tries[token] = (time.monotonic() + TRIES_TTL, entry[1])
+        return entry[1]
+
+
+def _next(tries: designer.Tries, token: str) -> dict:
     try:
-        return stylegen.draw_batch(description, seed=random.SystemRandom().randrange(2**31))
+        files = tries.next()
+    except designer.Busy as exc:
+        raise Refused(429, str(exc)) from exc
     except (ValueError, RuntimeError) as exc:
         raise Refused(502, str(exc)) from exc
-    finally:
-        _style_slots.release()
-
-
-def _refill() -> None:
-    """Draws a fresh random batch into the pool (one at a time)."""
-    if not _refill_lock.acquire(blocking=False):
-        return
-    try:
-        while True:
-            with _pool_lock:
-                if len(_pool) >= POOL_LOW:
-                    break
-            brief = stylegen.random_brief(random.Random())
-            sprites = _draw(brief)[:KEEP_PER_BATCH]
-            with _pool_lock:
-                _pool.extend(sprites)
-            log.info("random pool +%d (%s)", len(sprites), brief)
-    except Refused as exc:
-        log.warning("random pool refill failed: %s", exc)
-    finally:
-        _refill_lock.release()
-
-
-def _refill_soon() -> None:
-    with _pool_lock:
-        low = len(_pool) < POOL_LOW
-    if low and _has_key() and not _refill_lock.locked():
-        threading.Thread(target=_refill, daemon=True).start()
-
-
-def _random_ship() -> dict:
-    for _ in range(2):
-        with _pool_lock:
-            # Any of them, so consecutive ships come from different batches (themes).
-            random.shuffle(_pool)
-            sprites = _pool[:4]
-            del _pool[:4]
-        if sprites:
-            try:
-                reply = _sheet_reply(sprites)
-            except Refused:
-                continue
-            with _pool_lock:
-                _pool[:0] = sprites  # the unused ones go back
-            _refill_soon()
-            return reply
-        # Empty: draw now (another request may already be drawing; wait for it).
-        with _refill_lock:
-            with _pool_lock:
-                empty = not _pool
-            if empty:
-                brief = stylegen.random_brief(random.Random())
-                sprites = _draw(brief)[:KEEP_PER_BATCH]
-                with _pool_lock:
-                    _pool.extend(sprites)
-                log.info("random pool +%d (%s)", len(sprites), brief)
-    raise Refused(502, "Ship generation failed. Try again.")
-
-
-def _batch_take(token: str) -> dict:
-    with _batches_lock:
-        now = time.monotonic()
-        for key in [k for k, (t, _) in _batches.items() if t < now]:
-            del _batches[key]
-        entry = _batches.get(token)
-        if entry is None:
-            raise Refused(410, "Those options have expired. Draw it again.")
-        sprites = entry[1]
-    reply = _sheet_reply(sprites)
-    with _batches_lock:
-        if not sprites:
-            _batches.pop(token, None)
-    reply.update(batch=token, left=len(sprites))
-    return reply
+    return {
+        "ok": True,
+        "sheet": _b64(files["ship-rotations.png"]),
+        "art": _b64(files.get("ship-art-128.png")),
+        "seed": None,
+        "batch": token,
+        "ready": tries.ready,  # whether Try again is instant
+    }
 
 
 def generate(body: dict) -> dict:
-    """One ship, as the files the browser needs. Raises Refused with a message for the pilot."""
+    """One ship, as the files the browser needs. Raises Refused with a message for the pilot.
+
+    "batch" (from an earlier answer) continues that run of tries: a ship unlike the ones shown.
+    """
     global _next_paid
     mode = body.get("mode")
+    if mode not in ("random", "prompt"):
+        raise Refused(400, "Choose Random or Prompt.")
+    batch = body.get("batch")
+    tries = _found(batch)
+    if tries is not None:
+        return _next(tries, batch)
+    if isinstance(batch, str) and batch and mode == "prompt" and not body.get("prompt"):
+        raise Refused(410, "Those options have expired. Draw it again.")
+
     if mode == "random":
         seed = body.get("seed")
         if seed is not None and not (isinstance(seed, int) and 0 <= seed < 2**31):
             raise Refused(400, "Bad seed.")
         if not _has_key() or seed is not None:
-            # Without PixelLab (or asked for a reproducible one): Maigent's own procedural ship.
+            # Without PixelLab (or asked for a reproducible one): Maigent's procedural ship.
             files, seed = shipgen.generate_ship("", seed=seed)
             return {"ok": True, "sheet": _b64(files["ship-rotations.png"]), "art": None, "seed": seed}
-        return _random_ship()
-    if mode != "prompt":
-        raise Refused(400, "Choose Random or Prompt.")
-
-    batch = body.get("batch")
-    if isinstance(batch, str) and batch:
-        return _batch_take(batch)
+        tries = designer.Tries(pool=_pool)
+        return _next(tries, _keep(tries))
 
     prompt = body.get("prompt")
     prompt = prompt.strip() if isinstance(prompt, str) else ""
@@ -209,14 +152,9 @@ def generate(body: dict) -> dict:
         raise Refused(503, "Prompted ships are not set up on this server yet. Try Random.")
 
     if not creative:
-        # A spacecraft: drawn in the stock ships' style, a batch of options at once.
-        sprites = _draw(prompt + " Seen from directly above, nose pointing up.")
-        token = secrets.token_urlsafe(18)
-        with _batches_lock:
-            if len(_batches) >= MAX_BATCHES:
-                _batches.pop(next(iter(_batches)))
-            _batches[token] = (time.monotonic() + BATCH_TTL, sprites)
-        return _batch_take(token)
+        # A spacecraft: drawn in the stock ships' style, in batches.
+        tries = designer.Tries(prompt=prompt)
+        return _next(tries, _keep(tries))
 
     # Any subject: Maigent's PixelLab path (the stock ships are no style guide for a dragon).
     if not _paid.acquire(blocking=False):
@@ -284,16 +222,19 @@ def graphic(body: dict) -> dict:
         raise Refused(502, str(exc)) from exc
 
 
-def flip(body: dict) -> dict:
-    sheet = body.get("sheet")
+def front(body: dict) -> dict:
+    """The sheet with another frame as its front (frame 0), clockwise order kept."""
+    sheet, frame = body.get("sheet"), body.get("frame")
     try:
         raw = base64.b64decode(sheet, validate=True) if isinstance(sheet, str) else b""
     except binascii.Error:
         raw = b""
-    if not raw:
-        raise Refused(400, "Send the sheet to flip.")
+    if not raw or not isinstance(frame, int):
+        raise Refused(400, "Send the sheet and the frame (0-39) that faces forward.")
     try:
-        files = shipgen.flip_ship_heading({"ship-rotations.png": raw})
+        files = shipgen.rebase_ship_heading({"ship-rotations.png": raw}, frame)
+    except ValueError as exc:
+        raise Refused(400, str(exc)) from exc
     except Exception as exc:  # unreadable PNG
         raise Refused(400, "That isn't a ship rotation sheet.") from exc
     return {"ok": True, "sheet": _b64(files["ship-rotations.png"])}
@@ -317,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(404, {"ok": False, "message": "Not found."})
 
     def do_POST(self) -> None:  # noqa: N802
-        routes = {"/generate": generate, "/flip": flip, "/graphic": graphic}
+        routes = {"/generate": generate, "/front": front, "/graphic": graphic}
         handler = routes.get(self.path)
         if handler is None:
             self._reply(404, {"ok": False, "message": "Not found."})
@@ -359,7 +300,8 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    _refill_soon()  # have random ships ready before the first pilot asks
+    if _has_key():
+        _pool.refill_soon()  # have random ships ready before the first pilot asks
     log.info("listening on %s:%d (prompted ships %s)", args.host, args.port,
              "on" if os.environ.get("PIXEL_LAB_API_KEY", "").strip() else "off: no PIXEL_LAB_API_KEY")
     server.serve_forever()

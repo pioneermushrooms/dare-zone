@@ -172,13 +172,15 @@ setTimeout(function () {
           <canvas class="spin" id="gfx-review-spin" width="144" height="144" aria-hidden="true"></canvas>
           <div class="sheetbox">
             <p class="label" id="gfx-review-note"></p>
-            <canvas class="sheet" id="gfx-review-sheet" width="360" height="144" aria-hidden="true"></canvas>
+            <canvas class="sheet pick" id="gfx-review-sheet" width="360" height="144" title="Click the frame that points up"></canvas>
+            <p class="frontrow"><span class="dim">Front</span>
+              <button type="button" class="ghostbtn" id="gfx-front-left" aria-label="Turn the front 9 degrees counter-clockwise">⟲ 9°</button>
+              <button type="button" class="ghostbtn" id="gfx-front-right" aria-label="Turn the front 9 degrees clockwise">9° ⟳</button></p>
           </div>
         </div>
         <div class="row">
           <label class="applyto">Apply to <select id="gfx-applyto"></select></label>
           <button type="button" id="gfx-approve">Approve</button>
-          <button type="button" class="ghost" id="gfx-flip">Turn 180°</button>
           <button type="button" class="ghost" id="gfx-again">Try again</button>
           <button type="button" class="ghost" id="gfx-decline">Decline</button>
         </div>

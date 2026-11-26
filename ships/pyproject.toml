@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foundation-ships"
+version = "0.2.0"
+description = "Foundation's ship generator: stock-style PixelLab ships and Continuum rotation sheets"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10", "requests>=2.31"]
+
+[tool.setuptools]
+packages = ["foundation_ships"]
+
+[tool.setuptools.package-data]
+foundation_ships = ["style-refs.png"]

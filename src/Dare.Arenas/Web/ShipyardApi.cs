@@ -97,11 +97,15 @@ internal sealed partial class WebServer
         if (mode == "random")
         {
             if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
-            request = new { mode = "random" };
+            // Try again continues the pilot's run, so the next ship differs from those shown.
+            request = Str(body, "batch") is { Length: > 0 and <= 64 } again
+                ? new { mode = "random", batch = again }
+                : (object)new { mode = "random" };
         }
         else if (mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } batch)
         {
-            // The next option from a batch already drawn (and paid for): cheap, like Random.
+            // Try again on a prompt: usually a ship already drawn; the ship service caps how many
+            // fresh (paid) batches one run of tries may draw.
             if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
             request = new { mode = "prompt", batch };
         }
