@@ -16,9 +16,11 @@ MONSTER = (
     "asoftclip=type=tanh,aexciter=amount=2:drive=6,asoftclip=type=atan,aecho=0.8:0.6:18:0.25,"
     "highpass=f=250,lowpass=f=3600,acompressor=threshold=-18dB:ratio=4:attack=5:release=60,volume=1.6"
 )
-# Added on export: trim silence at both ends, even out loudness across clips.
-FINISH = ("silenceremove=start_periods=1:start_threshold=-45dB:"
-          "stop_periods=1:stop_threshold=-45dB,loudnorm=I=-16:TP=-1.5")
+# Added on export: trim silence at the two ends only (trim the start, reverse, trim the start
+# again, reverse back; silenceremove's own stop option cuts at the first dip between words),
+# then even out loudness across clips.
+_TRIM_START = "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.03"
+FINISH = f"{_TRIM_START},areverse,{_TRIM_START},areverse,loudnorm=I=-16:TP=-1.5"
 
 _EXAGGERATION = {"urgent": 1.0, "hype": 1.0, "smug": 0.9, "calm": 0.6}
 

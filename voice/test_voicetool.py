@@ -1,7 +1,8 @@
 import json
+import subprocess
 from pathlib import Path
 
-from voicetool import MONSTER, drop_picks, exaggeration, rust_table, too_long
+from voicetool import FINISH, MONSTER, drop_picks, duration, exaggeration, ffmpeg, rust_table, too_long
 
 
 def test_too_long_scales_with_words():
@@ -41,3 +42,13 @@ def test_monster_is_the_approved_chain():
 def test_regenerating_a_phrase_forgets_its_pick():
     assert drop_picks({"gw": 2, "tr": 1, "ml": 0}, {"gw", "ml"}) == {"tr": 1}
     assert drop_picks({"gw": 2}, set()) == {"gw": 2}
+
+
+def test_finishing_keeps_the_whole_line_and_trims_only_the_ends(tmp_path):
+    # 0.3 s silence, 0.8 s of a voice-like tone that dips between syllables, 0.3 s silence.
+    src, out = tmp_path / "in.wav", tmp_path / "out.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=f=180:d=0.8,volume='if(lt(mod(t,0.4),0.3),1,0.01)':eval=frame,"
+                    "adelay=300,apad=pad_dur=0.3", "-ar", "24000", str(src)], check=True)
+    ffmpeg(src, out, f"{MONSTER},{FINISH}", "-ar", "11025", "-c:a", "pcm_s16le")
+    assert 0.6 < duration(out) < 1.0
