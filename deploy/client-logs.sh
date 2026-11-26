@@ -10,5 +10,6 @@
 set -euo pipefail
 HOST=${DEPLOY_HOST:-root@5.161.238.245}
 HERE=$(cd "$(dirname "$0")" && pwd)
-args=$(printf ' %q' "$@")
+args=
+[ $# -gt 0 ] && args=$(printf ' %q' "$@")
 ssh -o BatchMode=yes "$HOST" "python3 -I - $args" < "$HERE/clientlog/show.py"
