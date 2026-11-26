@@ -13,7 +13,7 @@ public sealed partial class ArenaStore
     /// <summary>A display name from an uploaded file name: no directory, no ".lvl", safe characters, at most 40.</summary>
     public static string MapDisplayName(string? fileName)
     {
-        var n = Path.GetFileName((fileName ?? "").Replace('\\', '/'));
+        var n = Path.GetFileName((fileName ?? "").Replace('\\', '/')).Trim();
         if (n.EndsWith(".lvl", StringComparison.OrdinalIgnoreCase)) n = n[..^4];
         n = new string(n.Where(c => char.IsLetterOrDigit(c) || c is ' ' or '#' or '-' or '_' or '.').ToArray()).Trim();
         if (n.Length > MaxMapNameLength) n = n[..MaxMapNameLength].Trim();
@@ -45,7 +45,9 @@ public sealed partial class ArenaStore
 
     /// <summary>
     /// Saves a map: a new one when <paramref name="id"/> is null (at most <see cref="MaxPilotMaps"/>), else
-    /// replaces that one of <paramref name="owner"/>'s. The caller has checked the bytes (UploadPolicy).
+    /// replaces that one of <paramref name="owner"/>'s. A new map whose bytes the pilot already has is not
+    /// added twice: the existing one moves to the top and its id is returned. The caller has checked the
+    /// bytes (UploadPolicy).
     /// </summary>
     public Result SaveMap(string owner, long? id, string name, byte[] data, out long savedId)
     {
@@ -62,6 +64,13 @@ public sealed partial class ArenaStore
                     ("$n", display), ("$d", data), ("$t", Now()), ("$id", existing));
                 newId = existing;
                 return Ok($"Saved {display} to your maps.");
+            }
+            var same = Scalar("SELECT COALESCE(MAX(id), 0) FROM pilot_maps WHERE owner = $o AND data = $d", ("$o", owner), ("$d", data));
+            if (same != 0)
+            {
+                Run("UPDATE pilot_maps SET updated = $t WHERE id = $id", ("$t", Now()), ("$id", same));
+                newId = same;
+                return Ok($"{MapFile(owner, same)!.Value.Name} is already in your maps.");
             }
             if (Scalar("SELECT COUNT(*) FROM pilot_maps WHERE owner = $o", ("$o", owner)) >= MaxPilotMaps)
                 return Fail($"You have {MaxPilotMaps} maps; remove one to add another.");
@@ -80,5 +89,13 @@ public sealed partial class ArenaStore
         if (name is null) return Fail("That map isn't in your collection.");
         Run("DELETE FROM pilot_maps WHERE id = $id", ("$id", id));
         return Ok($"Removed {name} from your maps.");
+    });
+
+    public Result RenameMap(string owner, long id, string name) => Tx(() =>
+    {
+        if (MapFile(owner, id) is null) return Fail("That map isn't in your collection.");
+        var display = MapDisplayName(name);
+        Run("UPDATE pilot_maps SET name = $n WHERE id = $id", ("$n", display), ("$id", id));
+        return Ok($"Renamed it {display}.");
     });
 }

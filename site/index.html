@@ -6,15 +6,22 @@
 <meta name="description" content="Fly SubSpace in your browser in the Foundation zone, and build arenas of your own.">
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=15">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/play.css?v=18">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
-<script type="module" src="/play/start.mjs?v=15"></script>
-<script type="module" src="/chat.js?v=15"></script>
-<script type="module" src="/graphics.js?v=15"></script>
-<script type="module" src="/loading.js?v=15"></script>
-<script type="module" src="/graphics-other.js?v=15"></script>
+<script type="module" src="/play/start.mjs?v=16"></script>
+<script type="module" src="/chat.js?v=17"></script>
+<script type="module" src="/graphics.js?v=16"></script>
+<script type="module" src="/loading.js?v=16"></script>
+<script type="module" src="/graphics-other.js?v=16"></script>
+<script>
+// zone staff see an Admin link (the server says who is staff; the page itself checks again)
+fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
+  .then((r) => r.ok ? r.json() : null)
+  .then((b) => { if (b && b.staff) document.getElementById("adminlink").style.display = ""; })
+  .catch(() => {});
+</script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -48,6 +55,7 @@ setTimeout(function () {
     <nav class="toplinks" aria-label="Site">
       <a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a>
       <a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a>
+      <a href="/arena/staff" id="adminlink" title="Zone staff: arenas, server commands, how-tos" style="display:none">Admin</a>
     </nav>
     <div class="pilotbox">
       <button type="button" class="pilot" id="pilot" aria-haspopup="menu" aria-expanded="false">

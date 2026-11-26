@@ -159,6 +159,71 @@ $("chatfold").addEventListener("click", () => {
   $("chatfold").setAttribute("aria-expanded", String(open));
 });
 
+// Resizing: drag any side or corner. The first drag pins the panel by left/top/width/height; the size is
+// remembered (per browser) and kept inside the window. Double-click a handle for the original size.
+const SIZE_KEY = "foundation.chatSize";
+const MIN_W = 320, MIN_H = 220, EDGE = 8;
+const wide = matchMedia("(min-width: 861px)");
+
+function clampBox(b) {
+  const vw = innerWidth, vh = innerHeight;
+  const w = Math.min(Math.max(b.w, MIN_W), vw - 2 * EDGE), h = Math.min(Math.max(b.h, MIN_H), vh - 2 * EDGE);
+  const x = Math.min(Math.max(b.x, EDGE), vw - EDGE - w), y = Math.min(Math.max(b.y, EDGE), vh - EDGE - h);
+  return { x, y, w, h };
+}
+function placePanel(b) {
+  Object.assign(panel.style, { left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px", right: "auto", bottom: "auto" });
+}
+function unplacePanel() {
+  for (const k of ["left", "top", "width", "height", "right", "bottom"]) panel.style.removeProperty(k);
+}
+function savedBox() {
+  try { const b = JSON.parse(localStorage.getItem(SIZE_KEY)); return b && [b.x, b.y, b.w, b.h].every(Number.isFinite) ? b : null; }
+  catch { return null; }
+}
+function applySaved() {
+  const b = wide.matches ? savedBox() : null;
+  if (b) placePanel(clampBox(b)); else unplacePanel();
+}
+
+for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
+  const grip = el("div", `grip grip-${dir}`);
+  grip.setAttribute("aria-hidden", "true");
+  grip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    const r = panel.getBoundingClientRect();
+    const start = { x: r.left, y: r.top, w: r.width, h: r.height }, px = event.clientX, py = event.clientY;
+    panel.classList.add("resizing");
+    const move = (e) => {
+      const dx = e.clientX - px, dy = e.clientY - py, b = { ...start };
+      if (dir.includes("e")) b.w = start.w + dx;
+      if (dir.includes("s")) b.h = start.h + dy;
+      if (dir.includes("w")) { b.w = Math.max(MIN_W, start.w - dx); b.x = start.x + start.w - b.w; }
+      if (dir.includes("n")) { b.h = Math.max(MIN_H, start.h - dy); b.y = start.y + start.h - b.h; }
+      placePanel(clampBox(b));
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      panel.classList.remove("resizing");
+      const q = panel.getBoundingClientRect();
+      try { localStorage.setItem(SIZE_KEY, JSON.stringify({ x: q.left, y: q.top, w: q.width, h: q.height })); } catch {}
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end, { once: true });
+    grip.addEventListener("pointercancel", end, { once: true });
+  });
+  grip.addEventListener("dblclick", () => {
+    try { localStorage.removeItem(SIZE_KEY); } catch {}
+    unplacePanel();
+  });
+  panel.append(grip);
+}
+applySaved();
+addEventListener("resize", applySaved);
+wide.addEventListener("change", applySaved);
+
 // Entering the game leaves the chat first: the same name can't be in the zone twice.
 globalThis.foundationChatLeave = async () => { if (joined) await leave(); };
 

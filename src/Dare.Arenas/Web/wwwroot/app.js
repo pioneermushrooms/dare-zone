@@ -88,7 +88,7 @@ async function mePage(arena) {
   $("hub").hidden = false;
   $("who").textContent = body.player;
   const staff = body.staff || {};
-  $("stafflink").hidden = !(staff.approve || staff.decline || staff.create);
+  $("stafflink").hidden = !(staff.approve || staff.decline || staff.create || staff.admin);
   $("staffcreate").hidden = !staff.create;
 
   const hasArena = !!body.arena;
@@ -165,7 +165,8 @@ function renderArena(body) {
   $("lvzdrop").hidden = !owner;
   $("lvzonly").hidden = owner;
   // settings
-  renderSettings(body.settings || []);
+  lastSettings = body.settings || [];
+  renderSettings(lastSettings);
   if (body.configMissing) msg($("setmsg"), "This arena's settings file is missing; ask staff.", false);
   // crew
   renderCrew(body.coMods, owner);
@@ -553,7 +554,7 @@ function gfxCard(arena, slot, owner) {
     if (slot.source === "arena") {
       const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
       reset.addEventListener("click", async () => {
-        if (!confirm(`Put ${slot.label} back to the game's own picture?`)) return;
+        if (!await Dlg.confirm(`Put ${slot.label} back to the game's own picture?`, { title: "Reset picture", ok: "Reset", danger: true })) return;
         const { body } = await postJson("/graphics/clear", { arena, name: slot.name });
         msg($("gfxmsg"), webMessage(body?.message), body?.ok);
         if (body?.ok) { loadGraphics(); refreshRestart(); }
@@ -699,53 +700,200 @@ function renderCrew(coMods, owner) {
 }
 
 async function changeCoMod(action, name) {
-  if (action === "remove" && !confirm(`Remove ${name} as co-mod of ${current.arena}?`)) return;
+  if (action === "remove" && !await Dlg.confirm(`Remove ${name} as co-mod of ${current.arena}?`, { title: "Remove co-mod", ok: "Remove", danger: true })) return;
   const { body } = await postJson("/comod", { arena: current.arena, action, player: name });
   msg($("comodmsg"), body.message, body.ok);
   if (body.ok) { $("comodname").value = ""; mePage(current.arena); }
 }
 
+// ---- settings: grouped into tabs, with a switch for on/off settings and number boxes for numbers ----
+const SHIP_SECTIONS = ["All", "Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark", "LegalShip"];
+const SETTING_TABS = [
+  { id: "ships", label: "Ships", sections: SHIP_SECTIONS },
+  { id: "weapons", label: "Weapons", sections: ["Bullet", "Bomb", "Mine", "Burst", "Repel", "Rocket", "Brick", "Decoy", "Shrapnel", "Thor", "Portal"] },
+  { id: "prizes", label: "Prizes and buying", sections: ["Prize", "PrizeWeight", "DPrizeWeight", "Cost", "Buy"] },
+  { id: "game", label: "Game rules", sections: ["General", "Misc", "Kill", "Team", "Spawn", "Spectator", "Periodic", "Radar", "Toggle", "Door", "Wormhole", "Notify"] },
+  { id: "flags", label: "Flags and balls", sections: ["Flag", "Soccer", "King", "Koth", "Bounty"] },
+  { id: "chat", label: "Chat and voice", sections: ["Chat", "Message", "Voice"] },
+  { id: "net", label: "Lag and network", sections: ["Lag", "Latency", "Net", "Routing", "Security"] },
+];
+const isMessageKey = (section, key) => section.toLowerCase() === "misc" && /^(greetmessage|periodicmessage\d)$/i.test(key);
+const tabOf = (section) => SETTING_TABS.find((t) => t.sections.some((x) => x.toLowerCase() === section.toLowerCase()))?.id ?? "other";
+let settingTab = "all";
+
+async function saveSetting(section, key, value, node) {
+  const { body } = await postJson("/settings", { arena: current.arena, section, key, value });
+  msg(node, webMessage(body.message), body.ok);
+  if (body.ok) {
+    const st = lastSettings.find((x) => x.section.toLowerCase() === section.toLowerCase())
+      ?.settings.find((x) => x.key.toLowerCase() === key.toLowerCase());
+    if (st) st.value = value;
+  }
+  if (body.ok && /recyclearena/.test(body.message || "")) refreshRestart();
+  return body.ok;
+}
+
+function settingInput(s, st, saveBtn) {
+  const label = `${s.section}:${st.key}`;
+  const num = (v) => v != null && v !== "" && /^-?\d+$/.test(String(v));
+  const isTrue = (v) => /^(1|true|yes|on|-?[1-9]\d*)$/i.test(String(v ?? "").trim());
+  if (/^(true|false)$/i.test(String(st.default ?? "")) || (String(st.min) === "0" && String(st.max) === "1")) {
+    const box = el("input", { type: "checkbox", role: "switch", "aria-label": label });
+    box.checked = isTrue(st.value != null && st.value.trim() !== "" ? st.value : st.default);
+    const wrap = el("label", { class: "switch bot-switch" }, box, el("span", { class: "track", "aria-hidden": "true" }));
+    box.addEventListener("change", async () => {
+      box.disabled = true;
+      if (!await saveSetting(s.section, st.key, box.checked ? "1" : "0", $("setmsg"))) box.checked = !box.checked;
+      box.disabled = false;
+    });
+    saveBtn.hidden = true;
+    return { node: wrap, value: () => (box.checked ? "1" : "0") };
+  }
+  const numeric = num(st.min) || num(st.max) || (num(st.default) && (st.value == null || num(st.value)));
+  const input = el("input", { type: numeric ? "number" : "text", value: st.value ?? "", maxlength: "64", "aria-label": label,
+    placeholder: st.default != null ? String(st.default) : "" });
+  if (numeric) { input.step = "1"; if (num(st.min)) input.min = st.min; if (num(st.max)) input.max = st.max; }
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") saveBtn.click(); });
+  input.addEventListener("input", () => { saveBtn.disabled = input.value === (st.value ?? ""); });
+  saveBtn.disabled = true;
+  return { node: input, value: () => input.value };
+}
+
 function renderSettings(sections) {
+  renderMessages(sections);
+  sections = sections.map((s) => ({ ...s, settings: s.settings.filter((st) => !isMessageKey(s.section, st.key)) }))
+    .filter((s) => s.settings.length);
   const host = $("settings");
   host.replaceChildren(...sections.map((s) => {
-    const d = el("details", { class: "section" }, el("summary", { text: `${s.section} (${s.settings.length})` }));
+    const d = el("details", { class: "section", "data-tab": tabOf(s.section) }, el("summary", { text: `${s.section} (${s.settings.length})` }));
     for (const st of s.settings) {
-      const input = el("input", { type: "text", value: st.value ?? "", maxlength: "64", "aria-label": `${s.section}:${st.key}` });
       const save = el("button", { type: "button", class: "small", text: "Save" });
+      const input = settingInput(s, st, save);
       const range = [st.min != null || st.max != null ? `range ${st.min ?? ""}–${st.max ?? ""}` : st.range ? `range ${st.range}` : "",
                      st.default != null ? `default ${st.default}` : ""].filter(Boolean).join(" · ");
       const row = el("div", { class: "setting", "data-search": `${s.section} ${st.key} ${st.description || ""}`.toLowerCase() },
-        el("span", { class: "key", text: st.key }), input, save,
+        el("span", { class: "key", text: st.key }), input.node, save,
         el("span", { class: "help", text: (st.description || "") + (range ? ` (${range})` : "") }));
       save.addEventListener("click", async () => {
         save.disabled = true;
-        const { body } = await postJson("/settings", { arena: current.arena, section: s.section, key: st.key, value: input.value });
-        msg($("setmsg"), webMessage(body.message), body.ok);
-        save.disabled = false;
-        if (body.ok && /recyclearena/.test(body.message || "")) refreshRestart();
+        if (await saveSetting(s.section, st.key, input.value(), $("setmsg"))) st.value = input.value();
+        else save.disabled = false;
       });
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") save.click(); });
       d.append(row);
     }
     return d;
+  }));
+  renderSettingTabs(sections);
+  applyFilter();
+}
+
+function renderSettingTabs(sections) {
+  const count = (id) => sections.filter((s) => id === "all" || tabOf(s.section) === id).reduce((n, s) => n + s.settings.length, 0);
+  const tabs = [{ id: "all", label: "All" }, ...SETTING_TABS, { id: "other", label: "Other" }].filter((t) => count(t.id) > 0);
+  if (!tabs.some((t) => t.id === settingTab)) settingTab = "all";
+  $("settabs").replaceChildren(...tabs.map((t) => {
+    const b = el("button", { type: "button", role: "tab", class: "settab", "aria-selected": String(t.id === settingTab) },
+      t.label, el("span", { class: "count", text: String(count(t.id)) }));
+    b.addEventListener("click", () => { settingTab = t.id; renderSettingTabs(sections); applyFilter(); });
+    return b;
   }));
 }
 
 function applyFilter() {
   const q = $("filter").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const d of document.querySelectorAll("details.section")) {
+    const inTab = q.length > 0 || settingTab === "all" || d.dataset.tab === settingTab; // a search looks in every tab
     let any = false;
     for (const row of d.querySelectorAll(".setting")) {
-      const show = q.every((w) => row.dataset.search.includes(w));
+      const show = inTab && q.every((w) => row.dataset.search.includes(w));
       row.hidden = !show; any = any || show;
     }
     d.hidden = !any;
-    d.open = q.length > 0 && any;
+    d.open = (q.length > 0 || settingTab !== "all") && any;
   }
 }
 
+// ---- messages: Misc:GreetMessage and Misc:PeriodicMessage0-9 ("<every> <first after> <text>", minutes) ----
+const PERIODIC_SLOTS = 10;
+let lastSettings = [];
+function parsePeriodic(v) {
+  const m = /^\s*(-?\d+)\s+(-?\d+)\s+(.*\S)\s*$/.exec(v || "");
+  return m ? { every: +m[1], first: +m[2], text: m[3] } : null;
+}
+
+function renderMessages(sections) {
+  const misc = sections.find((s) => s.section.toLowerCase() === "misc")?.settings || [];
+  const value = (key) => misc.find((st) => st.key.toLowerCase() === key.toLowerCase())?.value ?? "";
+  const writable = misc.some((st) => /^greetmessage$/i.test(st.key));
+  $("greetform").hidden = !writable;
+  $("greettext").value = value("GreetMessage");
+  const list = $("periodiclist");
+  const slots = [];
+  for (let i = 0; i < PERIODIC_SLOTS; i++) {
+    const key = `PeriodicMessage${i}`;
+    if (!misc.some((st) => st.key.toLowerCase() === key.toLowerCase())) continue;
+    const raw = value(key);
+    slots.push({ i, key, raw, parsed: parsePeriodic(raw) });
+  }
+  const rows = slots.filter((s) => s.raw.trim() !== "").map((s) => periodicRow(s, false));
+  const free = slots.filter((s) => s.raw.trim() === "");
+  if (free.length) {
+    const add = el("button", { type: "button", class: "small", text: "Add a timed message" });
+    add.addEventListener("click", () => { add.replaceWith(periodicRow(free[0], true)); });
+    rows.push(el("div", { class: "row" }, add));
+  }
+  if (!writable) rows.unshift(el("p", { class: "dim", text: "This arena's messages can't be changed here." }));
+  list.replaceChildren(...rows);
+}
+
+function periodicRow(slot, fresh) {
+  const p = slot.parsed || { every: 5, first: 0, text: slot.raw.trim() };
+  const on = el("input", { type: "checkbox", role: "switch", "aria-label": `Message ${slot.i + 1} on` });
+  on.checked = fresh || p.every > 0;
+  const every = el("input", { type: "number", min: "1", max: "1440", step: "1", value: String(Math.abs(p.every) || 5), "aria-label": "Every (minutes)" });
+  const first = el("input", { type: "number", min: "0", max: "1440", step: "1", value: String(Math.max(0, p.first)), "aria-label": "First after (minutes)" });
+  const text = el("input", { type: "text", maxlength: "190", value: p.text, placeholder: "What to say", "aria-label": "Message text" });
+  const save = el("button", { type: "button", class: "small", text: "Save" });
+  const remove = el("button", { type: "button", class: "small danger", text: fresh ? "Cancel" : "Remove" });
+  const row = el("div", { class: "pmsg" + (on.checked ? "" : " off") },
+    el("label", { class: "switch bot-switch", title: "On or off" }, on, el("span", { class: "track", "aria-hidden": "true" })),
+    el("label", { class: "num" }, "Every", every, "min"),
+    el("label", { class: "num" }, "First after", first, "min"),
+    el("span"), save, remove, text);
+  const write = async (v) => {
+    save.disabled = remove.disabled = on.disabled = true;
+    const ok = await saveSetting("Misc", slot.key, v, $("msgmsg"));
+    save.disabled = remove.disabled = on.disabled = false;
+    if (ok) { slot.raw = v; slot.parsed = parsePeriodic(v); }
+    return ok;
+  };
+  const compose = () => {
+    const n = Math.round(+every.value), f = Math.round(+first.value), t = text.value.trim();
+    if (!t) { msg($("msgmsg"), "Write the message first.", false); return null; }
+    if (!(n >= 1) || !(f >= 0)) { msg($("msgmsg"), "Every must be at least 1 minute and First after 0 or more.", false); return null; }
+    return `${on.checked ? n : -n} ${f} ${t}`; // the server skips an interval of 0 or less: off, but remembered
+  };
+  save.addEventListener("click", async () => {
+    const v = compose();
+    if (v && await write(v) && fresh) renderMessages(lastSettings);
+  });
+  text.addEventListener("keydown", (e) => { if (e.key === "Enter") save.click(); });
+  on.addEventListener("change", async () => {
+    row.classList.toggle("off", !on.checked);
+    if (fresh && slot.raw.trim() === "") return; // not saved yet: Save writes it
+    const v = compose();
+    if (!v || !await write(v)) { on.checked = !on.checked; row.classList.toggle("off", !on.checked); }
+  });
+  remove.addEventListener("click", async () => {
+    if (fresh && slot.raw.trim() === "") { renderMessages(lastSettings); return; }
+    if (!await Dlg.confirm(`Remove timed message ${slot.i + 1}?`, { title: "Remove message", ok: "Remove", danger: true })) return;
+    if (await write("")) renderMessages(lastSettings);
+  });
+  return row;
+}
+
 async function removeLvz(name) {
-  if (!confirm(`Remove ${name} from ${current.arena}? The file is deleted.`)) return;
+  if (!await Dlg.confirm(`Remove ${name} from ${current.arena}? The file is deleted.`, { title: "Remove graphics file", ok: "Remove", danger: true })) return;
   const { body } = await postJson("/rmlvz", { arena: current.arena, name });
   msg($("lvzmsg"), webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
@@ -760,18 +908,64 @@ async function loadLibrary() {
   if (!list || $("mapowner").hidden) return;
   const { body } = await getJson(API + "/library");
   if (!body?.ok) { list.replaceChildren(el("li", { class: "dim", text: "Couldn't load your maps." })); return; }
+  const arena = current.arena;
+  const applied = await appliedMapId(arena, body.maps);
+  if (current?.arena !== arena) return;
   fill(list, body.maps, (m) => {
     const open = el("a", { class: "btn small", href: editorUrl(current.arena, m.id), text: "Open in editor" });
+    let apply;
+    if (m.id === applied) apply = el("span", { class: "tag Active", text: "Applied", title: `${arena} is using this map` });
+    else {
+      apply = el("button", { type: "button", class: "small", text: "Apply", "aria-label": `Apply ${m.name} to ${arena}` });
+      apply.addEventListener("click", () => applyLibraryMap(m, apply));
+    }
     const rm = el("button", { type: "button", class: "small danger", text: "Remove", "aria-label": "Remove " + m.name });
     rm.addEventListener("click", async () => {
-      if (!confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`)) return;
+      if (!await Dlg.confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`, { title: "Remove map", ok: "Remove", danger: true })) return;
       const { body: r } = await postJson("/library/remove", { id: m.id });
       msg($("mapmsg"), r?.message, r?.ok);
       loadLibrary();
     });
     return el("li", null, el("span", { class: "name", text: m.name }),
-      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), open, rm);
-  }, "No maps yet. Drop a .lvl above, or use Save to my maps in the editor.");
+      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), apply, open, rm);
+  }, "No maps yet. Maps you drop here, or add, download or publish in the editor, are kept here.");
+}
+
+// Which library map the arena is using now: the one whose bytes match the arena's map file
+// (Publish copies the bytes in as <arena>.lvl, so no name links them). Only same-size maps are fetched.
+async function appliedMapId(arena, maps) {
+  try {
+    const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
+    if (!r.ok) return null;
+    const live = new Uint8Array(await r.arrayBuffer());
+    for (const m of maps) {
+      if (m.size !== live.length) continue;
+      const f = await fetch(API + "/library/file?id=" + encodeURIComponent(m.id), { credentials: "same-origin" });
+      if (!f.ok) continue;
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (bytes.length === live.length && bytes.every((b, i) => b === live[i])) return m.id;
+    }
+  } catch { /* unknown: every map shows Apply */ }
+  return null;
+}
+
+// Apply: the map editor's Publish without opening the editor (save as <arena>.lvl, then restart).
+async function applyLibraryMap(m, button) {
+  const arena = current.arena;
+  if (!await Dlg.confirm(`Apply ${m.name} to ${arena}? It replaces the arena's current map, then the arena restarts so it loads.`, { title: "Apply map", ok: "Apply and restart" })) return;
+  button.disabled = true;
+  msg($("mapmsg"), `Applying ${m.name}…`, true);
+  try {
+    const f = await fetch(API + "/library/file?id=" + encodeURIComponent(m.id), { credentials: "same-origin" });
+    if (!f.ok) { msg($("mapmsg"), "Couldn't open that map from your maps.", false); return; }
+    const name = arena.replace(/^#/, "") + ".lvl";
+    const { body } = await post(`${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(name)}`,
+      await f.arrayBuffer(), "application/octet-stream");
+    msg($("mapmsg"), body?.ok ? `Applied ${m.name}.` : webMessage(body?.message), body?.ok);
+    if (!body?.ok) return;
+    await mePage(arena);
+    startRestart(false); // nobody inside: restarts at once; pilots inside: the restart dialog asks
+  } finally { button.disabled = false; }
 }
 
 async function addToLibrary(file, out) {
@@ -833,6 +1027,10 @@ function wireHub() {
   });
   window.addEventListener("hashchange", route);
   $("filter").addEventListener("input", applyFilter);
+  $("greetform").addEventListener("submit", (e) => { e.preventDefault(); saveSetting("Misc", "GreetMessage", $("greettext").value, $("msgmsg")); });
+  $("greetclear").addEventListener("click", async () => {
+    if (await saveSetting("Misc", "GreetMessage", "", $("msgmsg"))) $("greettext").value = "";
+  });
   $("arenapick").addEventListener("change", async (e) => {
     const pick = e.currentTarget;
     const arena = pick.value;
