@@ -662,7 +662,10 @@ internal sealed partial class WebServer : IDisposable
         {
             var k = kind.Value;
             var result = await OnMain(() => _m.WebUpload(cfg, arena, player, k, name, content)).ConfigureAwait(false);
-            return ResultReply(result);
+            if (!result.Ok || k != UploadKind.Map) return ResultReply(result);
+            // every map put on an arena is also kept in the pilot's maps (the same bytes only once)
+            var kept = _m.WebStore.SaveMap(player, null, req.QueryString["libname"] ?? name, content, out var keptId);
+            return JsonReply(200, new { ok = true, message = result.Message, library = kept.Ok ? keptId : (long?)null, libraryMessage = kept.Message });
         }
         finally
         {

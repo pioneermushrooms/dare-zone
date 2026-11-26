@@ -300,9 +300,17 @@ dialog .warn { color:var(--hot); }
 .dlg-later button { justify-self:start; }
 
 /* map editor: your maps, draft tag, blank-tileset note */
-.libmaps { list-style:none; margin:0 0 6px; padding:0; display:grid; gap:4px; max-height:180px; overflow:auto; }
-.libmaps li { display:flex; align-items:center; gap:6px; font-size:.8rem; }
-.libmaps li button.open { flex:1; text-align:left; justify-content:flex-start; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* the sidebar scrolls as a whole: nothing in it may shrink (a scrolling list would shrink to nothing) */
+.edside > * { flex-shrink:0; }
+.libpanel { display:flex; flex-direction:column; gap:6px; border-radius:6px; }
+.libpanel .kicker { margin-top:0; }
+.libpanel.flash { animation:libflash 1.2s ease-out; }
+@keyframes libflash { from { box-shadow:0 0 0 2px var(--accent); } to { box-shadow:0 0 0 2px transparent; } }
+.libmaps { list-style:none; margin:0; padding:0; display:grid; gap:4px; max-height:260px; overflow:auto; }
+.libmaps li { display:flex; align-items:center; gap:4px; font-size:.8rem; min-width:0; }
+.libmaps li button.open { flex:1; min-width:0; text-align:left; justify-content:flex-start; display:flex; flex-direction:column; align-items:flex-start; gap:1px; overflow:hidden; }
+.libmaps .libname { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.libmaps .libmeta { font-size:.68rem; font-weight:400; opacity:.7; }
 .libmaps li.on button.open { border-color:var(--accent); color:var(--accent); }
 .libmaps .dim { font-size:.75rem; }
 .tag.draft { background:var(--hot); color:#07131e; border-color:var(--hot); font-weight:700; }

@@ -924,7 +924,7 @@ async function loadLibrary() {
     });
     return el("li", null, el("span", { class: "name", text: m.name }),
       el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), apply, open, rm);
-  }, "No maps yet. Drop a .lvl above, or use Save to my maps in the editor.");
+  }, "No maps yet. Maps you drop here, or add, download or publish in the editor, are kept here.");
 }
 
 // Which library map the arena is using now: the one whose bytes match the arena's map file
