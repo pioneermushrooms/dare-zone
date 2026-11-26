@@ -61,7 +61,7 @@ internal sealed partial class WebServer
         return null;
     }
 
-    private async Task<T?> WithConfigAsync<T>(string arena, Func<SS.Core.ConfigHandle, T> work) where T : class
+    private async Task<T?> WithConfigAsync<T>(string arena, Func<SS.Core.ConfigHandle, T?> work) where T : class
     {
         var cfg = await _m.OpenArenaConfigAsync(arena).ConfigureAwait(false);
         if (cfg is null) return null;
