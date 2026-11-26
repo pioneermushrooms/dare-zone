@@ -1,9 +1,15 @@
 #!/bin/bash
 # Deploys Dare.Arenas to the Foundation zone (subspacefoundation.com). Safe to re-run.
 #
-#   deploy/deploy.sh [--sysop <name>] [--no-restart] [--force]
+#   deploy/deploy.sh --by '<session or branch label>' [--force-rollback] [--sysop <name>] [--no-restart] [--force]
 #
-#   --force       restart the zone even with players online (default: refuse)
+#   --by              who deploys; published in /DEPLOYED.json (required)
+#   --force-rollback  deploy even if the live site/plugin has commits this one lacks (lists them first)
+#   --force           restart the zone even with players online (default: refuse)
+#
+# Deploys only a clean checkout of an integration branch (main) that is
+# exactly its pushed tip, only if it contains the live commit (/var/www/foundation/DEPLOYED.json),
+# and only one deploy at a time (server lock). See deploy/README.md, "Deploying safely".
 #
 #   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle (arena bots). Without it the
 #                  server keeps the oss-bot it has (or the newest backed-up one), so bots stay on.
@@ -55,6 +61,23 @@ set -euo pipefail
 HOST=${DEPLOY_HOST:-root@5.161.238.245}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 [ -d /usr/local/share/dotnet ] && export PATH=/usr/local/share/dotnet:$PATH
+# shellcheck source=deploy/live-guard.sh
+. "$REPO/deploy/live-guard.sh"
+GUARD_BRANCHES=${SITE_BRANCHES:-main}
+PASS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --by) [ $# -ge 2 ] || { echo "--by needs a value" >&2; exit 2; }; GUARD_BY=$2; shift 2 ;;
+    --force-rollback) GUARD_FORCE_ROLLBACK=1; shift ;;
+    *) PASS+=("$1"); shift ;;
+  esac
+done
+set -- ${PASS[@]+"${PASS[@]}"}
+guard_need_by
+RECORD=$GUARD_SITE_DIR/DEPLOYED.json
+echo "== checks"
+guard_check_tree "$REPO" origin site deploy src
+guard_check_ancestry "$RECORD"   # early, so a refused deploy does not wait for a build
 
 echo "== build (Release)"
 rm -rf "$REPO/out/modules/Dare.Arenas"
@@ -81,6 +104,10 @@ NATIVE="${NUGET_PACKAGES:-$HOME/.nuget/packages}/sqlitepclraw.lib.e_sqlite3/$SQL
 mkdir -p "$STAGE/native" && cp "$NATIVE" "$STAGE/native/libe_sqlite3.so"
 cp "$REPO/site/"* "$STAGE/site/"
 
+echo "== lock and re-check"
+guard_lock "site+plugin deploy.sh"
+guard_check_ancestry "$RECORD"
+
 TS=$(date -u +%Y%m%d-%H%M%S)
 REMOTE=/root/dare-arenas-deploy-$TS
 echo "== copy to $HOST:$REMOTE"
@@ -92,6 +119,8 @@ echo "== install"
 remote_cmd=$(printf '%q ' bash "$REMOTE/deploy/remote-install.sh" "$REMOTE" "$@")
 # shellcheck disable=SC2029  # expanded locally on purpose, already quoted with %q
 ssh "$HOST" "$remote_cmd"
+guard_write_record "$RECORD" "plugin site"
+guard_unlock
 
 echo
 echo "== public check"

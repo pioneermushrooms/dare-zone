@@ -55,7 +55,7 @@ cat > "$H/stubs/curl" <<'S'
 printf 200
 S
 chmod +x "$H"/stubs/*
-export PATH="$H/stubs:$PATH" ZONE=$H/zone SITE=$H/www CADDYFILE=$H/Caddyfile BACKUP_ROOT=$H/root HEALTH_TRIES=3 HEALTH_SLEEP=0
+export DEPLOY_LOCK_CHECK=0 PATH="$H/stubs:$PATH" ZONE=$H/zone SITE=$H/www CADDYFILE=$H/Caddyfile BACKUP_ROOT=$H/root HEALTH_TRIES=3 HEALTH_SLEEP=0
 export ZONE_PING_CMD='[ "$(cat $FAKE/state)" = up ] && cat $FAKE/players || echo unknown'
 RI="$S/deploy/remote-install.sh"
 case $SC in
