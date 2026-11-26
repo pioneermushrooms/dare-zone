@@ -144,7 +144,7 @@ test("drawn shapes are auto-tiled: corners, edges, caps; walls they touch re-joi
   // a thick wall is solid: fill inside, edges round it
   S.apply(g, S.fill(S.rect(200, 200, 211, 211, 3), 1), L);
   assert.equal(role(201, 201), "fill");
-  assert.equal(role(205, 200), "edge-n");
+  assert.equal(role(205, 200), "calm-n", "three deep: interior behind the edge, so a calm edge");
   assert.equal(role(202, 202), "inner-se");
 });
 
@@ -164,4 +164,25 @@ test("a pack's plain interior piece is used inside thick walls", () => {
   assert.equal(l.roles.fill, 9);
   assert.equal(l.roles.cross, 3, "a crossing of lines keeps the pack's piece");
   assert.equal(l.roles["inner-ne"], 3, "inside corners sit among the edges: the pack's fill");
+});
+
+test("calm edges: only where the cell behind the edge is interior; read from the layout by open edges", () => {
+  const L = Autotile.STAND_IN;
+  const g = new Uint8Array(N * N);
+  S.apply(g, S.fill(S.rect(300, 300, 320, 320, 2), 1), L);
+  assert.equal(byTile.get(g[at(310, 300)]), "edge-n", "two deep: edge meets edge, keeps its motif");
+  S.apply(g, S.fill(S.rect(300, 300, 320, 320, 3), 1), L);
+  assert.equal(byTile.get(g[at(310, 300)]), "calm-n", "thickened to three: the same edge calms down");
+  assert.equal(byTile.get(g[at(300, 310)]), "calm-w");
+  // erasing the interior row turns it back: the ring two deep is re-joined
+  S.apply(g, S.fill(S.line(303, 302, 317, 302), 0), L);
+  assert.equal(byTile.get(g[at(310, 300)]), "edge-n");
+
+  const spec = { format: "dare-tile-layout", version: 1,
+    roles: { top: { open: "ESW" }, left: { open: "NES" }, right: { open: "NSW" }, bottom: { open: "NEW" }, all: { open: "NESW" } },
+    packs: [{ id: "c", tiles: { top: 2, left: 3, right: 4, bottom: 5, all: 6 }, interior: 7, calm: { SWE: 12, NES: 13, nsw: 14 } }, { id: "plain", tiles: { top: 20, all: 21 } }] };
+  const [c, plain] = Autotile.fromSpec(spec).layouts;
+  assert.deepEqual([c.roles["calm-n"], c.roles["calm-w"], c.roles["calm-e"], c.roles["calm-s"]], [12, 13, 14, undefined]);
+  assert.equal(Autotile.resolve(c, "calm-s"), 5, "no calm bottom: the plain bottom edge");
+  assert.equal(Autotile.resolve(plain, "calm-n"), 20, "a pack without calm edges keeps its edges");
 });

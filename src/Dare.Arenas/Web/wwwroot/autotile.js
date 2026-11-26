@@ -39,6 +39,8 @@
     "block-es": "block corner, top-left", "block-sw": "block corner, top-right",
     "block-nw": "block corner, bottom-right", "block-ne": "block corner, bottom-left",
     "edge-n": "block edge, top", "edge-s": "block edge, bottom", "edge-w": "block edge, left", "edge-e": "block edge, right",
+    "calm-n": "block edge, top, solid wall behind it", "calm-s": "block edge, bottom, solid wall behind it",
+    "calm-w": "block edge, left, solid wall behind it", "calm-e": "block edge, right, solid wall behind it",
     "fill": "inside of a block",
     "inner-ne": "inside corner (open to the top-right)", "inner-se": "inside corner (open to the bottom-right)",
     "inner-sw": "inside corner (open to the bottom-left)", "inner-nw": "inside corner (open to the top-left)",
@@ -50,7 +52,7 @@
     if (role === "bar-v") return "ns";
     if (role === "bar-h") return "ew";
     if (role === "cross" || role === "fill" || role.startsWith("inner-")) return "nesw";
-    if (role.startsWith("edge-")) return "nesw".replace(role.slice(5), "");
+    if (role.startsWith("edge-") || role.startsWith("calm-")) return "nesw".replace(role.slice(5), "");
     return role.split("-")[1];
   }
 
@@ -87,7 +89,8 @@
 
   function fallbacks(role) {
     const out = [role];
-    if (role.startsWith("inner-")) out.push("fill", "cross");
+    if (role.startsWith("calm-")) out.push("edge-" + role.slice(5), "tee-" + "nesw".replace(role.slice(5), ""), "cross");
+    else if (role.startsWith("inner-")) out.push("fill", "cross");
     else if (role === "fill") out.push("cross");
     else if (role.startsWith("edge-")) {
       const open = role.slice(5);
@@ -132,6 +135,20 @@
     return m;
   }
 
+  // the cell one step inward from an edge (the side opposite its open side)
+  const INWARD = { n: [0, 1], s: [0, -1], e: [-1, 0], w: [1, 0] };
+  /**
+   * The role of the wall at (x, y) in the grid: roleOf its neighbours, and an edge whose inner side
+   * is solid wall (the cell behind it has wall all round) is a calm edge: no half motif cut off
+   * against the plain interior.
+   */
+  function roleAt(grid, x, y) {
+    const role = roleOf(maskAt(grid, x, y));
+    if (!role.startsWith("edge-")) return role;
+    const side = role.slice(5), [dx, dy] = INWARD[side];
+    return maskAt(grid, x + dx, y + dy) === 255 ? "calm-" + side : role;
+  }
+
   /**
    * Retile the plain walls of grid (1024x1024) inside [x0, x1] x [y0, y1] (inclusive; default the
    * whole map) with layout. Neighbours outside the area still count. Returns the changes as
@@ -144,7 +161,7 @@
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const i = y * N + x, t = grid[i];
       if (!isPlainWall(t)) continue;
-      const next = resolve(layout, roleOf(maskAt(grid, x, y)), x, y);
+      const next = resolve(layout, roleAt(grid, x, y), x, y);
       if (next !== t) changes.push([i, t, next]);
     }
     for (const [i, , t] of changes) grid[i] = t;
@@ -162,7 +179,8 @@
     for (const i of cells) if (isPlainWall(grid[i])) todo.set(i, layout);
     if (ring) for (const i of cells) {
       const x = i % N, y = (i - x) / N;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      // two deep: a change can make a neighbour interior, which calms the edge beyond it
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
         const nx = x + dx, ny = y + dy, j = ny * N + nx;
         if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= N || ny >= N || todo.has(j)) continue;
         const own = owner(grid[j]);
@@ -172,7 +190,7 @@
     const changes = [];
     for (const [i, l] of todo) {
       const x = i % N, y = (i - x) / N, t = grid[i];
-      const next = resolve(l, roleOf(maskAt(grid, x, y)), x, y);
+      const next = resolve(l, roleAt(grid, x, y), x, y);
       if (next !== t) changes.push([i, t, next]);
     }
     for (const [i, , t] of changes) grid[i] = t;
@@ -247,6 +265,7 @@
       };
       const roles = {};
       for (const role of Object.keys(ROLES)) {
+        if (role.startsWith("calm-")) continue; // only from the pack's own calm pieces (below)
         const t = pick(norm(roleSides(role)));
         if (t) roles[role] = t;
       }
@@ -256,6 +275,12 @@
         // inside corners keep the pack's decorated fill: they sit among the edge pieces
         for (const d of ["ne", "se", "sw", "nw"]) roles["inner-" + d] = roles.fill;
         roles.fill = p.interior;
+      }
+      // calm edges (optional): keyed by open edges like the roles; an edge open to one side only
+      if (p.calm && typeof p.calm === "object") for (const [o, t] of Object.entries(p.calm)) {
+        const open = norm(o);
+        if (open.length !== 3 || !(ok(t) || (Array.isArray(t) && t.length && t.every(ok)))) continue;
+        roles["calm-" + "nesw".split("").find((d) => !open.includes(d.toUpperCase()))] = t;
       }
       const layout = { id: p.id, name: `${spec.name ? spec.name.replace(/\s*\(.*\)$/, "") + ": " : ""}${p.name || p.id}`, roles, fallback: [roles.lone, roles.fill, 1].find(Number.isInteger), spec: true };
       const errs = check(layout);
@@ -298,7 +323,7 @@
     return c;
   }
   function drawRole(ctx, role, x, y) {
-    const shape = role === "fill" || /^(block|edge|inner)-/.test(role);
+    const shape = role === "fill" || /^(block|edge|calm|inner)-/.test(role);
     if (shape) {
       // a panel: solid where the block is, a bright rim on the open sides
       ctx.fillStyle = "#1f4d63"; ctx.fillRect(x, y, 16, 16);
@@ -330,6 +355,6 @@
 
   root.Autotile = {
     B, ROLES, STAND_IN, layouts, register, check, fromSpec, roleOf, roleSides, fallbacks, resolve,
-    maskAt, tidy, tidyCells, owner, isPlainWall, previewTileset,
+    maskAt, roleAt, tidy, tidyCells, owner, isPlainWall, previewTileset,
   };
 })();

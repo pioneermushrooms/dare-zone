@@ -73,8 +73,8 @@ test("thick shapes get outer corners, edges, fill and inside corners", () => {
     "####",
     "##..",
   ]);
-  assert.deepEqual(r[0], ["block-es", "edge-n", "edge-n", "block-sw"]);
-  assert.equal(r[1][0], "edge-w");
+  assert.deepEqual(r[0], ["block-es", "calm-n", "calm-n", "block-sw"], "solid wall behind the top edge: calm");
+  assert.equal(r[1][0], "calm-w", "fill behind it");
   assert.equal(r[1][1], "fill");
   assert.equal(r[2][1], "inner-se");
   assert.equal(r[2][3], "block-nw");
@@ -184,7 +184,7 @@ test("a generated map with a tile layout is fully auto-tiled", () => {
       if (!Autotile.isPlainWall(t)) continue;
       walls++;
       const x = i % N, y = (i - x) / N;
-      assert.equal(t, Autotile.resolve(Autotile.STAND_IN, Autotile.roleOf(Autotile.maskAt(g.grid, x, y)), x, y));
+      assert.equal(t, Autotile.resolve(Autotile.STAND_IN, Autotile.roleAt(g.grid, x, y), x, y));
     }
     assert.ok(walls > 1000);
   }
