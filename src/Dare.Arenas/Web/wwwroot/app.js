@@ -106,6 +106,7 @@ function route() {
   $("arena-context").hidden = !current.arena || shown === "make";
   if (shown === "bots") loadBots(current.arena);
   if (shown === "overview") loadBotSummary(current.arena);
+  if (shown === "map") loadLibrary();
 }
 
 function renderNoArena(body) {
@@ -577,9 +578,42 @@ async function removeLvz(name) {
   if (body.ok) mePage(current.arena);
 }
 
+// ---- your maps: a dropped .lvl goes to the pilot's collection and opens as a draft in the editor ----
+const editorUrl = (arena, id) => "/arena/map?arena=" + encodeURIComponent(arena) + (id ? "&lib=" + id : "");
+const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+
+async function loadLibrary() {
+  const list = $("maplib");
+  if (!list || $("mapowner").hidden) return;
+  const { body } = await getJson(API + "/library");
+  if (!body?.ok) { list.replaceChildren(el("li", { class: "dim", text: "Couldn't load your maps." })); return; }
+  fill(list, body.maps, (m) => {
+    const open = el("a", { class: "btn small", href: editorUrl(current.arena, m.id), text: "Open in editor" });
+    const rm = el("button", { type: "button", class: "small danger", text: "Remove", "aria-label": "Remove " + m.name });
+    rm.addEventListener("click", async () => {
+      if (!confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`)) return;
+      const { body: r } = await postJson("/library/remove", { id: m.id });
+      msg($("mapmsg"), r?.message, r?.ok);
+      loadLibrary();
+    });
+    return el("li", null, el("span", { class: "name", text: m.name }),
+      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), open, rm);
+  }, "No maps yet. Drop a .lvl above, or use Save to my maps in the editor.");
+}
+
+async function addToLibrary(file, out) {
+  if (!file.name.toLowerCase().endsWith(".lvl")) { msg(out, "Choose a .lvl file.", false); return; }
+  msg(out, `Adding ${file.name} to your maps…`, true);
+  const { body } = await post(`${API}/library/save?name=${encodeURIComponent(file.name)}`, file, "application/octet-stream");
+  msg(out, body?.message, body?.ok);
+  if (body?.ok) location.href = editorUrl(current.arena, body.id); // a draft: nothing is published yet
+  else loadLibrary();
+}
+
 async function upload(file, kind, out) {
+  if (kind === "map") return addToLibrary(file, out);
   const lower = file.name.toLowerCase();
-  if (!lower.endsWith(kind === "map" ? ".lvl" : ".lvz")) { msg(out, kind === "map" ? "Choose a .lvl file." : "Choose a .lvz file.", false); return; }
+  if (!lower.endsWith(".lvz")) { msg(out, "Choose a .lvz file.", false); return; }
   msg(out, `Uploading ${file.name}…`, true);
   const url = `${API}/upload?kind=${kind}&arena=${encodeURIComponent(current.arena)}&name=${encodeURIComponent(file.name)}`;
   const { body } = await post(url, file, "application/octet-stream");

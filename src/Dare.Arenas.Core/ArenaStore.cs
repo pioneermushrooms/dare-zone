@@ -105,6 +105,14 @@ public sealed partial class ArenaStore : IDisposable
         if (Scalar("SELECT COUNT(*) FROM pragma_table_info('arenas') WHERE name = 'private'") == 0)
             Exec("ALTER TABLE arenas ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
         Exec("""
+            CREATE TABLE IF NOT EXISTS pilot_maps (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              owner TEXT NOT NULL COLLATE NOCASE,
+              name TEXT NOT NULL,
+              data BLOB NOT NULL,
+              updated TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_pilot_maps_owner ON pilot_maps(owner);
             CREATE TABLE IF NOT EXISTS restart_plans (
               arena TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
               at TEXT NOT NULL,

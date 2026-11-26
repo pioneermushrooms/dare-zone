@@ -17,10 +17,24 @@
   let liveName = null; // set when editing the draft of a live arena: Publish also publishes it
   const cam = { x: 512 * TS, y: 512 * TS, z: 0.5 };
   const undoStack = [], redoStack = [];
-  const tileset = () => ownTileset || mapTileset;
+  let flatView = false; // "Plain colours": ignore the map's tileset
+  let libId = null, libName = null; // the map from "Your maps" being edited, if any
+  const tileset = () => flatView ? null : (ownTileset || mapTileset);
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
-  const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; };
+  const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
+
+  // Walls placed in flat-coloured (unused) tileset slots show as solid colour, here and in game,
+  // unless the arena's .lvz draws over them. Say so, so it isn't mistaken for the editor's doing.
+  function noteBlankSlots() {
+    const note = $("blanknote");
+    const blank = ownTileset ? new Map() : Lvl.blankSlots(mapTileset);
+    let tiles = 0;
+    const kinds = new Set();
+    if (blank.size) for (let i = 0; i < N * N; i++) if (blank.has(grid[i])) { tiles++; kinds.add(grid[i]); }
+    note.hidden = tiles === 0;
+    if (tiles) note.textContent = `${tiles.toLocaleString()} wall tiles (${kinds.size} kinds) sit in slots this map's own tileset fills with one flat colour, so they show as solid blocks here and in game. Maps like this usually come with a .lvz graphics file that draws over them: add it under Graphics. Plain colours shows them as ordinary walls.`;
+  }
 
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
@@ -42,6 +56,7 @@
       say(`Opened ${r.headers.get("X-Map-Name") || "the map"}: ${m.count} tiles.`, true);
     }
     $("tilesetnote").textContent = mapTileset ? "Tiles from this map's own tileset." : "This map has no tileset of its own: tiles show as flat colours (players see their client's tiles).";
+    noteBlankSlots();
     centre();
     drawPalette(); drawMini(); draw();
     setDirty(false);
@@ -49,15 +64,74 @@
 
   // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
   function replaceMap(next, nextPrefix, nextTileset, note) {
-    if (dirty && !confirm("Replace the map you're editing? (Undo brings it back.)")) return;
+    if (dirty && !confirm("Replace the map you're editing? (Undo brings it back.)")) return false;
     const change = [];
     for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
     for (const [i, , t] of change) grid[i] = t;
     if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); }
     if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; drawPalette(); }
+    noteBlankSlots();
     centre(); drawMini(); draw();
     say(note, true);
+    return true;
   }
+
+  // ---- your maps (the pilot's collection): open one as a draft, add a file, save the draft -----------
+  const hdrs = (type) => Object.assign({ "X-Requested-With": "dare-arena" }, type ? { "Content-Type": type } : {});
+  async function loadLibrary() {
+    const r = await fetch(API + "/library", { credentials: "same-origin" }).catch(() => null);
+    const j = r && r.ok ? await r.json().catch(() => null) : null;
+    const list = $("libmaps");
+    list.replaceChildren();
+    for (const m of (j && j.maps) || []) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "ghost small open"; b.textContent = m.name; b.title = `Open ${m.name} as a draft`;
+      b.addEventListener("click", () => openLib(m.id));
+      const li = document.createElement("li");
+      if (m.id === libId) li.className = "on";
+      li.append(b);
+      list.append(li);
+    }
+    if (!list.children.length) {
+      const li = document.createElement("li"); li.className = "dim"; li.textContent = "None yet.";
+      list.append(li);
+    }
+  }
+  async function openLib(id) {
+    const r = await fetch(API + "/library/file?id=" + encodeURIComponent(id), { credentials: "same-origin" });
+    if (!r.ok) { say("Couldn't open that map from your maps.", false); return; }
+    const name = decodeURIComponent(r.headers.get("X-Map-Name") || "map");
+    const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
+    const changed = replaceMap(m.grid, m.prefix, m.tileset,
+      `Draft from your maps: ${name} (${m.count} tiles). ${arena || "The arena"} keeps its current map until you Publish.`);
+    if (changed === false) return;
+    libId = id; libName = name;
+    $("edname").textContent = `${arena} · draft from your maps: ${name}`;
+    setDirty(true); // a draft until published, even if it matches
+    loadLibrary();
+  }
+  $("libfile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith(".lvl")) { say("Choose a .lvl file.", false); return; }
+    const r = await fetch(API + "/library/save?name=" + encodeURIComponent(f.name), { method: "POST", credentials: "same-origin", headers: hdrs("application/octet-stream"), body: f });
+    const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
+    if (!j.ok) { say(j.message, false); return; }
+    await openLib(j.id);
+  });
+  $("libsave").addEventListener("click", async () => {
+    const bytes = Lvl.serialize(grid, prefix);
+    if (!bytes.length) { say("The map is empty; draw something first.", false); return; }
+    const name = libName || (arena ? arena.replace(/^#/, "") + " draft" : "draft");
+    const url = API + "/library/save?name=" + encodeURIComponent(name) + (libId ? "&id=" + libId : "");
+    const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: hdrs("application/octet-stream"), body: bytes });
+    const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
+    if (j.ok) { libId = j.id; libName = name; }
+    say(j.ok ? `${j.message} Not published: ${arena} still has its old map.` : j.message, j.ok);
+    loadLibrary();
+  });
+  $("flatview").addEventListener("change", (e) => { flatView = e.target.checked; drawPalette(); draw(); });
 
   async function loadShared() {
     const r = await fetch(API + "/maps", { credentials: "same-origin" }).catch(() => null);
@@ -356,7 +430,12 @@
   window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("resize", resize);
   resize();
-  load().then(loadShared);
+  load().then(async () => {
+    loadShared();
+    await loadLibrary();
+    const lib = new URLSearchParams(location.search).get("lib");
+    if (lib) await openLib(Number(lib));
+  });
   // for checks in a browser console
   window.chartRoom = { get grid() { return grid; }, setTile: (x, y, t) => { stroke = []; setTile(x, y, t); endStroke(); draw(); }, save: () => Lvl.serialize(grid, prefix) };
 })();

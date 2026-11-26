@@ -153,8 +153,10 @@
       <p class="dim">Current map: <b class="name" id="curmap"></b></p>
       <div id="mapowner">
         <div class="actions"><a class="btn hot" id="openeditor" href="/arena/map">Open the map editor</a></div>
-        <p class="dim">Or upload a map you made elsewhere:</p>
+        <p class="dim">Or bring in a map you made elsewhere. It goes to <b>your maps</b> and opens in the map editor as a draft; the arena changes only when you press Publish there.</p>
         <div class="drop" id="mapdrop">Drop a <b>.lvl</b> map here (2 MB max), or <label><u>choose a file</u><input type="file" id="mapfile" accept=".lvl" hidden></label></div>
+        <h3>Your maps</h3>
+        <ul class="maplib" id="maplib"></ul>
       </div>
       <p class="msg" id="mapmsg"></p>
       <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>

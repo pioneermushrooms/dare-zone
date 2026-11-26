@@ -454,7 +454,7 @@ internal sealed partial class WebServer : IDisposable
             case "/api/chat/leave": return method == "POST" ? await ChatLeaveAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/requests/withdraw":
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
-            default: return Text(404, "Not found.");
+            default: return await LibraryRouteAsync(req, path, method).ConfigureAwait(false) ?? Text(404, "Not found.");
         }
     }
 
