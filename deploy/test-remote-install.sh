@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test harness for deploy/remote-install.sh (runs on macOS/Linux, no root, no server): fake zone + stubbed systemctl/journalctl/caddy/ss/curl.
 #   deploy/test-remote-install.sh <scenario>
-# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players sysop-bad sysop-ok store-backup store-backup-nocli
+# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players players-bots sysop-bad sysop-ok store-backup store-backup-nocli
 # Needs a Release build in out/modules/Dare.Arenas (deploy.sh or dotnet build -c Release).
 set -uo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -121,6 +121,12 @@ case $SC in
     bash "$RI" "$S" 2>&1; echo "exit $?"
     echo "### backups made: $(ls -d $H/root/backup-* 2>/dev/null | wc -l | tr -d ' '); restarts: $(cat "$H/calls" 2>/dev/null | grep -c restart); module line: $(grep -c Dare.Arenas.ArenaOwnership $H/zone/conf/Modules.config)"
     echo "### with --force:"; bash "$RI" "$S" --force 2>&1 | grep -E 'players|restart|done'; echo "exit ${PIPESTATUS[0]}" ;;
+  players-bots)
+    # arena bots are players to the zone but not people: 1 pilot + 3 bots refuses, 3 bots alone don't
+    echo 4 > "$H/players"; export BOT_COUNT_CMD='echo 3'
+    bash "$RI" "$S" 2>&1 | grep -E 'players online|ERROR'; echo "exit ${PIPESTATUS[0]}"
+    echo 3 > "$H/players"
+    bash "$RI" "$S" 2>&1 | grep -E 'players online|ERROR|^done'; echo "exit ${PIPESTATUS[0]}" ;;
   sysop-bad)
     for n in 'evil]' 'a = sysop' 'x;y' 'arena:bob' $'two\nlines' ' lead' 'abcdefghijklmnopqrstuvwx' ''; do
       out=$(bash "$RI" "$S" --no-restart --sysop "$n" 2>&1 | grep -E 'ERROR|added'); printf '%-28q -> %s\n' "$n" "$out"
