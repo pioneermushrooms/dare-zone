@@ -42,5 +42,7 @@ guard_remote bash -c 'cat > "$1/site.tar.gz"' _ "$remote" < "$scratch/site.tar.g
 # shellcheck disable=SC2016
 guard_remote bash -c 'cd "$1" && tar -xzf site.tar.gz && bash deploy/install-public-site.sh site' _ "$remote"
 guard_remote rm -rf -- "$remote"
+mkdir "$scratch/x" && tar -xzf "$scratch/site.tar.gz" -C "$scratch/x"
+GUARD_SHIPPED_DIR=$scratch/x/site
 guard_write_record "$RECORD" site
 guard_unlock

@@ -84,6 +84,7 @@ if ! guard_remote bash -c 'cd "$1" && sha256sum --quiet -c -' _ "$GUARD_PLAY_DIR
   guard_die "the copied client does not match the build; restored $BACKUP"
 fi
 echo "all $(wc -l < "$STAGE/SUMS" | tr -d ' ') files match the build"
+GUARD_SHIPPED_DIR=$STAGE/play
 guard_write_record "$RECORD" client
 guard_unlock
 
