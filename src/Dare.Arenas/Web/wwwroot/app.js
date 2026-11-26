@@ -756,8 +756,17 @@ async function loadLibrary() {
   if (!list || $("mapowner").hidden) return;
   const { body } = await getJson(API + "/library");
   if (!body?.ok) { list.replaceChildren(el("li", { class: "dim", text: "Couldn't load your maps." })); return; }
+  const arena = current.arena;
+  const applied = await appliedMapId(arena, body.maps);
+  if (current?.arena !== arena) return;
   fill(list, body.maps, (m) => {
     const open = el("a", { class: "btn small", href: editorUrl(current.arena, m.id), text: "Open in editor" });
+    let apply;
+    if (m.id === applied) apply = el("span", { class: "tag Active", text: "Applied", title: `${arena} is using this map` });
+    else {
+      apply = el("button", { type: "button", class: "small", text: "Apply", "aria-label": `Apply ${m.name} to ${arena}` });
+      apply.addEventListener("click", () => applyLibraryMap(m, apply));
+    }
     const rm = el("button", { type: "button", class: "small danger", text: "Remove", "aria-label": "Remove " + m.name });
     rm.addEventListener("click", async () => {
       if (!confirm(`Remove ${m.name} from your maps? Arenas using it keep their copy.`)) return;
@@ -766,8 +775,45 @@ async function loadLibrary() {
       loadLibrary();
     });
     return el("li", null, el("span", { class: "name", text: m.name }),
-      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), open, rm);
+      el("span", { class: "dim grow", text: `${kb(m.size)} · ${when(m.updated)}` }), apply, open, rm);
   }, "No maps yet. Drop a .lvl above, or use Save to my maps in the editor.");
+}
+
+// Which library map the arena is using now: the one whose bytes match the arena's map file
+// (Publish copies the bytes in as <arena>.lvl, so no name links them). Only same-size maps are fetched.
+async function appliedMapId(arena, maps) {
+  try {
+    const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
+    if (!r.ok) return null;
+    const live = new Uint8Array(await r.arrayBuffer());
+    for (const m of maps) {
+      if (m.size !== live.length) continue;
+      const f = await fetch(API + "/library/file?id=" + encodeURIComponent(m.id), { credentials: "same-origin" });
+      if (!f.ok) continue;
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (bytes.length === live.length && bytes.every((b, i) => b === live[i])) return m.id;
+    }
+  } catch { /* unknown: every map shows Apply */ }
+  return null;
+}
+
+// Apply: the map editor's Publish without opening the editor (save as <arena>.lvl, then restart).
+async function applyLibraryMap(m, button) {
+  const arena = current.arena;
+  if (!confirm(`Apply ${m.name} to ${arena}? It replaces the arena's current map, then the arena restarts so it loads.`)) return;
+  button.disabled = true;
+  msg($("mapmsg"), `Applying ${m.name}…`, true);
+  try {
+    const f = await fetch(API + "/library/file?id=" + encodeURIComponent(m.id), { credentials: "same-origin" });
+    if (!f.ok) { msg($("mapmsg"), "Couldn't open that map from your maps.", false); return; }
+    const name = arena.replace(/^#/, "") + ".lvl";
+    const { body } = await post(`${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(name)}`,
+      await f.arrayBuffer(), "application/octet-stream");
+    msg($("mapmsg"), body?.ok ? `Applied ${m.name}.` : webMessage(body?.message), body?.ok);
+    if (!body?.ok) return;
+    await mePage(arena);
+    startRestart(false); // nobody inside: restarts at once; pilots inside: the restart dialog asks
+  } finally { button.disabled = false; }
 }
 
 async function addToLibrary(file, out) {
