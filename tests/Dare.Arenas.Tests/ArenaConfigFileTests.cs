@@ -45,6 +45,17 @@ public sealed class ArenaConfigFileTests : IDisposable
     }
 
     [Fact]
+    public void the_public_arenas_own_file_is_its_target_but_the_shared_default_never_is()
+    {
+        Assert.Null(ArenaConfigFile.OwnPath(Arenas, "(public)")); // no own file yet: never (default)'s
+        Directory.CreateDirectory(Path.Combine(Arenas, "(public)"));
+        File.WriteAllText(Path.Combine(Arenas, "(public)", "arena.conf"), "[General]\n");
+        Assert.Equal(Path.GetFullPath(Path.Combine(Arenas, "(public)", "arena.conf")), ArenaConfigFile.OwnPath(Arenas, "(public)"));
+        Assert.Null(ArenaConfigFile.OwnPath(Arenas, "(default)"));
+        Assert.Null(ArenaConfigFile.OwnPath(Arenas, "(other)"));
+    }
+
+    [Fact]
     public void a_drafts_own_file_is_its_target()
     {
         Directory.CreateDirectory(Path.Combine(Arenas, "#skyrace"));
