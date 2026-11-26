@@ -11,3 +11,4 @@ out/
 voice/.venv
 voice/takes/
 voice/takes-gen.log
+__pycache__/
