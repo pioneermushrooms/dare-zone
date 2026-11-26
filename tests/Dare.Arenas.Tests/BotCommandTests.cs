@@ -74,4 +74,12 @@ public class BotCommandTests
         Assert.Contains("team 4", BotCommand.Apply(script, null, null, null, 4, null));
         Assert.Contains("priority 7", BotCommand.Apply(script, null, null, null, 4, null));
     }
+
+    [Fact]
+    public void match_command_reads()
+    {
+        Assert.Equal((1, 4), BotCommand.ParseMatch("1 4"));
+        Assert.Equal((1, (int?)null), BotCommand.ParseMatch("1 off"));
+        Assert.Null(BotCommand.ParseMatch("x 4"));
+    }
 }

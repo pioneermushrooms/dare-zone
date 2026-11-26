@@ -10,3 +10,4 @@ cmd_requestpublic
 cmd_publish
 cmd_withdrawrequest
 cmd_v
+cmd_bots

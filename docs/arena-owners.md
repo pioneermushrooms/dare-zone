@@ -174,7 +174,10 @@ directly in chat:
 ```text
 ?bots                              help
 ?bots create Sparring fighter 3    make a bot and send it in now (ship 3 = Spider)
-?bots list                         your bots and whether each is flying
+?bots list                         your bots, their teams and whether each is in
+?bots set Sparring team 2          put it on team (frequency) 2
+?bots set Sparring priority 8      1-9; when room is short, lower priority bots step aside first
+?bots match 2 4                    field 4 bots on team 2 (?bots match 2 off removes it)
 ?bots set Sparring patrol ship 2   change behavior or ship; waypoints and chat are kept
 ?bots set Sparring chat on         answer when a pilot says its name (chat off to stop)
 ?bots stop Sparring                take it out, keeping its settings
@@ -188,6 +191,13 @@ one to chase and no route, or a patrol with no waypoints, roams the map. Without
 or ship, `create` makes a fighter in ship 1. Waypoints, greetings and replies
 are set in the Arena editor. If the zone has no bot program installed, the
 commands say so instead of claiming the bot will join.
+
+Bot names are plain: type `Sparring`, not `Sparring [bot]`, and a name can't be a
+pilot account's. Each bot has a team (0-9999, default 0)
+and a priority (1-9, default 5). A match size says how many bots a team fields;
+bots make room when pilots join that team and come back when they leave, the
+lowest priority going first. A bot that is out waits as a spectator or leaves
+until there is room. Anyone can type `?bots` to see which pilots in the arena are bots.
 
 Bots run while a pilot is in the arena and for about a minute after the last
 pilot leaves.

@@ -149,6 +149,15 @@ public static class BotCommand
         return fallback;
     }
 
+    /// <summary>Reads "&lt;team&gt; &lt;size&gt;" or "&lt;team&gt; off" after <c>?bots match</c>; null when it is neither.</summary>
+    public static (int Freq, int? Size)? ParseMatch(string text)
+    {
+        var words = text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length != 2 || !int.TryParse(words[0], out int freq) || freq is < 0 or > 9999) return null;
+        if (words[1].Equals("off", StringComparison.OrdinalIgnoreCase)) return (freq, null);
+        return int.TryParse(words[1], out int size) && size >= 0 ? (freq, size) : null;
+    }
+
     /// <summary>"fighter, Warbird, team 2" for a saved script.</summary>
     public static string Describe(string script)
     {

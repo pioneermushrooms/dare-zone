@@ -507,30 +507,39 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "[create|set|list|deploy|stop|remove] [name] [behavior] [ship 1-8] [chat on|off]",
+        Args = "[create|set|list|match|deploy|stop|remove] [name] [behavior] [ship 1-8] [team N] [priority 1-9] [chat on|off]",
         Description = """
-            Arena bots for the arena you own (you must be in it). Behaviors: fighter (chases and
+            Anyone: ?bots tells you which pilots in this arena are bots.
+            Owners manage the bots of the arena they own (they must be in it). Behaviors: fighter (chases and
             shoots pilots, roams when there are none), patrol (flies its waypoints, or roams),
             sentry (guards a spot), idle (sits still).
               ?bots create Sparring fighter 3   makes a bot and sends it in now (ship 3 = Spider)
               ?bots set Sparring patrol         changes its behavior or ship, keeps its waypoints
               ?bots set Sparring chat on        it answers when a pilot says its name
-              ?bots list                        your bots and whether they are flying
+              ?bots set Sparring team 2         its team (frequency 0-9999)
+              ?bots set Sparring priority 8     1-9: higher priority stays in when room is short
+              ?bots match 2 4                   field 4 bots on team 2 (?bots match 2 off removes it)
+              ?bots list                        your bots, their teams and whether they are flying
               ?bots stop Sparring / ?bots deploy Sparring   take it out / send it back in
               ?bots remove Sparring             deletes it
             Waypoints, greetings and replies are set in the Arena Editor's Bots tab on the website.
             """)]
     private void Command_bots(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
-        if (!player.Flags.Authenticated || player.Name is not { } owner || player.Arena is not { } arena ||
-            Store.Get(arena.BaseName) is not { Status: ArenaStatus.Active } owned ||
-            !string.Equals(owned.Owner, owner, StringComparison.OrdinalIgnoreCase))
+        var (action, rest) = SplitFirst(parameters);
+        bool isOwner = player.Flags.Authenticated && player.Name is not null && player.Arena is { } here &&
+            Store.Get(here.BaseName) is { Status: ArenaStatus.Active } mine &&
+            string.Equals(mine.Owner, player.Name, StringComparison.OrdinalIgnoreCase);
+        if (!isOwner)
         {
-            Reply(player, "Bots: only the owner of this arena can manage its bots, from inside the arena.");
+            SayWhoIsBot(player);
             return;
         }
+        var owner = player.Name!;
+        var owned = Store.Get(player.Arena!.BaseName)!;
+        if (action.Length == 0 || action is "?")
+            SayWhoIsBot(player);
 
-        var (action, rest) = SplitFirst(parameters);
         var bots = Store.Bots(owned.Name);
         ArenaBot? Find(string label) => bots.FirstOrDefault(b => string.Equals(b.Label, label, StringComparison.OrdinalIgnoreCase));
         bool NeedName(string label, string usage)
@@ -559,6 +568,28 @@ public sealed partial class ArenaOwnership
             case "list":
                 ListBots(player, owned.Name);
                 break;
+
+            case "match":
+            {
+                if (rest.Trim().Length == 0)
+                {
+                    var sizes = Store.MatchSizes(owned.Name);
+                    Reply(player, sizes.Count == 0
+                        ? "Bots: no match sizes set. ?bots match <team> <size> fields that many bots on a team."
+                        : "Bots: match sizes: " + string.Join(", ", sizes.Select(kv => $"team {kv.Key}: {kv.Value}")) + ". ?bots match <team> off removes one.");
+                    break;
+                }
+                if (BotCommand.ParseMatch(rest) is not { } match)
+                {
+                    Reply(player, "Bots: type ?bots match <team 0-9999> <size>, or ?bots match <team> off.");
+                    break;
+                }
+                var result = Store.SetMatchSize(owned.Name, owner, match.Freq, match.Size);
+                Reply(player, "Bots: " + (!result.Ok ? result.Message
+                    : match.Size is { } n ? $"team {match.Freq} now fields {n} bot{(n == 1 ? "" : "s")}."
+                    : $"team {match.Freq} has no match size now."));
+                break;
+            }
 
             case "create":
             case "new":
@@ -600,7 +631,7 @@ public sealed partial class ArenaOwnership
                 if (existing is not null && args.Behaviour is null && args.Ship is null && args.Chat is null && args.Team is null && args.Priority is null)
                 {
                     Reply(player, $"Bots: {existing.Label} is {BotCommand.Describe(existing.Script)}. " +
-                        $"Give a behavior (fighter, patrol, sentry, idle), ship 1-8 or chat on/off, e.g. ?bots set {existing.Label} sentry ship 2");
+                        $"Give a behavior (fighter, patrol, sentry, idle), ship 1-8, team N, priority 1-9 or chat on/off, e.g. ?bots set {existing.Label} sentry ship 2");
                     break;
                 }
                 var result = SaveBot(owned.Name, owner, existing?.Label ?? args.Label,
@@ -648,11 +679,34 @@ public sealed partial class ArenaOwnership
     private void BotHelp(Player player, int count)
     {
         Reply(player, "Bots: ?bots create <name> [fighter|patrol|sentry|idle] [ship 1-8] [chat on]   e.g. ?bots create Sparring fighter 3 chat on");
-        Reply(player, "Bots: ?bots list | ?bots set <name> <behavior|ship N|chat on|off> | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
+        Reply(player, "Bots: ?bots list | ?bots set <name> <behavior|ship N|team N|priority 1-9|chat on|off> | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
+        Reply(player, "Bots: ?bots match <team> <size> | ?bots match <team> off | ?bots match. Bots on a team make room for pilots (higher priority stays longest).");
         Reply(player, "Bots: fighter chases and shoots pilots, patrol flies waypoints, sentry guards a spot, idle sits still. Without waypoints, fighter and patrol roam.");
         if (count == 0) Reply(player, "Bots: this arena has no bots yet.");
         if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
     }
+
+    private void SayWhoIsBot(Player player)
+    {
+        var names = new List<string>();
+        if (player.Arena is { } arena)
+        {
+            _playerData.Lock();
+            try
+            {
+                foreach (var p in _playerData.Players)
+                    if (p.Arena == arena && p.Name is { } n && IsBot(p)) names.Add(n);
+            }
+            finally { _playerData.Unlock(); }
+        }
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        Reply(player, names.Count == 0 ? "No bots here." : "Bots here: " + string.Join(", ", names));
+    }
+
+    /// <summary>Where the match director has a bot now (in, spectating, out), or null when no host shows it.</summary>
+    private BotSeat? SeatOf(string arena, string label) =>
+        _hosts.TryGetValue(arena, out var run) && run.Shown.FirstOrDefault(p =>
+            string.Equals(p.Label, label, StringComparison.OrdinalIgnoreCase)) is { } placement ? placement.Seat : null;
 
     private void ListBots(Player player, string arena)
     {
@@ -664,10 +718,29 @@ public sealed partial class ArenaOwnership
         }
         foreach (var bot in bots)
         {
-            var flying = _playerData.FindPlayer(bot.Label) is { Status: PlayerState.Playing } p &&
-                string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase);
-            var state = !bot.Deployed ? "stopped" : flying ? "deployed, flying" : "deployed, joining";
-            Reply(player, $"Bots: {bot.Label}  {BotCommand.Describe(bot.Script)}  [{state}]");
+            var state = !bot.Deployed ? "stopped"
+                : Store.BotProblem(arena, bot.Label, n => _accounts?.Find(n) is not null)?.ToLowerInvariant().TrimEnd('.')
+                    ?? SeatOf(arena, bot.Label) switch
+                    {
+                        BotSeat.In => "in",
+                        BotSeat.Spectating => "spectating",
+                        _ => "out",
+                    };
+            Reply(player, $"Bots: {bot.Label}  {BotCommand.Describe(bot.Script)}  team {BotCommand.Team(bot.Script)}, priority {BotCommand.Priority(bot.Script)}  [{state}]");
+        }
+        var sizes = Store.MatchSizes(arena);
+        foreach (var (team, size) in sizes.OrderBy(kv => kv.Key))
+        {
+            int flying = 0;
+            _playerData.Lock();
+            try
+            {
+                foreach (var p in _playerData.Players)
+                    if (p.Status == PlayerState.Playing && p.Ship != ShipType.Spec && p.Freq == team &&
+                        string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase) && p.Type != ClientType.Fake) flying++;
+            }
+            finally { _playerData.Unlock(); }
+            Reply(player, $"Bots: team {team}: size {size}, {flying} player{(flying == 1 ? "" : "s")} flying");
         }
         if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
     }

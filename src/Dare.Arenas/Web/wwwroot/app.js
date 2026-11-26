@@ -438,6 +438,7 @@ function editBot(bot) {
     const [, key, value] = /^(\S+) +(.*)$/.exec(line) || [];
     switch (key) {
       case "ship": $("botship").value = value; break;
+      case "team": $("botteam").value = value; break;
       case "behaviour": $("botmode").value = value; break;
       case "range": $("botrange").value = value; break;
       case "greet": $("botgreet").value = value; break;
@@ -474,7 +475,7 @@ function wireBots() {
   botFields();
   $("botform").onsubmit = (event) => {
     event.preventDefault();
-    const script = ["ship " + $("botship").value, "behaviour " + $("botmode").value];
+    const script = ["ship " + $("botship").value, "behaviour " + $("botmode").value, "team " + ($("botteam").value || 0)];
     for (const point of botLines($("botpoints").value)) script.push("point " + point);
     if ($("botrange").value) script.push("range " + $("botrange").value);
     if ($("botgreet").value.trim()) script.push("greet " + $("botgreet").value.trim());

@@ -81,7 +81,7 @@ public sealed partial class ArenaOwnership
         try
         {
             foreach (var p in _playerData.Players)
-                if (p.Status == PlayerState.Playing && p.Arena is not null && string.Equals(p.Arena.Name, arena, StringComparison.OrdinalIgnoreCase) && p.Name is not null)
+                if (p.Status == PlayerState.Playing && !IsBot(p) && p.Arena is not null && string.Equals(p.Arena.Name, arena, StringComparison.OrdinalIgnoreCase) && p.Name is not null)
                     list.Add((p.Name, p.Ship == ShipType.Spec ? 0 : (int)p.Ship + 1, p.Freq));
         }
         finally

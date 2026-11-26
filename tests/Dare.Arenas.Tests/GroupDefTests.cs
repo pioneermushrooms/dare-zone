@@ -43,4 +43,14 @@ public class GroupDefTests
         Assert.Contains("#include groupdef.dir/default", body);
         Assert.Contains("#include groupdef.dir/arenabot", body);
     }
+
+    /// <summary>Anyone may ask ?bots which pilots here are bots; the command itself keeps management to owners.</summary>
+    [Fact]
+    public void every_player_can_ask_which_pilots_are_bots()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Dare.sln"))) dir = dir.Parent;
+        var lines = File.ReadAllLines(Path.Combine(dir!.FullName, "deploy", "default-caps.txt")).Select(l => l.Trim());
+        Assert.Contains("cmd_bots", lines);
+    }
 }

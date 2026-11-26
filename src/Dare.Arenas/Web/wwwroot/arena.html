@@ -78,11 +78,12 @@
       <ul id="botlist"></ul>
       <div class="split">
         <form class="stack" id="botform">
-          <label>Bot label <input id="botlabel" maxlength="14" required></label>
+          <label>Bot label <input id="botlabel" maxlength="20" required></label>
           <label>Behavior <select id="botmode">
             <option value="idle">Idle</option><option value="patrol">Patrol</option>
             <option value="sentry">Sentry</option><option value="fighter">Fighter</option>
           </select></label>
+          <label>Team <input id="botteam" type="number" min="0" max="9999" value="0" required></label>
           <label>Ship <input id="botship" type="number" min="1" max="8" value="1" required></label>
           <label id="botrangefield" hidden>Sentry range (tiles) <input id="botrange" type="number" min="1" max="200" placeholder="30"></label>
           <label class="switch bot-switch"><input type="checkbox" id="botcasual" role="switch"><span class="track" aria-hidden="true"></span> Casual chat</label>
