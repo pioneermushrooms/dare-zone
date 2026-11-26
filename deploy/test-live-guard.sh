@@ -149,30 +149,30 @@ expect refused "no deploy holds" "install-public-site needs the lock" -- \
 wait $holder
 expect ok "" "lock free again after holder exits"            -- "${DC[@]}" --by t1 --force-rollback
 
-# ---- site repo: origin bare + checkout on custom-graphics, with this repo's site/ and deploy/
+# ---- site repo: origin bare + checkout on main, with this repo's site/ and deploy/
 echo "## site"
 git init -q --bare "$H/site.git"
 git -C "$H/site.git" config uploadpack.allowAnySHA1InWant true
-git init -q -b custom-graphics "$H/site"; S=$H/site
+git init -q -b main "$H/site"; S=$H/site
 git -C "$S" remote add origin "$H/site.git"
 cp -R "$REPO/site" "$REPO/deploy" "$S/"
 scommit() { echo "/* $1 */" >> "$S/site/style.css"; git -C "$S" add -A; git -C "$S" commit -qm "$1"; git -C "$S" rev-parse HEAD; }
 git -C "$S" add -A; git -C "$S" commit -qm base
-S1=$(scommit S1); git -C "$S" push -q origin custom-graphics
+S1=$(scommit S1); git -C "$S" push -q origin main
 (cd "$S" && git archive "$S1" site | tar -x -C "$SRV/www" --strip-components=1)
 PUB=(env SITE_SOURCE_URL="$H/site.git" "$S/deploy/publish-site-from-mac.sh")
-expect ok "all files match"      "seed site"                  -- "$S/deploy/live-record.sh" seed site --commit "$S1" --branch custom-graphics --by seed
-S2=$(scommit S2); git -C "$S" push -q origin custom-graphics
+expect ok "all files match"      "seed site"                  -- "$S/deploy/live-record.sh" seed site --commit "$S1" --branch main --by seed
+S2=$(scommit S2); git -C "$S" push -q origin main
 expect ok "adds 1 commit"        "publish site S2"            -- "${PUB[@]}" --by "site one" "$S2"
 check "site record = S2, parts site" '[ "$(field "$SRV/www/DEPLOYED.json" commit)" = "$S2" ] && grep -q S2 "$SRV/www/style.css"'
 expect refused "DROP"            "publish older S1 refused"   -- "${PUB[@]}" --by "site one" "$S1"
 git -C "$S" checkout -q -b side; S3=$(scommit S3); git -C "$S" push -q origin side
 expect refused "not on origin's integration branch" "commit off the integration branch" -- "${PUB[@]}" --by x "$S3"
-git -C "$S" checkout -q custom-graphics
+git -C "$S" checkout -q main
 # deploy.sh refuses before it builds anything
 git -C "$S" checkout -q side
 expect refused "integration branch" "deploy.sh on a side branch" -- "$S/deploy/deploy.sh" --by x
-git -C "$S" checkout -q custom-graphics; git -C "$S" reset -q --hard "$S1"; git -C "$S" push -q -f origin custom-graphics
+git -C "$S" checkout -q main; git -C "$S" reset -q --hard "$S1"; git -C "$S" push -q -f origin main
 expect refused "DROP"            "deploy.sh rollback refused before build" -- "$S/deploy/deploy.sh" --by x --no-restart
 expect refused "say who deploys" "deploy.sh needs --by"       -- "$S/deploy/deploy.sh" --no-restart
 expect ok "lock free"            "live-record show"           -- "$S/deploy/live-record.sh" show

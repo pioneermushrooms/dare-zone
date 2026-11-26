@@ -3,14 +3,14 @@
 #
 #   deploy/publish-site-from-mac.sh --by '<session or branch label>' [--force-rollback] <full commit sha>
 #
-# The commit must be on origin's integration branch (custom-graphics, later main) and contain the
+# The commit must be on origin's integration branch (main) and contain the
 # live commit (/var/www/foundation/DEPLOYED.json); one deploy at a time (server lock).
 # See deploy/README.md, "Deploying safely".
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=deploy/live-guard.sh
 . "$REPO/deploy/live-guard.sh"
-GUARD_BRANCHES=${SITE_BRANCHES:-custom-graphics main}
+GUARD_BRANCHES=${SITE_BRANCHES:-main}
 SOURCE_URL=${SITE_SOURCE_URL:-https://github.com/pioneermushrooms/dare-zone.git}
 revision=""
 while [ $# -gt 0 ]; do

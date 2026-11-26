@@ -7,7 +7,7 @@
 #   --force-rollback  deploy even if the live site/plugin has commits this one lacks (lists them first)
 #   --force           restart the zone even with players online (default: refuse)
 #
-# Deploys only a clean checkout of an integration branch (custom-graphics, later main) that is
+# Deploys only a clean checkout of an integration branch (main) that is
 # exactly its pushed tip, only if it contains the live commit (/var/www/foundation/DEPLOYED.json),
 # and only one deploy at a time (server lock). See deploy/README.md, "Deploying safely".
 #
@@ -63,7 +63,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 [ -d /usr/local/share/dotnet ] && export PATH=/usr/local/share/dotnet:$PATH
 # shellcheck source=deploy/live-guard.sh
 . "$REPO/deploy/live-guard.sh"
-GUARD_BRANCHES=${SITE_BRANCHES:-custom-graphics main}
+GUARD_BRANCHES=${SITE_BRANCHES:-main}
 PASS=()
 while [ $# -gt 0 ]; do
   case "$1" in

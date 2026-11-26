@@ -7,11 +7,11 @@ Many sessions work at once; whoever deploys last must never roll back anyone els
 1. **Work on your own branch** in your own worktree. Never commit into another session's branch or
    worktree; message that session instead.
 2. **Ship by merging.** Merge the integration branch into yours, test, then merge yours into the
-   integration branch and push. Integration branches: this repo `custom-graphics` (becomes `main`
-   once PR #2 lands); the browser client (dare-client) `main`.
+   integration branch and push. Integration branch: `main`, in this repo and in the browser
+   client (dare-client). `custom-graphics` is retired: merge into `main` instead.
 3. **Deploy only from the pushed tip of the integration branch**, from a deploy checkout:
    ```bash
-   git -C ~/dare-zone/.claude/worktrees/deploy fetch origin && git -C ~/dare-zone/.claude/worktrees/deploy switch --detach origin/custom-graphics
+   git -C ~/dare-zone/.claude/worktrees/deploy fetch origin && git -C ~/dare-zone/.claude/worktrees/deploy switch --detach origin/main
    git -C ~/oss-src/deploy fetch dare && git -C ~/oss-src/deploy switch --detach dare/main
    ```
    then run one of:
