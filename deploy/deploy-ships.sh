@@ -36,7 +36,7 @@ if [ $SET_KEY != 0 ]; then
 fi
 
 echo "== copying ships/ to $HOST:/opt/dare-ships"
-COPYFILE_DISABLE=1 tar -C ships -czf - shipgen.py graphics.py service.py requirements.txt | $SSH "$HOST" 'set -e
+COPYFILE_DISABLE=1 tar -C ships -czf - shipgen.py graphics.py stylegen.py style-refs.png service.py requirements.txt | $SSH "$HOST" 'set -e
   id -u dare-ships >/dev/null 2>&1 || useradd --system --home /opt/dare-ships --shell /usr/sbin/nologin dare-ships
   mkdir -p /opt/dare-ships && rm -f /opt/dare-ships/._* && tar -C /opt/dare-ships -xzf - && chown -R root:root /opt/dare-ships'
 

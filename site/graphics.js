@@ -333,16 +333,23 @@ function showReview(next) {
 
 async function generate(request, name) {
   if (busy || !needYard()) return;
-  setBusy(true, request.mode === "prompt" ? "Painting your ship… this takes up to a minute." : "Building a random ship…");
+  setBusy(true, request.batch ? "Next option…"
+    : request.mode === "prompt" ? "Drawing your ship… this takes up to a minute."
+    : "Drawing a ship… (when none are waiting, this takes up to a minute)");
   try {
     const data = await call("/generate", request);
     const sheet = await sheetFromBase64(data.sheet);
-    say("Here it is. Approve it to add it to your shipyard.");
+    // A prompt is drawn as a batch of options; Try again shows the next one (instant, free),
+    // and draws a fresh batch once they're used up.
+    const more = Number.isInteger(data.left) && data.left > 0;
+    say(more ? `Approve it to add it to your shipyard, or Try again: ${data.left} more option${data.left === 1 ? "" : "s"} ready.`
+      : "Here it is. Approve it to add it to your shipyard.");
+    const fresh = request.batch ? request.fresh : request;
     showReview({
       sheet,
       name,
       source: request.mode === "prompt" ? "generated" : "random",
-      again: () => generate(request.mode === "prompt" ? { ...request, variation: true } : request, name),
+      again: () => generate(more ? { mode: "prompt", batch: data.batch, fresh } : { ...fresh, variation: true }, name),
     });
   } catch (error) {
     say(error.message, true);
