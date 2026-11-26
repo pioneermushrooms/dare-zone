@@ -79,10 +79,32 @@ const eventItem = (e) => el("li", null,
 // ---- player hub -------------------------------------------------------------------------------
 let current = null; // /api/me body
 
+// Sign-in that comes back here: /account/login?next=<this page>, plus a short-lived dare_next
+// cookie so a ?weblogin link (opened from the game) lands here too.
+function signInHref(page = "/account/login") {
+  const here = location.pathname + location.search + location.hash;
+  try {
+    document.cookie = "dare_next=" + encodeURIComponent(here) + "; Path=/; Max-Age=600; SameSite=Lax"
+      + (location.protocol === "https:" ? "; Secure" : "");
+  } catch { /* no cookies */ }
+  return page + "?next=" + encodeURIComponent(here);
+}
+function signedIn() {
+  if (document.cookie.includes("dare_next=")) {
+    try { document.cookie = "dare_next=; Path=/; Max-Age=0; SameSite=Lax"; } catch { /* no cookies */ }
+  }
+}
+
 async function mePage(arena) {
   const { status, body } = await getJson(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""));
-  if (status === 401) { $("signin").hidden = false; $("hub").hidden = true; return; }
+  if (status === 401) {
+    $("signin").hidden = false; $("hub").hidden = true;
+    for (const a of $("signin").querySelectorAll('a[href="/account/login"], a[href="/account/signup"]'))
+      a.href = signInHref(a.getAttribute("href"));
+    return;
+  }
   if (!body) return;
+  signedIn();
   current = body;
   $("signin").hidden = true;
   $("hub").hidden = false;

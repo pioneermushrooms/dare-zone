@@ -6,6 +6,22 @@
 // Text goes in with textContent only.
 "use strict";
 
+// Sign-in that comes back here: /account/login?next=<this page>, plus a short-lived dare_next
+// cookie so a ?weblogin link (opened from the game) lands here too.
+function signInHref(page = "/account/login") {
+  const here = location.pathname + location.search + location.hash;
+  try {
+    document.cookie = "dare_next=" + encodeURIComponent(here) + "; Path=/; Max-Age=600; SameSite=Lax"
+      + (location.protocol === "https:" ? "; Secure" : "");
+  } catch { /* no cookies */ }
+  return page + "?next=" + encodeURIComponent(here);
+}
+function signedIn() {
+  if (document.cookie.includes("dare_next=")) {
+    try { document.cookie = "dare_next=; Path=/; Max-Age=0; SameSite=Lax"; } catch { /* no cookies */ }
+  }
+}
+
 (() => {
   const { N, TS, SPECIAL } = Lvl;
   const API = "/arena/api";
@@ -64,7 +80,8 @@
   async function load() {
     await loadDefaultTileset();
     const me = await fetch(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""), { credentials: "same-origin" });
-    if (me.status === 401) { location.href = "/account/login"; return; }
+    if (me.status === 401) { location.href = signInHref(); return; }
+    signedIn();
     const body = await me.json().catch(() => null);
     if (!me.ok || !body || !body.arena) { say((body && body.message) || "You don't own or co-mod an arena yet.", false); return; }
     arena = body.arena; role = body.role;

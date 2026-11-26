@@ -370,11 +370,32 @@ internal sealed partial class WebServer : IDisposable
                 _m.Log(LogLevel.Error, $"Web {ctx.Request.HttpMethod} {ctx.Request.Url?.AbsolutePath} failed: {ex}");
                 reply = JsonReply(500, new { ok = false, message = "Server error; staff can see the details in the log." });
             }
-            TryWrite(ctx, reply);
+            TryWrite(ctx, RenewSession(ctx.Request, reply));
         }
         finally
         {
             _slots.Release();
+        }
+    }
+
+    /// <summary>
+    /// A signed-in pilot's visit slides the session to a full 30 days again (at most once a day) and
+    /// re-sends the cookie, so a pilot who keeps coming back stays signed in. Leaves replies that set
+    /// a cookie of their own (sign-in, sign-out) alone.
+    /// </summary>
+    private Reply RenewSession(HttpListenerRequest req, Reply reply)
+    {
+        try
+        {
+            if (reply.Headers?.Any(h => string.Equals(h.Name, "Set-Cookie", StringComparison.OrdinalIgnoreCase)) == true) return reply;
+            var cookie = req.Cookies[WebPaths.SessionCookieName]?.Value;
+            if (string.IsNullOrEmpty(cookie) || !_m.WebAuth.Renew(cookie)) return reply;
+            return reply with { Headers = [.. reply.Headers ?? [], ("Set-Cookie", WebPaths.SessionCookie(cookie, secure: true))] };
+        }
+        catch (Exception ex)
+        {
+            _m.Log(LogLevel.Warn, $"Session renewal failed: {ex.Message}");
+            return reply;
         }
     }
 
@@ -533,8 +554,10 @@ internal sealed partial class WebServer : IDisposable
                              + "<p><a href=\"/arena/\">Arena list</a></p>");
 
         _m.Log(LogLevel.Info, $"Web sign-in for {_m.WebAuth.PlayerFor(session)}.");
+        // back to where the pilot was going (?next= or the dare_next cookie), else the arena page
+        var next = WebPaths.AfterSignIn(req.QueryString["next"], req.Cookies[WebPaths.NextCookieName]?.Value, WebPaths.Prefix + "/me");
         return new Reply(303, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Signed in."),
-            [("Set-Cookie", WebPaths.SessionCookie(session, secure: true)), ("Location", WebPaths.Prefix + "/me")]);
+            [("Set-Cookie", WebPaths.SessionCookie(session, secure: true)), ("Location", next)]);
     }
 
     /// <summary>

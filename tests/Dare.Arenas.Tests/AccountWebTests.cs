@@ -54,11 +54,13 @@ public sealed class AccountWebTests
     }
 
     [Fact]
-    public void account_session_expires_after_24h()
+    public void account_session_lasts_30_days_unused_then_expires()
     {
         var w = new WebAuth(() => _now);
         var s = w.IssueSession("Big Chris", 7);
-        _now = _now.AddHours(24).AddSeconds(1);
+        _now = _now.AddDays(29);
+        Assert.NotNull(w.SessionFor(s)); // looking doesn't renew; only Renew does
+        _now = _now.AddDays(1).AddSeconds(1);
         Assert.Null(w.SessionFor(s));
     }
 
@@ -67,7 +69,7 @@ public sealed class AccountWebTests
     [Fact]
     public void session_cookie_is_site_wide()
     {
-        Assert.Equal("dare_session=abc; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax", WebPaths.SessionCookie("abc", secure: true));
+        Assert.Equal("dare_session=abc; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax", WebPaths.SessionCookie("abc", secure: true));
     }
 
     [Fact]

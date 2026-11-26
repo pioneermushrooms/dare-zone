@@ -162,7 +162,7 @@ internal sealed partial class WebServer
         return api switch
         {
             "/signup" => await SignupAsync(req, body).ConfigureAwait(false),
-            "/verify" => Verify(body),
+            "/verify" => Verify(req, body),
             "/login" => Login(req, body),
             "/logout" => Logout(req),
             "/forgot" => await ForgotAsync(req, body).ConfigureAwait(false),
@@ -266,13 +266,21 @@ internal sealed partial class WebServer
         return reply;
     }
 
-    private Reply Signed(Account account, string message)
+    /// <summary>
+    /// Signs <paramref name="account"/> in (a persistent session cookie). <c>next</c> in the answer is
+    /// where the page goes now: the body's <c>next</c> or the dare_next cookie when either is a safe
+    /// path on this site (<see cref="WebPaths.SafeNext"/>), else the account page.
+    /// </summary>
+    private Reply Signed(Account account, string message, HttpListenerRequest? req = null, System.Text.Json.JsonElement? body = null)
     {
         var session = _m.WebAuth.IssueSession(account.Name, account.Id);
+        var next = WebPaths.AfterSignIn(Str(body, "next"), NextCookie(req), WebPaths.DefaultAfterSignIn);
         return new Reply(200, "application/json; charset=utf-8",
-            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message, name = account.Name, hasEmail = account.EmailVerified }, Json),
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { ok = true, message, name = account.Name, hasEmail = account.EmailVerified, next }, Json),
             [("Set-Cookie", WebPaths.SessionCookie(session, secure: true))]);
     }
+
+    private static string? NextCookie(HttpListenerRequest? req) => req?.Cookies[WebPaths.NextCookieName]?.Value;
 
     // ---- handlers -------------------------------------------------------------------------------
 
@@ -292,7 +300,7 @@ internal sealed partial class WebServer
             var made = _m.Accounts.CreateWithoutEmail(name, password, out var account);
             if (!made.Ok || account is null) return Bad(made.Message);
             _m.Log(LogLevel.Info, $"Account created on the web without an email: '{account.Name}' ({ip}).");
-            return Signed(account, made.Message);
+            return Signed(account, made.Message, req, body);
         }
 
         if (!AccountRules.TryEmail(email, out var e, out err)) return Bad(err);
@@ -306,14 +314,14 @@ internal sealed partial class WebServer
         return await SendCodeAsync(CodePurpose.Signup, e, code, n, null, started, timer).ConfigureAwait(false);
     }
 
-    private Reply Verify(System.Text.Json.JsonElement? body)
+    private Reply Verify(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         var email = Str(body, "email") ?? "";
         var code = Str(body, "code") ?? "";
         var r = _m.Accounts.VerifySignup(email, code, out var account);
         if (!r.Ok || account is null) return Bad(r.Message);
         _m.Log(LogLevel.Info, $"Account created on the web: '{account.Name}' ({EmailMessages.Mask(account.Email ?? "")}).");
-        return Signed(account, r.Message);
+        return Signed(account, r.Message, req, body);
     }
 
     private Reply Login(HttpListenerRequest req, System.Text.Json.JsonElement? body)
@@ -338,7 +346,7 @@ internal sealed partial class WebServer
             case LoginResult.Ok when account is not null:
                 _m.WebLogins.Success(name, ip);
                 _m.Log(LogLevel.Info, $"Web sign-in for account '{account.Name}'{(account.EmailVerified ? "" : " (no recovery email)")}.");
-                return Signed(account, "Signed in.");
+                return Signed(account, "Signed in.", req, body);
             case LoginResult.UnknownName or LoginResult.Disabled:
                 // as slow as a real check, so the answer time doesn't tell which names exist
                 var d = DummyCred.Value;

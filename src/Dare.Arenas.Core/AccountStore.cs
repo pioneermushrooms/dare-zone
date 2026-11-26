@@ -148,6 +148,7 @@ public sealed partial class AccountStore : IDisposable
         if (Scalar("SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'link_id'") == 0)
             Exec("ALTER TABLE accounts ADD COLUMN link_id INTEGER NULL;");
         Exec("CREATE INDEX IF NOT EXISTS ix_accounts_link ON accounts(link_id);");
+        CreateWebSessionTable();
     }
 
     public void Dispose()

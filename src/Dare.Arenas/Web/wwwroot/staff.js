@@ -1,5 +1,21 @@
 // The Admin page: decide waiting arena requests, create arenas, see every owned arena, look up server commands.
 "use strict";
+
+// Sign-in that comes back here: /account/login?next=<this page>, plus a short-lived dare_next
+// cookie so a ?weblogin link (opened from the game) lands here too.
+function signInHref(page = "/account/login") {
+  const here = location.pathname + location.search + location.hash;
+  try {
+    document.cookie = "dare_next=" + encodeURIComponent(here) + "; Path=/; Max-Age=600; SameSite=Lax"
+      + (location.protocol === "https:" ? "; Secure" : "");
+  } catch { /* no cookies */ }
+  return page + "?next=" + encodeURIComponent(here);
+}
+function signedIn() {
+  if (document.cookie.includes("dare_next=")) {
+    try { document.cookie = "dare_next=; Path=/; Max-Age=0; SameSite=Lax"; } catch { /* no cookies */ }
+  }
+}
 const API = "/arena/api";
 const $ = (id) => document.getElementById(id);
 const when = (t) => t ? new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "";
@@ -72,10 +88,11 @@ async function load() {
     $("desk").hidden = true;
     $("gate").hidden = false;
     $("gatemsg").replaceChildren(status === 401
-      ? el("span", {}, "Sign in first: ", el("a", { href: "/account/login", textContent: "sign in" }), ", then come back.")
+      ? el("span", {}, "Sign in first: ", el("a", { href: signInHref(), textContent: "sign in" }), "; you come back here after.")
       : el("span", { textContent: body?.message ?? "This page is for zone staff." }));
     return;
   }
+  signedIn();
   $("gate").hidden = true;
   $("desk").hidden = false;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();

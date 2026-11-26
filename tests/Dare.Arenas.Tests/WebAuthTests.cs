@@ -38,11 +38,11 @@ public class WebAuthTests
     }
 
     [Fact]
-    public void Session_valid_24h_then_null()
+    public void Session_valid_30_days_then_null()
     {
         var w = Make();
         var session = w.Redeem(w.IssueLoginToken("Alice"))!;
-        _now = _now.AddHours(23).AddMinutes(59);
+        _now = _now.AddDays(30).AddMinutes(-1);
         Assert.Equal("Alice", w.PlayerFor(session));
         _now = _now.AddMinutes(2);
         Assert.Null(w.PlayerFor(session));
