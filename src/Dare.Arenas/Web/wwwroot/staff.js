@@ -1,4 +1,4 @@
-// The staff desk: decide waiting arena requests, create arenas, see every owned arena.
+// The Admin page: decide waiting arena requests, create arenas, see every owned arena, look up server commands.
 "use strict";
 const API = "/arena/api";
 const $ = (id) => document.getElementById(id);
@@ -126,4 +126,54 @@ $("createform").addEventListener("submit", async (event) => {
   say($("createmsg"), body);
   if (body?.ok) { $("createform").reset(); load(); }
 });
-load();
+
+// ---- tabs (location.hash: #arenas, #commands, #howto) ----
+function showTab(name) {
+  const tabs = [...document.querySelectorAll(".admintabs [data-tab]")];
+  if (!tabs.some((t) => t.dataset.tab === name)) name = "arenas";
+  for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+  for (const p of document.querySelectorAll("[data-pane]")) p.hidden = p.dataset.pane !== name;
+  if (name === "commands") loadCommands();
+}
+for (const t of document.querySelectorAll(".admintabs [data-tab]"))
+  t.addEventListener("click", () => { history.replaceState(null, "", "#" + t.dataset.tab); showTab(t.dataset.tab); });
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+
+// ---- commands: the server's live command table ----
+let commands = null;
+async function loadCommands() {
+  if (commands) return;
+  $("cmdcount").textContent = "Loading…";
+  const { status, body } = await call("/staff/commands");
+  if (status !== 200 || !body?.ok) { $("cmdcount").textContent = ""; say($("cmdmsg"), body); return; }
+  commands = body.commands;
+  const modules = [...new Set(commands.map((c) => c.module))].sort((a, b) => a.localeCompare(b));
+  $("cmdmodule").append(...modules.map((m) => el("option", { value: m, textContent: m })));
+  renderCommands();
+}
+
+function renderCommands() {
+  if (!commands) return;
+  const q = $("cmdfilter").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const mine = $("cmdmine").checked, module = $("cmdmodule").value;
+  const shown = commands.filter((c) =>
+    (!mine || c.can || c.canPriv) && (!module || c.module === module)
+    && q.every((w) => `${c.name} ${c.module} ${c.help ?? ""}`.toLowerCase().includes(w)));
+  $("cmdcount").textContent = `${shown.length} of ${commands.length} commands`;
+  $("cmdlist").replaceChildren(...shown.map((c) => {
+    const first = (c.help ?? "").split("\n").find((l) => l.trim() && !/^(targets|args):/i.test(l.trim())) ?? "";
+    const how = [c.can ? "in chat" : null, c.canPriv ? "to a pilot" : null].filter(Boolean).join(", ");
+    const d = el("details", { className: "cmd" + (c.can || c.canPriv ? "" : " no") },
+      el("summary", {},
+        el("code", { textContent: "?" + c.name }),
+        el("span", { className: "tag", textContent: c.module }),
+        c.arena ? el("span", { className: "tag", textContent: "arena " + c.arena }) : "",
+        el("span", { className: "tag " + (how ? "Active" : "Suspended"), textContent: how ? "you: " + how : "not for you" }),
+        el("span", { className: "first", textContent: first.trim() })),
+      el("pre", { textContent: c.help ?? "No help text. Try ?man " + c.name + " in game." }));
+    return d;
+  }));
+}
+for (const id of ["cmdfilter", "cmdmine", "cmdmodule"]) $(id).addEventListener("input", renderCommands);
+
+load().then(() => showTab(location.hash.slice(1)));
