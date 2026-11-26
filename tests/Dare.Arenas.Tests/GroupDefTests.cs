@@ -25,4 +25,22 @@ public class GroupDefTests
             .Except(Caps("arenastaff")).ToArray();
         Assert.Empty(missing);
     }
+
+    /// <summary>
+    /// The zone puts its bots in [arenabot] on arena entry; excludepopulation keeps them out of the
+    /// zone's own player count (ping, zone list, directory), so nothing else has to subtract them.
+    /// </summary>
+    [Fact]
+    public void bots_are_left_out_of_population()
+    {
+        Assert.Contains("excludepopulation", Caps("arenabot"));
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Dare.sln"))) dir = dir.Parent;
+        var sections = File.ReadAllLines(Path.Combine(dir!.FullName, "deploy", "groupdef-sections.conf")).Select(l => l.Trim()).ToList();
+        int at = sections.IndexOf("[arenabot]");
+        Assert.True(at >= 0, "[arenabot] section missing");
+        var body = sections.Skip(at + 1).TakeWhile(l => !l.StartsWith('[')).ToList();
+        Assert.Contains("#include groupdef.dir/default", body);
+        Assert.Contains("#include groupdef.dir/arenabot", body);
+    }
 }

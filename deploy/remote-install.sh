@@ -35,7 +35,7 @@
 # Never deletes arenas, maps, data or staff entries. Keeps the 3 newest staging folders
 # (dare-arenas-deploy-*) beside <stageDir> and moves nothing else.
 #
-# Test seams (production defaults): ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD, BOT_COUNT_CMD,
+# Test seams (production defaults): ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD,
 # HEALTH_TRIES, HEALTH_SLEEP.
 set -Eeuo pipefail
 
@@ -73,7 +73,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
 
 # ---- helpers ------------------------------------------------------------------------------
-zone_ping() { # the zone's own count (arena bots included), or "unknown" when it does not answer
+zone_ping() { # the zone's own count (arena bots left out), or "unknown" when it does not answer
   if [ -n "${ZONE_PING_CMD:-}" ]; then bash -c "$ZONE_PING_CMD"; return; fi
   python3 - "$ZONE_PING_PORT" <<'EOF' 2>/dev/null || echo "unknown"
 import socket, struct, sys
@@ -83,19 +83,9 @@ print(struct.unpack("<I", s.recv(64)[:4])[0])
 EOF
 }
 
-running_bots() { # arena bots (oss-bot processes; each is one player in the zone's count)
-  if [ -n "${BOT_COUNT_CMD:-}" ]; then bash -c "$BOT_COUNT_CMD"; return; fi
-  pgrep -c -x oss-bot 2>/dev/null || true # prints 0 itself when none run
-}
-
-players_online() { # people online (arena bots left out), or "unknown" when the zone does not answer
-  local total bots
-  total=$(zone_ping)
-  [[ "$total" =~ ^[0-9]+$ ]] || { echo "$total"; return; }
-  bots=$(running_bots)
-  [[ "$bots" =~ ^[0-9]+$ ]] || bots=0
-  echo $(( total > bots ? total - bots : 0 ))
-}
+# People online, or "unknown" when the zone does not answer. Arena bots are already left out of
+# the zone's count: they are in the [arenabot] group, whose excludepopulation leaves them out.
+players_online() { zone_ping; }
 
 zone_log_since() { journalctl -u subspace --since "$1" --no-pager -o cat 2>/dev/null || true; }
 
@@ -324,7 +314,7 @@ if [ -f "$STAGE/native/libe_sqlite3.so" ] && ! cmp -s "$STAGE/native/libe_sqlite
   mv -f "$ZONE/bin/libe_sqlite3.so.new" "$ZONE/bin/libe_sqlite3.so"
   echo "native SQLite updated in bin/ (previous one in $BACKUP)"
 fi
-for f in arenaowner arenamod arenacaps arenastaff arenaadmin; do chown "$OWNER" "$ZONE/conf/groupdef.dir/$f"; done
+for f in arenaowner arenamod arenacaps arenastaff arenaadmin arenabot; do chown "$OWNER" "$ZONE/conf/groupdef.dir/$f"; done
 
 if [ "$SYSOP_SET" = 1 ]; then
   step "staff.conf: $SYSOP = sysop"

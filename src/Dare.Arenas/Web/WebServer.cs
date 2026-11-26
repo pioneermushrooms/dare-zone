@@ -65,15 +65,16 @@ public sealed partial class ArenaOwnership
 
     // ---- handlers (mainloop) ------------------------------------------------------------------
 
-    /// <summary>Players per arena base name. Mainloop (player data).</summary>
+    /// <summary>Players (not arena bots) per arena base name. Mainloop (player data).</summary>
     internal Dictionary<string, int> PlayerCounts()
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var bots = Store.BotNames();
         _playerData.Lock();
         try
         {
             foreach (var p in _playerData.Players)
-                if (p.Arena is not null)
+                if (p.Arena is not null && !(p.Name is { } name && bots.Contains(name)))
                     counts[p.Arena.BaseName] = counts.GetValueOrDefault(p.Arena.BaseName) + 1;
         }
         finally

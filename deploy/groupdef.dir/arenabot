@@ -1,0 +1,6 @@
+; groupdef.dir/arenabot  (Dare.Arenas)
+; The zone's own arena bots. Set as a temporary group by the Dare.Arenas module when a bot
+; enters an arena. The [arenabot] section in groupdef.conf also includes groupdef.dir/default.
+
+; bots are not people: leave them out of the zone's player count (ping, zone list, directory)
+excludepopulation

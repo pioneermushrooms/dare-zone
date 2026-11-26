@@ -4,7 +4,7 @@
 #   deploy/apply-local.sh <zoneDir> [pluginDir]
 #   deploy/apply-local.sh --restore-authfile <zoneDir>   (undo the game-login switch below)
 #
-# - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff,arenaadmin} into <zone>/conf/groupdef.dir/
+# - copies groupdef.dir/{arenaowner,arenamod,arenacaps,arenastaff,arenaadmin,arenabot} into <zone>/conf/groupdef.dir/
 #   (overwrites: module-owned files)
 # - adds "#include groupdef.dir/arenastaff" to the [mod], [smod] and [sysop] sections of
 #   conf/groupdef.conf (once each), so only real staff can approve/decline requests
@@ -85,10 +85,10 @@ append_missing() { # <capsFile> <target>
   done < "$1"
 }
 
-for f in arenaowner arenamod arenacaps arenastaff arenaadmin; do
+for f in arenaowner arenamod arenacaps arenastaff arenaadmin arenabot; do
   cp "$HERE/groupdef.dir/$f" "$CONF/groupdef.dir/"
 done
-echo "groupdef.dir/arenaowner, arenamod, arenacaps, arenastaff, arenaadmin copied"
+echo "groupdef.dir/arenaowner, arenamod, arenacaps, arenastaff, arenaadmin, arenabot copied"
 
 GD="$CONF/groupdef.conf"
 tmp=$(mktemp)

@@ -122,10 +122,12 @@ case $SC in
     echo "### backups made: $(ls -d $H/root/backup-* 2>/dev/null | wc -l | tr -d ' '); restarts: $(cat "$H/calls" 2>/dev/null | grep -c restart); module line: $(grep -c Dare.Arenas.ArenaOwnership $H/zone/conf/Modules.config)"
     echo "### with --force:"; bash "$RI" "$S" --force 2>&1 | grep -E 'players|restart|done'; echo "exit ${PIPESTATUS[0]}" ;;
   players-bots)
-    # arena bots are players to the zone but not people: 1 pilot + 3 bots refuses, 3 bots alone don't
-    echo 4 > "$H/players"; export BOT_COUNT_CMD='echo 3'
+    # the zone's count already leaves arena bots out ([arenabot] excludepopulation): running
+    # oss-bot processes are not subtracted, so 1 pilot refuses even with 3 bot processes about
+    printf '#!/bin/bash\necho 3\n' > "$H/stubs/pgrep"; chmod +x "$H/stubs/pgrep"
+    echo 1 > "$H/players"
     bash "$RI" "$S" 2>&1 | grep -E 'players online|ERROR'; echo "exit ${PIPESTATUS[0]}"
-    echo 3 > "$H/players"
+    echo 0 > "$H/players"
     bash "$RI" "$S" 2>&1 | grep -E 'players online|ERROR|^done'; echo "exit ${PIPESTATUS[0]}" ;;
   sysop-bad)
     for n in 'evil]' 'a = sysop' 'x;y' 'arena:bob' $'two\nlines' ' lead' 'abcdefghijklmnopqrstuvwx' ''; do

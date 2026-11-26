@@ -26,12 +26,28 @@ internal static class BotPasses
 
 public sealed partial class ArenaOwnership
 {
-    private sealed class BotRun
+    /// <summary>One arena's bot host: a single <c>oss-bot --host</c> process fed lineup messages on its standard input.</summary>
+    private sealed class HostRun
     {
         public Process? Process;
         public DateTimeOffset NextStart;
         public DateTimeOffset StopDeadline;
         public int Backoff = 5;
+        public BotSeats Seats = new(() => DateTimeOffset.UtcNow, Random.Shared);
+        public BotStagger Stagger = new(() => DateTimeOffset.UtcNow, Random.Shared);
+        /// <summary>The lineup last written; null after a (re)start so the next one is sent.</summary>
+        public string? LastLineup;
+        public string Owner = "";
+        public IReadOnlyList<ArenaBot> Bots = [];
+        /// <summary>What the lineup shows each bot now (Out = absent).</summary>
+        public IReadOnlyList<BotPlacement> Shown = [];
+        /// <summary>Each listed bot's one-time pass, kept (so the text stays the same) until it is replaced.</summary>
+        public readonly Dictionary<string, (string Password, DateTimeOffset Issued)> Passes = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A bot's casual chat in progress (replies to pilots, exchanges with another bot).</summary>
+    private sealed class BotChat
+    {
         public Task<string?>? ChatReply;
         public DateTimeOffset NextChat;
         public string? ChatPilot;
@@ -47,11 +63,12 @@ public sealed partial class ArenaOwnership
         public DateTimeOffset FollowupAt;
     }
 
+    /// <summary>A listed bot that has not shown up in the zone this long gets a fresh pass.</summary>
+    private static readonly TimeSpan PassLifetime = TimeSpan.FromSeconds(15);
+
     private readonly Dictionary<string, DateTimeOffset> _botOccupancy = new(StringComparer.OrdinalIgnoreCase);
-    // A running bot is keyed by its saved settings, not its place in the arena's list, so adding
-    // or removing one bot does not restart the others; each one's team (100 + its place) is kept apart.
-    private readonly Dictionary<(string Arena, ArenaBot Bot, string Owner), BotRun> _bots = new();
-    private readonly Dictionary<(string Arena, ArenaBot Bot, string Owner), int> _botSlots = new();
+    private readonly Dictionary<string, HostRun> _hosts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BotChat> _botChats = new(StringComparer.OrdinalIgnoreCase);
     private const string BotChatSecretsPath = "conf/bot-chat-secrets.conf";
     private BotBanter? _botBanter;
     private readonly Queue<DateTimeOffset> _botChatRequests = new();
@@ -98,28 +115,44 @@ public sealed partial class ArenaOwnership
     private void StopBots()
     {
         _mainloopTimer.ClearTimer(TickBots, null);
-        foreach (var entry in _bots)
-            FinishBot(entry.Key.Bot.Label, entry.Value, force: true);
-        _bots.Clear();
+        foreach (var (arena, run) in _hosts)
+            FinishHost(arena, run, force: true);
+        _hosts.Clear();
+        _botChats.Clear();
         _botOccupancy.Clear();
         _botBanter?.Dispose();
         _botBanter = null;
     }
 
+    /// <summary>A bot of a host that is playing in <paramref name="arena"/> right now.</summary>
+    private Player? RunningBot(string arena, string name) =>
+        _playerData.FindPlayer(name) is { Status: PlayerState.Playing } player &&
+        string.Equals(player.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase) ? player : null;
+
+    /// <summary>The bots a host lists (not Out), with their saved settings.</summary>
+    private static IEnumerable<ArenaBot> Listed(HostRun run) => run.Bots.Where(bot =>
+        run.Shown.Any(p => p.Seat != BotSeat.Out && string.Equals(p.Label, bot.Label, StringComparison.OrdinalIgnoreCase)));
+
+    private BotChat ChatOf(string name)
+    {
+        if (!_botChats.TryGetValue(name, out var chat)) _botChats[name] = chat = new();
+        return chat;
+    }
+
     private void AddressBot(Arena arena, Player sender, ReadOnlySpan<char> message)
     {
         if (_botBanter is null || sender.Name is not { } pilot || IsBot(pilot)) return;
+        if (!_hosts.TryGetValue(arena.Name, out var host) || host.StopDeadline != default || host.Process is not { HasExited: false }) return;
         var text = message.Trim();
         if (text.IsEmpty || text.Length > 240) return;
         if (text.StartsWith("@ai ", StringComparison.OrdinalIgnoreCase)) text = text[4..].TrimStart();
         var now = DateTimeOffset.UtcNow;
-        foreach (var (key, run) in _bots)
+        foreach (var bot in Listed(host))
         {
-            if (run.Process is not { HasExited: false } || run.StopDeadline != default ||
-                !string.Equals(key.Arena, arena.Name, StringComparison.OrdinalIgnoreCase) ||
-                !MentionsBot(text, key.Bot.Label) ||
-                run.ChatReply is not null || run.TypedReply is not null || run.NextChat > now) continue;
-            var casual = key.Bot.Script.Split('\n').Select(line => line.Trim()).FirstOrDefault(
+            if (!MentionsBot(text, bot.Label) || RunningBot(arena.Name, bot.Label) is null) continue;
+            var run = ChatOf(bot.Label);
+            if (run.ChatReply is not null || run.TypedReply is not null || run.NextChat > now) continue;
+            var casual = bot.Script.Split('\n').Select(line => line.Trim()).FirstOrDefault(
                 line => line.StartsWith("casual ", StringComparison.Ordinal));
             if (casual is null) return;
             while (_botChatRequests.TryPeek(out var at) && now - at >= TimeSpan.FromHours(1))
@@ -159,26 +192,24 @@ public sealed partial class ArenaOwnership
     private void StartBotExchange(DateTimeOffset now)
     {
         if (_botBanter is null || now < _nextBotExchange) return;
-        var ready = _bots.Where(entry => entry.Value.Process is { HasExited: false } &&
-            entry.Value.StopDeadline == default &&
-            ChatProfile(entry.Key.Bot) is not null &&
-            entry.Key.Bot.Script.Split('\n').Any(line => line.Trim() == "botchat on") &&
-            _botOccupancy.TryGetValue(entry.Key.Arena, out var seen) && now - seen < TimeSpan.FromSeconds(3) &&
-            _playerData.FindPlayer(entry.Key.Bot.Label) is { Status: PlayerState.Playing })
-            .GroupBy(entry => entry.Key.Arena, StringComparer.OrdinalIgnoreCase);
-        foreach (var arena in ready)
+        foreach (var (arena, host) in _hosts)
         {
-            var pair = arena.Take(2).ToArray();
-            if (pair.Length < 2 || ChatProfile(pair[0].Key.Bot) is not { } first ||
-                ChatProfile(pair[1].Key.Bot) is not { } second) continue;
+            if (host.StopDeadline != default || host.Process is not { HasExited: false } ||
+                !_botOccupancy.TryGetValue(arena, out var seen) || now - seen >= TimeSpan.FromSeconds(3)) continue;
+            var pair = Listed(host).Where(bot => ChatProfile(bot) is not null &&
+                    bot.Script.Split('\n').Any(line => line.Trim() == "botchat on") &&
+                    RunningBot(arena, bot.Label) is not null)
+                .Take(2).ToArray();
+            if (pair.Length < 2 || ChatProfile(pair[0]) is not { } first || ChatProfile(pair[1]) is not { } second) continue;
             _nextBotExchange = now.AddMinutes(20);
-            pair[0].Value.ExchangePartner = pair[1].Key.Bot.Label;
-            pair[0].Value.Exchange = _botBanter.Exchange(first, second);
+            var chat = ChatOf(pair[0].Label);
+            chat.ExchangePartner = pair[1].Label;
+            chat.Exchange = _botBanter.Exchange(first, second);
             break;
         }
     }
 
-    private void SendBotExchange(string name, BotRun run, DateTimeOffset now)
+    private void SendBotExchange(string name, BotChat run, DateTimeOffset now)
     {
         if (run.ExchangePartner is not { } partner ||
             _playerData.FindPlayer(name) is not { Status: PlayerState.Playing, Arena: { } arena } bot ||
@@ -217,7 +248,7 @@ public sealed partial class ArenaOwnership
     private static TimeSpan TypingDelay(string text) =>
         TimeSpan.FromMilliseconds(Math.Clamp(300 + text.Length * 18 + Random.Shared.Next(60, 241), 500, 2600));
 
-    private void SendBotReply(string name, BotRun run, DateTimeOffset now)
+    private void SendBotReply(string name, BotChat run, DateTimeOffset now)
     {
         if (run.ChatReply is { IsCompleted: true } task)
         {
@@ -261,21 +292,34 @@ public sealed partial class ArenaOwnership
     private void ReconcileBots()
     {
         var now = DateTimeOffset.UtcNow;
+        var botNames = Store.BotNames();
+        // Real players flying (in a ship) per arena and freq, and every bot name logged in to the zone.
+        var flying = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
+        var botsInZone = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
         _playerData.Lock();
         try
         {
             foreach (var player in _playerData.Players)
-                if (player.Status == PlayerState.Playing && player.Type is ClientType.VIE or ClientType.Continuum &&
-                    player.Arena is { } arena &&
-                    player.Name is { } name && !IsBot(name) &&
-                    string.Equals(arena.Name, arena.BaseName, StringComparison.OrdinalIgnoreCase))
-                    _botOccupancy[arena.Name] = now;
+            {
+                if (player.Name is not { } name) continue;
+                if (botNames.Contains(name))
+                {
+                    botsInZone[name] = player;
+                    continue;
+                }
+                if (player.Status != PlayerState.Playing || player.Arena is not { } arena ||
+                    !string.Equals(arena.Name, arena.BaseName, StringComparison.OrdinalIgnoreCase)) continue;
+                _botOccupancy[arena.Name] = now;
+                if (player.Ship == ShipType.Spec) continue;
+                if (!flying.TryGetValue(arena.Name, out var freqs)) flying[arena.Name] = freqs = new();
+                freqs[player.Freq] = freqs.GetValueOrDefault(player.Freq) + 1;
+            }
         }
         finally { _playerData.Unlock(); }
 
         int cap = Math.Clamp(_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30), 0, 100);
-        var desired = new HashSet<(string Arena, ArenaBot Bot, string Owner)>();
-        _botSlots.Clear();
+        int total = 0;
+        var desired = new Dictionary<string, (string Owner, IReadOnlyList<ArenaBot> Bots)>(StringComparer.OrdinalIgnoreCase);
         foreach (var (arena, lastSeen) in _botOccupancy.ToArray())
         {
             if (now - lastSeen > TimeSpan.FromMinutes(1))
@@ -284,105 +328,150 @@ public sealed partial class ArenaOwnership
                 continue;
             }
             if (Store.Get(arena) is not { Status: ArenaStatus.Active } owned) continue;
-            int slot = 0;
-            foreach (var bot in Store.LaunchableBots(owned.Name, n => _accounts?.Find(n) is not null))
-                if (desired.Count < cap)
-                {
-                    desired.Add((owned.Name, bot, owned.Owner));
-                    _botSlots[(owned.Name, bot, owned.Owner)] = slot++;
-                }
+            var bots = Store.LaunchableBots(owned.Name, n => _accounts?.Find(n) is not null).Take(cap - total).ToList();
+            if (bots.Count == 0) continue;
+            total += bots.Count;
+            desired[owned.Name] = (owned.Owner, bots);
         }
 
-        foreach (var (key, run) in _bots.ToArray())
+        foreach (var (arena, run) in _hosts.ToArray())
         {
-            var name = key.Bot.Label;
-            if (desired.Contains(key) && run.StopDeadline == default)
-            {
-                if (run.Process?.HasExited == true)
-                {
-                    FinishBot(name, run, force: false);
-                    DelayRestart(run, now);
-                }
-                else if (run.Process is not null && _playerData.FindPlayer(name) is { Status: PlayerState.Playing } player &&
-                    player.Ship != ShipType.Spec && _botSlots.TryGetValue(key, out int slot) && player.Freq != 100 + slot &&
-                    string.Equals(player.Arena?.Name, key.Arena, StringComparison.OrdinalIgnoreCase))
-                {
-                    _game.SetFreq(player, (short)(100 + slot));
-                }
-                SendBotReply(name, run, now);
-                SendBotExchange(name, run, now);
-                continue;
-            }
-
+            if (desired.ContainsKey(arena) && run.StopDeadline == default) continue;
+            // Closing standard input sends the host's bots home; it gets a few seconds before it is killed.
             if (run.Process is { HasExited: false } process && run.StopDeadline == default)
             {
-                BotPasses.Revoke(name);
+                RevokePasses(run);
                 run.StopDeadline = now.AddSeconds(3);
-                process.StandardInput.Close();
+                try { process.StandardInput.Close(); } catch (IOException) { }
                 continue;
             }
             if (run.Process is { HasExited: false } && now < run.StopDeadline) continue;
-            FinishBot(name, run, force: true);
-            _bots.Remove(key);
+            FinishHost(arena, run, force: true);
+            _hosts.Remove(arena);
         }
 
-        foreach (var key in desired)
+        foreach (var (arena, (owner, bots)) in desired)
         {
-            if (!_bots.TryGetValue(key, out var run)) _bots[key] = run = new();
-            var name = key.Bot.Label;
-            if (run.Process is not null || run.NextStart > now ||
-                _bots.Any(entry => entry.Value.Process is not null && string.Equals(
-                    entry.Key.Bot.Label, key.Bot.Label, StringComparison.OrdinalIgnoreCase)) ||
-                _bots.Values.Count(r => r.Process is not null) >= cap || _playerData.FindPlayer(name) is not null)
-                continue;
-            try
+            if (!_hosts.TryGetValue(arena, out var run))
+                _hosts[arena] = run = new HostRun();
+            if (run.StopDeadline != default) continue; // still stopping; started again once it has gone
+            run.Owner = owner;
+            run.Bots = bots;
+
+            if (run.Process?.HasExited == true)
             {
-                var script = BotLaunchScript(key.Bot.Script);
-                var start = new ProcessStartInfo(_botProgram!) { UseShellExecute = false, RedirectStandardInput = true };
-                foreach (var arg in new[] { "--server", _botServer, "--script", "-", "--map-cache", Path.GetFullPath("data/bot-maps") }) start.ArgumentList.Add(arg);
-                var pass = BotPasses.Issue(name);
-                run.Process = Process.Start(start) ?? throw new InvalidOperationException("Bot process did not start.");
-                run.Process.StandardInput.WriteLine($"name {name}\npassword {pass}\narena {key.Arena}\nship 1\npeers [bot]\ncontroller {key.Owner}\n{script}\nend");
-                run.Process.StandardInput.Flush();
-            }
-            catch (Exception ex)
-            {
-                FinishBot(name, run, force: true);
+                Log(LogLevel.Warn, $"Bot host for [{arena}] exited ({run.Process.ExitCode}); restarting in {run.Backoff} s.");
+                FinishHost(arena, run, force: false);
                 DelayRestart(run, now);
-                Log(LogLevel.Warn, $"Could not launch bot '{name}': {ex.Message}");
             }
+            if (run.Process is null && run.NextStart <= now) StartHost(arena, run, now);
+
+            // A bot still in the zone from before (an old host's session) counts as out until it has left;
+            // then it comes in like any arriving bot, after its own short wait.
+            var target = BotDirector.Plan(bots, Store.MatchSizes(arena),
+                    flying.TryGetValue(arena, out var freqs) ? freqs : new Dictionary<int, int>())
+                .Select(p => botsInZone.ContainsKey(p.Label) && !run.Passes.ContainsKey(p.Label) ? p with { Seat = BotSeat.Out } : p)
+                .ToList();
+            run.Shown = run.Stagger.Apply(run.Seats.Step(target));
+            if (run.Process is not { } host) continue;
+
+            var lineup = new List<(ArenaBot Bot, BotPlacement Placement, string Password)>();
+            foreach (var placement in run.Shown)
+            {
+                if (placement.Seat == BotSeat.Out) continue;
+                bool inZone = botsInZone.ContainsKey(placement.Label);
+                if (run.Passes.TryGetValue(placement.Label, out var pass))
+                {
+                    // the bot has not come in on this pass: replace it, so the host (re)connects it on a fresh one
+                    if (!inZone && now - pass.Issued >= PassLifetime)
+                        run.Passes[placement.Label] = pass = (BotPasses.Issue(placement.Label), now);
+                }
+                else if (inZone) continue; // an old session still in the zone: no pass (and not listed) until it has left
+                else run.Passes[placement.Label] = pass = (BotPasses.Issue(placement.Label), now);
+                lineup.Add((bots.First(b => b.Label == placement.Label), placement, pass.Password));
+            }
+            foreach (var label in run.Passes.Keys.Where(l => !lineup.Any(e => e.Bot.Label == l)).ToList())
+            {
+                BotPasses.Revoke(label);
+                run.Passes.Remove(label);
+            }
+
+            var text = BotLineup.Render(arena, owner, lineup);
+            if (text != run.LastLineup)
+            {
+                try
+                {
+                    host.StandardInput.Write(text);
+                    host.StandardInput.Flush();
+                    run.LastLineup = text;
+                }
+                catch (IOException ex)
+                {
+                    Log(LogLevel.Warn, $"Could not send the lineup to the bot host for [{arena}]: {ex.Message}");
+                }
+            }
+
+            foreach (var (bot, placement, _) in lineup)
+            {
+                if (placement.Seat == BotSeat.In && botsInZone.TryGetValue(bot.Label, out var player) &&
+                    player.Status == PlayerState.Playing && player.Ship != ShipType.Spec && player.Freq != placement.Team &&
+                    string.Equals(player.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase))
+                    _game.SetFreq(player, (short)placement.Team);
+            }
+        }
+
+        // casual chat, for bots that are listed
+        var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var run in _hosts.Values)
+            foreach (var bot in Listed(run))
+                listed.Add(bot.Label);
+        foreach (var name in _botChats.Keys.Where(n => !listed.Contains(n)).ToList()) _botChats.Remove(name);
+        foreach (var (name, chat) in _botChats)
+        {
+            SendBotReply(name, chat, now);
+            SendBotExchange(name, chat, now);
         }
     }
 
-    private static string BotLaunchScript(string script)
+    private void StartHost(string arena, HostRun run, DateTimeOffset now)
     {
-        var lines = script.Split('\n').Select(line => line.Trim()).Where(line => line.Length != 0).ToList();
-        lines.RemoveAll(line => line == "botchat on" || line.StartsWith("announce ", StringComparison.Ordinal));
-        var casual = lines.FindIndex(line => line.StartsWith("casual ", StringComparison.Ordinal));
-        if (casual < 0) return string.Join('\n', lines);
-
-        var fields = lines[casual].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        lines.RemoveAt(casual);
-        var greeting = fields[2] switch
+        try
         {
-            "dry" => "Oh, hello {name}.",
-            "competitive" => "You're up, {name}.",
-            _ => "Hey {name}, good to see you!"
-        };
-        if (!lines.Any(line => line.StartsWith("greet ", StringComparison.Ordinal)))
-            lines.Add("greet " + greeting);
-        return string.Join('\n', lines);
+            var start = new ProcessStartInfo(_botProgram!) { UseShellExecute = false, RedirectStandardInput = true };
+            foreach (var arg in new[] { "--host", "--server", _botServer, "--map-cache", Path.GetFullPath("data/bot-maps") })
+                start.ArgumentList.Add(arg);
+            run.Process = Process.Start(start) ?? throw new InvalidOperationException("Bot host did not start.");
+            run.LastLineup = null;
+            // a new host's bots all arrive from outside, each after its own wait
+            run.Seats = new BotSeats(() => DateTimeOffset.UtcNow, Random.Shared);
+            run.Stagger = new BotStagger(() => DateTimeOffset.UtcNow, Random.Shared);
+            Log(LogLevel.Info, $"Bot host for [{arena}] started (pid {run.Process.Id}).");
+        }
+        catch (Exception ex)
+        {
+            FinishHost(arena, run, force: true);
+            DelayRestart(run, now);
+            Log(LogLevel.Warn, $"Could not start the bot host for [{arena}]: {ex.Message}");
+        }
     }
 
-    private static void DelayRestart(BotRun run, DateTimeOffset now)
+    private static void DelayRestart(HostRun run, DateTimeOffset now)
     {
         run.NextStart = now.AddSeconds(run.Backoff);
         run.Backoff = Math.Min(run.Backoff * 2, 300);
     }
 
-    private void FinishBot(string name, BotRun run, bool force)
+    private static void RevokePasses(HostRun run)
     {
-        BotPasses.Revoke(name);
+        foreach (var label in run.Passes.Keys) BotPasses.Revoke(label);
+        run.Passes.Clear();
+    }
+
+    private void FinishHost(string arena, HostRun run, bool force)
+    {
+        // A restarted host's bots log in again on new passes, once their old sessions have left the zone.
+        RevokePasses(run);
+        run.LastLineup = null;
         if (run.Process is not { } process) return;
         try
         {
@@ -391,7 +480,7 @@ public sealed partial class ArenaOwnership
         catch (InvalidOperationException) when (process.HasExited) { }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            Log(LogLevel.Warn, $"Could not stop bot '{name}': {ex.Message}");
+            Log(LogLevel.Warn, $"Could not stop the bot host for [{arena}]: {ex.Message}");
         }
         finally
         {
