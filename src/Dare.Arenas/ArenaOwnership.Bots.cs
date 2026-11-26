@@ -392,45 +392,179 @@ public sealed partial class ArenaOwnership
         }
     }
 
+    [CommandHelp(
+        Targets = CommandTarget.None,
+        Args = "[create|set|list|deploy|stop|remove] [name] [behavior] [ship 1-8]",
+        Description = """
+            Arena bots for the arena you own (you must be in it). Behaviors: fighter (chases and
+            shoots pilots), patrol (flies its waypoints), sentry (guards a spot), idle (sits still).
+              ?bots create Sparring fighter 3   makes a bot and sends it in now (ship 3 = Spider)
+              ?bots set Sparring patrol         changes its behavior or ship, keeps its waypoints
+              ?bots list                        your bots and whether they are flying
+              ?bots stop Sparring / ?bots deploy Sparring   take it out / send it back in
+              ?bots remove Sparring             deletes it
+            Waypoints, greetings and replies are set in the Arena Editor's Bots tab on the website.
+            """)]
     private void Command_bots(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (!player.Flags.Authenticated || player.Name is not { } owner || player.Arena is not { } arena ||
             Store.Get(arena.BaseName) is not { Status: ArenaStatus.Active } owned ||
             !string.Equals(owned.Owner, owner, StringComparison.OrdinalIgnoreCase))
         {
-            Reply(player, "Only the active arena's owner can manage bots.");
+            Reply(player, "Bots: only the owner of this arena can manage its bots, from inside the arena.");
             return;
         }
 
         var (action, rest) = SplitFirst(parameters);
+        var bots = Store.Bots(owned.Name);
+        ArenaBot? Find(string label) => bots.FirstOrDefault(b => string.Equals(b.Label, label, StringComparison.OrdinalIgnoreCase));
+        bool NeedName(string label, string usage)
+        {
+            if (label.Length != 0) return true;
+            Reply(player, "Bots: which bot? " + usage + (bots.Count == 0 ? "" : " Yours: " + string.Join(", ", bots.Select(b => b.Label)) + "."));
+            return false;
+        }
+        bool Known(string label)
+        {
+            if (Find(label) is not null) return true;
+            Reply(player, bots.Count == 0
+                ? $"Bots: there is no bot called {label}. Make one with ?bots create {label} fighter"
+                : $"Bots: there is no bot called {label}. Yours: {string.Join(", ", bots.Select(b => b.Label))}.");
+            return false;
+        }
+
         switch (action.ToLowerInvariant())
         {
             case "":
+            case "help":
+            case "?":
+                BotHelp(player, bots.Count);
+                break;
+
             case "list":
-                var bots = Store.Bots(owned.Name);
-                if (bots.Count == 0) Reply(player, "No bots configured.");
-                foreach (var bot in bots)
-                    Reply(player, bot.Label + ArenaStore.BotSuffix + (bot.Deployed ? " (deployed)" : " (stopped)"));
+                ListBots(player, owned.Name);
                 break;
+
+            case "create":
+            case "new":
+            case "add":
+            {
+                var args = BotCommand.Parse(rest);
+                if (!NeedName(args.Label, "Type ?bots create <name> [behavior] [ship 1-8], e.g. ?bots create Sparring fighter 3")) break;
+                if (Find(args.Label) is { } taken)
+                {
+                    Reply(player, $"Bots: {taken.Label} already exists. Change it with ?bots set {taken.Label} <behavior> [ship 1-8].");
+                    break;
+                }
+                var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship));
+                if (!saved.Ok) { Reply(player, "Bots: " + saved.Message); break; }
+                var deployed = Store.SetBotDeployment(owned.Name, owner, args.Label, true);
+                var bot = Store.Bots(owned.Name).First(b => string.Equals(b.Label, args.Label, StringComparison.OrdinalIgnoreCase));
+                Reply(player, $"Bots: created {bot.Label}{ArenaStore.BotSuffix} ({BotCommand.Describe(bot.Script)}). " +
+                    (deployed.Ok ? JoinNote() : deployed.Message));
+                if (bot.Script.Contains("behaviour patrol", StringComparison.Ordinal))
+                    Reply(player, "Bots: a patrol bot needs waypoints; add them on the map in the Arena Editor's Bots tab. Until then it stays near its spawn.");
+                break;
+            }
+
+            case "set":
+            case "edit":
             case "save":
-                var (mode, label) = SplitFirst(rest);
-                var existing = Store.Bots(owned.Name).FirstOrDefault(b =>
-                    string.Equals(b.Label, label, StringComparison.OrdinalIgnoreCase));
-                var settings = (existing?.Script ?? "").Split('\n')
-                    .Where(line => !line.TrimStart().StartsWith("behaviour ", StringComparison.Ordinal));
-                var script = string.Join('\n', settings.Prepend($"behaviour {mode.ToLowerInvariant()}")).TrimEnd();
-                Reply(player, SaveBot(owned.Name, owner, label, script).Message);
+            {
+                var args = BotCommand.Parse(rest);
+                if (!NeedName(args.Label, "Type ?bots set <name> <behavior> [ship 1-8], e.g. ?bots set Sparring patrol")) break;
+                var existing = Find(args.Label);
+                if (existing is null && !action.Equals("save", StringComparison.OrdinalIgnoreCase))
+                {
+                    Known(args.Label);
+                    break;
+                }
+                if (existing is not null && args.Behaviour is null && args.Ship is null)
+                {
+                    Reply(player, $"Bots: {existing.Label} is {BotCommand.Describe(existing.Script)}. " +
+                        $"Give a behavior (fighter, patrol, sentry, idle) or ship 1-8, e.g. ?bots set {existing.Label} sentry ship 2");
+                    break;
+                }
+                var result = SaveBot(owned.Name, owner, existing?.Label ?? args.Label,
+                    BotCommand.Apply(existing?.Script, args.Behaviour, args.Ship));
+                if (!result.Ok) { Reply(player, "Bots: " + result.Message); break; }
+                var after = Store.Bots(owned.Name).First(b => string.Equals(b.Label, existing?.Label ?? args.Label, StringComparison.OrdinalIgnoreCase));
+                Reply(player, $"Bots: {after.Label} is now {BotCommand.Describe(after.Script)}." +
+                    (after.Deployed ? " It rejoins with the change in a few seconds." : $" It is stopped; ?bots deploy {after.Label} sends it in."));
                 break;
+            }
+
             case "deploy":
+            case "start":
+            case "go":
             case "stop":
-                Reply(player, Store.SetBotDeployment(owned.Name, owner, rest, action.Equals("deploy", StringComparison.OrdinalIgnoreCase)).Message);
+            case "pause":
+            {
+                var label = BotCommand.Label(rest);
+                bool deploy = action.ToLowerInvariant() is "deploy" or "start" or "go";
+                if (!NeedName(label, deploy ? "Type ?bots deploy <name>." : "Type ?bots stop <name>.") || !Known(label)) break;
+                var result = Store.SetBotDeployment(owned.Name, owner, label, deploy);
+                Reply(player, "Bots: " + (result.Ok
+                    ? deploy ? $"{Find(label)!.Label} deployed. " + JoinNote() : $"{Find(label)!.Label} stopped. It leaves within a few seconds; its settings are kept."
+                    : result.Message));
                 break;
+            }
+
             case "remove":
-                Reply(player, SaveBot(owned.Name, owner, rest, null).Message);
+            case "delete":
+            {
+                var label = BotCommand.Label(rest);
+                if (!NeedName(label, "Type ?bots remove <name>.") || !Known(label)) break;
+                var result = SaveBot(owned.Name, owner, Find(label)!.Label, null);
+                Reply(player, "Bots: " + (result.Ok ? $"{Find(label)!.Label} removed." : result.Message));
                 break;
+            }
+
             default:
-                Reply(player, "?bots list | ?bots save <mode> <label> | ?bots deploy <label> | ?bots stop <label> | ?bots remove <label>");
+                Reply(player, $"Bots: I don't know \"{action}\".");
+                BotHelp(player, bots.Count);
                 break;
         }
     }
+
+    private void BotHelp(Player player, int count)
+    {
+        Reply(player, "Bots: ?bots create <name> [fighter|patrol|sentry|idle] [ship 1-8]   e.g. ?bots create Sparring fighter 3");
+        Reply(player, "Bots: ?bots list | ?bots set <name> <behavior> [ship] | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
+        Reply(player, "Bots: fighter chases and shoots pilots, patrol flies waypoints, sentry guards a spot, idle sits still.");
+        if (count == 0) Reply(player, "Bots: this arena has no bots yet.");
+        if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
+    }
+
+    private void ListBots(Player player, string arena)
+    {
+        var bots = Store.Bots(arena);
+        if (bots.Count == 0)
+        {
+            Reply(player, "Bots: this arena has no bots yet. Make one with ?bots create Sparring fighter");
+            return;
+        }
+        foreach (var bot in bots)
+        {
+            var flying = _playerData.FindPlayer(bot.Label + ArenaStore.BotSuffix) is { Status: PlayerState.Playing } p &&
+                string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase);
+            var state = !bot.Deployed ? "stopped" : flying ? "deployed, flying" : "deployed, joining";
+            Reply(player, $"Bots: {bot.Label}{ArenaStore.BotSuffix}  {BotCommand.Describe(bot.Script)}  [{state}]");
+        }
+        if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
+    }
+
+    /// <summary>Why deployed bots cannot fly in this zone right now, or null when they can.</summary>
+    private string? BotsUnavailable()
+    {
+        if (string.IsNullOrWhiteSpace(_botProgram))
+            return "this zone has no bot program installed, so bots are saved but cannot fly yet. Zone staff need to install oss-bot.";
+        if (_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30) <= 0)
+            return "bots are switched off zone-wide (MaxBots = 0), so they are saved but cannot fly.";
+        return null;
+    }
+
+    private string JoinNote() => BotsUnavailable() is { } why
+        ? "But " + why
+        : "It joins in a few seconds while a pilot is in the arena.";
 }
