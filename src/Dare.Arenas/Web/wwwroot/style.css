@@ -280,3 +280,21 @@ label.bot-switch input:checked + .track::after { background:var(--accent); box-s
 label.bot-switch input:disabled + .track { opacity:.6; }
 #botform details label, #botwaypointsfield label { display:grid; gap:4px; margin-top:8px; }
 #botmap { display:block; max-width:100%; height:auto; cursor:crosshair; }
+
+/* arena restart: top-bar actions, notes, dialogs */
+.ctx-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-left:auto; }
+.ctx-actions .btn.small { min-height:32px; }
+#restartenter:not(:disabled) { background:var(--hot); border-color:var(--hot); color:#07131e; font-weight:700; }
+.restart-plan { flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:10px; color:var(--hot); font-weight:600; }
+.restart-note { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:6px 0 12px; padding:8px 12px; border:1px solid var(--hot); border-radius:6px; color:var(--hot); }
+dialog { color:var(--text); background:var(--panel); border:1px solid var(--line2, #4a6179); border-radius:10px; padding:20px 22px; width:min(520px, calc(100vw - 32px)); }
+dialog::backdrop { background:rgba(2, 5, 10, .7); }
+dialog h3 { margin-top:0; }
+dialog .warn { color:var(--hot); }
+.dlg-actions { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 16px; }
+.dlg-field { display:grid; gap:6px; margin-bottom:12px; }
+.dlg-field textarea { width:100%; box-sizing:border-box; }
+.dlg-later { display:grid; gap:10px; margin-top:10px; }
+.dlg-later label.inline { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.dlg-later input[type=number] { width:6em; }
+.dlg-later button { justify-self:start; }

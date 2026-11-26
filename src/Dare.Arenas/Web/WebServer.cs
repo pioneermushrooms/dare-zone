@@ -126,6 +126,7 @@ public sealed partial class ArenaOwnership
             configMissing = cfg is null,
             maxPerPilot = ArenaStore.MaxPerPilot,
             staff = StaffFlags(player),
+            restart = RestartData(arena, player),
         };
     }
 
@@ -428,6 +429,9 @@ internal sealed partial class WebServer : IDisposable
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/restart": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
+                _m.WebRestart(p, a, Str(b, "message"), RestartAt(b), RestartEvery(b))).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/restart/cancel": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebCancelRestart(p, a)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/visibility": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebSetPrivate(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/discard": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) => _m.WebDiscard(p, a, b)).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/bots": return method == "GET" ? ListBots(req) : MethodNotAllowed();
@@ -807,6 +811,15 @@ internal sealed partial class WebServer : IDisposable
         var json = body.Value;
         return ResultReply(await OnMain(() => act(player, arena, json)).ConfigureAwait(false));
     }
+
+    /// <summary>"at": an ISO 8601 time with an offset (the page sends UTC); missing or unreadable: now.</summary>
+    private static DateTimeOffset? RestartAt(JsonElement body) =>
+        Str(body, "at") is { Length: > 0 } at && DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var when) ? when.ToUniversalTime() : null;
+
+    /// <summary>"every": seconds between announcements, 0 when missing.</summary>
+    private static int RestartEvery(JsonElement body) =>
+        body.TryGetProperty("every", out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var n) ? n : 0;
 
     /// <summary>Owner only: recycles the arena so a newly published map loads (as ?recyclearena). Body {"arena"}.</summary>
     private async Task<Reply> RecycleAsync(HttpListenerRequest req)

@@ -170,6 +170,150 @@ function renderArena(body) {
   const editor = "/arena/map?arena=" + encodeURIComponent(body.arena);
   $("openeditor").href = editor; $("viewmap").href = editor;
   drawThumb(body.arena);
+  renderRestart(body);
+}
+
+// ---- restart and enter: the top bar's buttons, the "not live yet" notes, the two dialogs ----------
+const enterUrl = (arena) => "/?arena=" + encodeURIComponent(arena);
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const andList = (xs) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
+let planTimer = 0;
+
+function renderRestart(body) {
+  const owner = body.role === "owner";
+  const r = body.restart || { running: false, online: 0, onlineNames: [], pending: [], plan: null };
+  const pending = owner && r.pending.length > 0;
+  $("enterarena").href = enterUrl(body.arena);
+  $("ctxonline").textContent = !r.running ? "Nobody in it" : r.online ? `${plural(r.online, "pilot")} in it` : "Only you in it";
+  $("restartenter").hidden = !owner;
+  $("restartenter").disabled = !pending;
+  $("restartenter").title = pending
+    ? `Restart so the running arena uses your saved ${andList(r.pending)}, then enter`
+    : "Nothing saved is waiting for a restart";
+  for (const n of document.querySelectorAll("[data-restart-note]")) {
+    n.hidden = !pending;
+    if (pending) n.querySelector("span").textContent = `Saved. The running arena isn't using your new ${andList(r.pending)} yet.`;
+  }
+  clearInterval(planTimer);
+  $("restartplan").hidden = !r.plan;
+  $("restartcancel").hidden = !owner;
+  if (r.plan) {
+    const at = new Date(r.plan.at);
+    const tick = () => {
+      const left = Math.max(0, Math.round((at - Date.now()) / 1000));
+      const inText = left >= 3600 ? `${Math.floor(left / 3600)}h ${Math.round(left % 3600 / 60)}m`
+        : left >= 60 ? `${Math.floor(left / 60)}m ${left % 60}s` : `${left}s`;
+      $("restartplantext").textContent = `Restart scheduled for ${at.toLocaleString()} (in ${inText}) by ${r.plan.by}.`;
+      if (left === 0) { clearInterval(planTimer); setTimeout(refreshRestart, 3000); }
+    };
+    tick();
+    planTimer = setInterval(tick, 1000);
+  }
+}
+
+// /api/me again, but only the restart part is redrawn (keeps the settings list as it is)
+async function refreshRestart() {
+  const arena = current?.arena;
+  if (!arena) return null;
+  const { body } = await getJson(API + "/me?arena=" + encodeURIComponent(arena));
+  if (!body || current?.arena !== arena) return null;
+  current.restart = body.restart;
+  renderRestart(current);
+  return body.restart;
+}
+
+// The web hides the in-game "?recyclearena" advice: the Restart button is right there.
+function webMessage(text) {
+  if (current?.role !== "owner") return text;
+  return (text || "").replace(/\s+The running arena isn't using[^.]*\?recyclearena\./, "")
+    .replace(/[;.]\s*[^;.]*\?recyclearena[^.]*\./, ".");
+}
+
+async function startRestart(enter) {
+  msg($("ctxmsg"), "", true);
+  const r = await refreshRestart();
+  if (!r) return msg($("ctxmsg"), "Could not reach the server.", false);
+  if (!r.running || r.online === 0) return restartNow(enter, null); // nobody to warn: just do it
+  openRestartDialog(r, enter);
+}
+
+async function restartNow(enter, message) {
+  const arena = current.arena;
+  const { body } = await postJson("/restart", { arena, message });
+  if (body?.ok && enter) { location.href = enterUrl(arena); return true; }
+  msg($("ctxmsg"), body?.message || "Could not restart.", !!body?.ok);
+  await refreshRestart();
+  return !!body?.ok;
+}
+
+let restartEnter = false;
+function openRestartDialog(r, enter) {
+  restartEnter = enter;
+  const names = r.onlineNames || [];
+  const more = r.online > names.length ? ` and ${r.online - names.length} more` : "";
+  $("restarttitle").textContent = `Restart ${current.arena}?`;
+  $("restartwho").textContent = `${plural(r.online, "pilot")} ${r.online === 1 ? "is" : "are"} in the arena right now`
+    + (names.length ? ` (${names.join(", ")}${more})` : "")
+    + ". Restarting disconnects them from the arena for a moment; they're put straight back in with your changes.";
+  $("restartnow").textContent = enter ? "Restart now and enter" : "Restart now";
+  if (!$("restartat").value) {
+    const d = new Date(Date.now() + 15 * 60000 - new Date().getTimezoneOffset() * 60000);
+    $("restartat").value = d.toISOString().slice(0, 16);
+  }
+  msg($("restartdlgmsg"), "", true);
+  $("restartdlg").showModal();
+  $("restartnow").focus();
+}
+
+function wireRestart() {
+  $("restartenter").addEventListener("click", () => startRestart(true));
+  for (const b of document.querySelectorAll("[data-restart]")) b.addEventListener("click", () => startRestart(false));
+  for (const b of document.querySelectorAll("dialog [data-close]")) b.addEventListener("click", () => b.closest("dialog").close());
+
+  $("enterarena").addEventListener("click", (e) => {
+    const r = current?.restart;
+    if (current?.role !== "owner" || !r?.pending?.length) return; // nothing waiting: just go
+    e.preventDefault();
+    $("entertext").textContent = `Your saved ${andList(r.pending)} isn't live in the running arena yet.`
+      + (r.online ? ` ${plural(r.online, "pilot")} ${r.online === 1 ? "is" : "are"} in it.` : "")
+      + " Restart it first?";
+    $("enterdlg").showModal();
+    $("enterrestart").focus();
+  });
+  $("enterrestart").addEventListener("click", () => { $("enterdlg").close(); startRestart(true); });
+  $("enteranyway").addEventListener("click", () => { location.href = enterUrl(current.arena); });
+
+  $("restartnow").addEventListener("click", async () => {
+    $("restartnow").disabled = true;
+    try {
+      const ok = await restartNow(restartEnter, $("restartmsg").value.trim() || null);
+      if (ok) { $("restartdlg").close(); $("restartmsg").value = ""; }
+      else msg($("restartdlgmsg"), $("ctxmsg").textContent, false);
+    } finally { $("restartnow").disabled = false; }
+  });
+  $("restartat").addEventListener("input", () => { document.querySelector('input[name="when"][value="at"]').checked = true; });
+  $("restartin").addEventListener("input", () => { document.querySelector('input[name="when"][value="in"]').checked = true; });
+  $("restartschedule").addEventListener("click", async () => {
+    const mode = document.querySelector('input[name="when"]:checked').value;
+    const at = mode === "in" ? new Date(Date.now() + Number($("restartin").value) * 60000) : new Date($("restartat").value);
+    if (isNaN(at) || at - Date.now() < 10000) return msg($("restartdlgmsg"), "Pick a time in the future.", false);
+    if (mode === "in" && !(Number($("restartin").value) >= 1)) return msg($("restartdlgmsg"), "Enter at least 1 minute.", false);
+    $("restartschedule").disabled = true;
+    try {
+      const { body } = await postJson("/restart", { arena: current.arena, message: $("restartmsg").value.trim() || null,
+        at: at.toISOString(), every: Number($("restartevery").value) });
+      if (!body?.ok) return msg($("restartdlgmsg"), body?.message || "Could not schedule it.", false);
+      $("restartdlg").close();
+      $("restartmsg").value = "";
+      msg($("ctxmsg"), body.message, true);
+      await refreshRestart();
+    } finally { $("restartschedule").disabled = false; }
+  });
+  $("restartcancel").addEventListener("click", async () => {
+    const { body } = await postJson("/restart/cancel", { arena: current.arena });
+    msg($("ctxmsg"), body?.message, !!body?.ok);
+    await refreshRestart();
+  });
 }
 
 // The arena's map, whole, on the overview (flat chart colours; lvl.js).
@@ -402,8 +546,9 @@ function renderSettings(sections) {
       save.addEventListener("click", async () => {
         save.disabled = true;
         const { body } = await postJson("/settings", { arena: current.arena, section: s.section, key: st.key, value: input.value });
-        msg($("setmsg"), body.message, body.ok);
+        msg($("setmsg"), webMessage(body.message), body.ok);
         save.disabled = false;
+        if (body.ok && /recyclearena/.test(body.message || "")) refreshRestart();
       });
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") save.click(); });
       d.append(row);
@@ -428,7 +573,7 @@ function applyFilter() {
 async function removeLvz(name) {
   if (!confirm(`Remove ${name} from ${current.arena}? The file is deleted.`)) return;
   const { body } = await postJson("/rmlvz", { arena: current.arena, name });
-  msg($("lvzmsg"), body.message, body.ok);
+  msg($("lvzmsg"), webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
 }
 
@@ -438,7 +583,7 @@ async function upload(file, kind, out) {
   msg(out, `Uploading ${file.name}…`, true);
   const url = `${API}/upload?kind=${kind}&arena=${encodeURIComponent(current.arena)}&name=${encodeURIComponent(file.name)}`;
   const { body } = await post(url, file, "application/octet-stream");
-  msg(out, body.message, body.ok);
+  msg(out, webMessage(body.message), body.ok);
   if (body.ok) mePage(current.arena);
 }
 
@@ -515,6 +660,6 @@ function wireHub() {
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
   // /arena/me?arena=%23name (from the builder page) opens that arena, e.g. your draft
-  if (page === "me") { wireBots(); wireHub(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
+  if (page === "me") { wireBots(); wireHub(); wireRestart(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
   else publicPage();
 });
