@@ -162,8 +162,8 @@ turn voice off in your arena with `?arenaset Voice:Enabled 0`.
 
 Owners can use **Arena editor → Bots** to add, edit, or remove bots. Choose a
 behavior and ship, and click the arena map to add waypoints. The editor also
-accepts greetings and keyword replies. Save stores the bot
-in the selected arena. Click **Deploy** to enable it or **Stop** to take it out
+accepts greetings and keyword replies, and has Team and Priority fields. Save
+stores the bot in the selected arena. Click **Deploy** to enable it or **Stop** to take it out
 while keeping its settings.
 
 In the Open SubSpace client, choose **Esc → B (Manage bots)**. The panel has
@@ -175,7 +175,7 @@ directly in chat:
 ?bots                              help
 ?bots create Sparring fighter 3    make a bot and send it in now (ship 3 = Spider)
 ?bots list                         your bots, their teams and whether each is in
-?bots set Sparring team 2          put it on team (frequency) 2
+?bots set Sparring team 2          put it on team (frequency) 2 (the web Team field does the same)
 ?bots set Sparring priority 8      1-9; when room is short, lower priority bots step aside first
 ?bots match 2 4                    field 4 bots on team 2 (?bots match 2 off removes it)
 ?bots set Sparring patrol ship 2   change behavior or ship; waypoints and chat are kept
@@ -193,11 +193,17 @@ are set in the Arena editor. If the zone has no bot program installed, the
 commands say so instead of claiming the bot will join.
 
 Bot names are plain: type `Sparring`, not `Sparring [bot]`, and a name can't be a
-pilot account's. Each bot has a team (0-9999, default 0)
-and a priority (1-9, default 5). A match size says how many bots a team fields;
-bots make room when pilots join that team and come back when they leave, the
-lowest priority going first. A bot that is out waits as a spectator or leaves
-until there is room. Anyone can type `?bots` to see which pilots in the arena are bots.
+pilot account's. An arena can have up to 16 bots. Each has a team (0-9999,
+default 0) and a priority (1-9, default 5). A match size (`?bots match <team> <size>`)
+says how many bots a team fields.
+
+Bots make room for pilots. When a pilot flies on a team whose bots are over
+its size, a bot breaks off within 8 seconds, spectates, and leaves the arena 20-60
+seconds later; the lowest priority goes first. When the pilots go, a bot returns
+3-15 seconds later. Only flying pilots count, so spectators never push a bot
+out. Real players are never moved. Bots are not counted as players anywhere
+(arena counts, the web page), and anyone can type `?bots` to see which pilots in
+the arena are bots.
 
 Bots run while a pilot is in the arena and for about a minute after the last
 pilot leaves.
