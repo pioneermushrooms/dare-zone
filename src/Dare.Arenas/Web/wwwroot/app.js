@@ -123,12 +123,12 @@ function renderNoArena(body) {
 
 function renderArena(body) {
   const owner = body.role === "owner";
-  $("arenatitle").textContent = body.arena;
+  $("arenatitle").textContent = arenaLabel(body.arena);
   const st = $("arenastatus");
   st.textContent = body.status || ""; st.className = "tag " + (body.status || "");
   $("arenameta").textContent = `${owner ? "You own it" : "You are a co-mod"} · owner ${body.owner}`
     + ` · last visited ${when(body.lastEntered)}`;
-  $("gocmd").textContent = `?go ${body.arena}`;
+  $("gocmd").textContent = `?go ${playName(body.arena)}`;
   const pick = $("arenapick");
   $("overview-comods").textContent = body.coMods.join(", ") || "None";
   $("overview-map").textContent = body.map || "No map";
@@ -137,7 +137,7 @@ function renderArena(body) {
   $("overview-bots-label").hidden = $("botnav").hidden;
   $("overview-bots").hidden = $("botnav").hidden;
   pick.replaceChildren(...body.arenas.map((a) => {
-    const o = el("option", { value: a.name, text: `${a.name} (${a.staff ? "staff" : a.role})` });
+    const o = el("option", { value: a.name, text: `${arenaLabel(a.name)} (${a.staff ? "staff" : a.role})` });
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
@@ -176,7 +176,10 @@ function renderArena(body) {
 }
 
 // ---- restart and enter: the top bar's buttons, the "not live yet" notes, the two dialogs ----------
-const enterUrl = (arena) => "/?arena=" + encodeURIComponent(arena) + "&enter=1"; // the home page presses Enter
+const PUBLIC = "(public)"; // the public arenas' shared folder; in game it is arena 0
+const playName = (arena) => arena === PUBLIC ? "0" : arena;
+const arenaLabel = (arena) => arena === PUBLIC ? "Public (0)" : arena;
+const enterUrl = (arena) => "/?arena=" + encodeURIComponent(playName(arena)) + "&enter=1"; // the home page presses Enter
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const andList = (xs) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
 let planTimer = 0;

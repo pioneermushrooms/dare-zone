@@ -137,6 +137,13 @@ one-time link, valid 10 minutes). Your hub is <https://subspacefoundation.com/ar
   (super moderators and sysops, same as `?createarena`), every arena and the event log.
   Suspend, revive, transfer and archive stay in game (`?arenaadmin`).
 
+## Voice menu
+
+Pilots on the Dare client press **V** and a few letters to send spoken lines ("He's red!",
+"Woohoo!") to their team or the whole arena. Each player gets 3 lines per 6 seconds, then 10
+seconds of voice silence. Change that with `Voice:Burst`, `Voice:Window` and `Voice:Silence`, or
+turn voice off in your arena with `?arenaset Voice:Enabled 0`.
+
 ## Limits
 
 - Up to 3 arenas, 3 drafts and 3 waiting requests per pilot.

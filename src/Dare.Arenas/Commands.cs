@@ -35,6 +35,9 @@ public sealed partial class ArenaOwnership
         Add("weblogin", Command_weblogin);
         Add("bots", Command_bots);
 
+        // voice menu (any player; the Dare client's V menu sends these)
+        Add("v", Command_v);
+
         // drafts (any signed-in pilot)
         RegisterDraftCommands();
 

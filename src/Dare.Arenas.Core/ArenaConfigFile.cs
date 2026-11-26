@@ -34,6 +34,8 @@ public static class ArenaConfigFile
 
     private static bool IsPlainName(string? name)
     {
+        // the public arenas (0, 1, ...) share one folder, named after their base name
+        if (name == PublicCounts.PublicGroup) return true;
         // a draft (#name) is its own arena with its own folder; '#' only as the first character
         if (!string.IsNullOrEmpty(name) && DraftRules.IsDraft(name)) name = name[1..];
         if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength) return false;

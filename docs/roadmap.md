@@ -56,6 +56,17 @@ end-to-end check per milestone; fresh session per project.
   update), not video. Use `--record`/replay only for a targeted repro once code review points
   at a suspect.
 
+## 6. Voice menu (built 2026-11-26, not merged)
+- Tribes-style quick voice lines: V + letters, 73 phrases (team/global), server `?v` with spam
+  limit and arena switch `Voice:Enabled`; Enter-to-chat in the client (default on).
+- Branches: dare-zone `voice-menu`; client `voice-menu` (worktree `~/oss-src/voice-menu`).
+  Clips: Chatterbox, ralph voice + monster treatment, tooling in `voice/`.
+- Spec/plan: `docs/superpowers/specs/2026-11-25-voice-menu-design.md`,
+  `docs/superpowers/plans/2026-11-25-voice-menu.md`. Tried in game by Chris 2026-11-26: good.
+- Before deploy: check real Continuum ignores ids 128+ (zone already sends it text-only);
+  `?shutup` path untested. Later: voice packs, a bindable voice key with Enter-to-chat off,
+  deferred minors in `.superpowers/sdd/2026-11-25-voice-menu/progress.md`.
+
 ## Housekeeping
 - Deferred minors: see `.superpowers` ledgers (copied to `~/oss-src/dare-previews/`).
 - Clean live test data (test arenas/requests) when Chris decides.

@@ -120,6 +120,7 @@ public sealed partial class ArenaOwnership : IModule
         PromoteDrafts();
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
+        LoadVoice();
         RegisterCommands();
         RegisterStaff(broker);
         LoadZoneList(broker);
@@ -127,6 +128,7 @@ public sealed partial class ArenaOwnership : IModule
         StartWeb();
         StartBots();
         StartRestarts(broker);
+        EnsurePublicConf();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
         return true;
