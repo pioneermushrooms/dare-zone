@@ -27,6 +27,9 @@ What the scripts enforce:
 - the commit contains what is live, read from `/var/www/foundation/DEPLOYED.json` (site) or
   `/var/www/foundation/play/DEPLOYED.json` (client). If refused, merge the live commit and push.
   `--force-rollback` overrides after listing the commits it would drop; only when Chris says so;
+- nothing was changed by hand: each record lists the sha256 of every file its deploy shipped, and
+  the next deploy is refused when any of them differs on the server (someone copied files by hand,
+  so the record no longer says what is live). Get that work merged into main and deployed;
 - one deploy at a time (`flock` on `/var/lock/foundation-deploy.lock`; a refused deploy is told
   who holds it). The server-side installers refuse to run outside a deploy;
 - each deploy writes the new record: repo, branch, commit, UTC time and `--by` (public: use a

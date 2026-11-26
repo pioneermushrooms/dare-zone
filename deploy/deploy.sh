@@ -119,6 +119,7 @@ echo "== install"
 remote_cmd=$(printf '%q ' bash "$REMOTE/deploy/remote-install.sh" "$REMOTE" "$@")
 # shellcheck disable=SC2029  # expanded locally on purpose, already quoted with %q
 ssh "$HOST" "$remote_cmd"
+GUARD_SHIPPED_DIR=$STAGE/site
 guard_write_record "$RECORD" "plugin site"
 guard_unlock
 

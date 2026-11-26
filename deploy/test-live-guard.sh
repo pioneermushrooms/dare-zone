@@ -118,6 +118,14 @@ check "files are B's build" 'grep -q "$B" "$SRV/www/play/pkg/oss_client_bg.wasm"
 check "extra server file kept" '[ -f "$SRV/www/play/extra.txt" ]'
 check "backup holds A's build" 'grep -q "$A" "$SRV"/root/play-backup-*/pkg/oss_client_bg.wasm'
 check "lock released" '[ ! -s "$SRV/lock/deploy.lock.who" ]'
+check "record lists the shipped files" 'python3 -c "import json,sys; f=json.load(open(sys.argv[1]))[\"files\"]; sys.exit(0 if len(f)==6 and \"./pkg/oss_client_bg.wasm\" in f else 1)" "$SRV/www/play/DEPLOYED.json"'
+# a hand copy after the recorded deploy: the next deploy is refused and names the file
+cp "$SRV/www/play/pkg/oss_client_bg.wasm" "$H/wasm.keep"; echo "hand copied" > "$SRV/www/play/pkg/oss_client_bg.wasm"
+expect refused "changed since the last recorded deploy" "hand change refused"  -- "${DC[@]}" --by t1
+expect refused "oss_client_bg.wasm" "refusal names the changed file"            -- "${DC[@]}" --by t1
+echo stray > "$SRV/www/play/stray.txt"
+cp "$H/wasm.keep" "$SRV/www/play/pkg/oss_client_bg.wasm"
+expect ok "recorded files are as deployed" "unlisted extra file is not drift" -- "${DC[@]}" --by "session one"
 
 # another session's branch went live (C2 on top of B); this checkout's live is reset to before it
 C2=$(ccommit C2); git -C "$C" push -q dare main
@@ -165,6 +173,9 @@ expect ok "all files match"      "seed site"                  -- "$S/deploy/live
 S2=$(scommit S2); git -C "$S" push -q origin main
 expect ok "adds 1 commit"        "publish site S2"            -- "${PUB[@]}" --by "site one" "$S2"
 check "site record = S2, parts site" '[ "$(field "$SRV/www/DEPLOYED.json" commit)" = "$S2" ] && grep -q S2 "$SRV/www/style.css"'
+echo "/* by hand */" >> "$SRV/www/style.css"
+expect refused "changed since the last recorded deploy" "site hand change refused" -- "${PUB[@]}" --by "site one" "$S2"
+expect ok "overwriting them"     "--force-rollback overwrites a hand change" -- "${PUB[@]}" --by "site one" --force-rollback "$S2"
 expect refused "DROP"            "publish older S1 refused"   -- "${PUB[@]}" --by "site one" "$S1"
 git -C "$S" checkout -q -b side; S3=$(scommit S3); git -C "$S" push -q origin side
 expect refused "not on origin's integration branch" "commit off the integration branch" -- "${PUB[@]}" --by x "$S3"

@@ -13,3 +13,21 @@ header .navlinks a[href="/"]::before{border-left:9px solid currentColor;border-t
 header .navlinks a[href="/arena/me"]::before{width:14px;height:14px;border:2px solid var(--cyan);border-radius:2px;background:linear-gradient(var(--cyan),var(--cyan)) center/2px 100% no-repeat,linear-gradient(var(--cyan),var(--cyan)) center/100% 2px no-repeat}
 @media(max-width:760px){header .navlinks{gap:8px}header .navlinks a{flex:1 1 0;justify-content:center}}
 @media(prefers-reduced-motion:reduce){header .navlinks a{transition:none}}
+/* HANGAR (same look as /arena/style.css and play.css; draft: docs/design/site-drafts.html): bevelled metal buttons,
+   condensed uppercase labels, layered panels */
+:root{--label:'Barlow Condensed','Arial Narrow',Impact,sans-serif}
+body{background:radial-gradient(1px 1px at 12% 18%,#ffffff40,transparent),radial-gradient(1px 1px at 72% 8%,#ffffff30,transparent),radial-gradient(1.5px 1.5px at 88% 46%,#9fe9ff40,transparent),radial-gradient(1200px 600px at 70% -10%,#12304f 0%,transparent 60%),var(--bg);background-attachment:fixed}
+header{background:linear-gradient(180deg,#0f1a2b,#0a121f);border-bottom:1px solid #000;box-shadow:inset 0 -1px 0 #ffffff0a,0 1px 0 #1d2c42,0 10px 30px -10px #000c}
+.brand{font:700 1.15rem/1 var(--label);letter-spacing:.22em}.logo{text-shadow:0 0 8px #71e4fa40}
+h1{font-weight:800;background:linear-gradient(180deg,#fff 30%,#a9bdd4);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 0 #000) drop-shadow(0 10px 24px #000a)}
+h1 em{-webkit-text-fill-color:var(--cyan)}
+h2{font-weight:800;text-shadow:0 2px 0 #000}
+.eyebrow{font:700 .9rem/1.2 var(--label);letter-spacing:.2em;text-transform:uppercase}
+.panel,.portal,.arena-card,.tracks{background:linear-gradient(180deg,#13203a 0,#0d1728 140px,#0b1422);border:1px solid #22324a;border-top-color:#3a5576;border-radius:8px;box-shadow:inset 0 1px 0 #ffffff12,0 1px 0 #000,0 24px 50px -18px #000e}
+.primary,.outline,header .navlinks a,.portal-action{font:700 1.02rem/1 var(--label);letter-spacing:.1em;text-transform:uppercase;border-radius:5px;transition:transform .08s,box-shadow .15s,background .15s,border-color .15s,color .15s}
+.primary,header .navlinks a[href="/"]{color:#03222c;text-shadow:0 1px 0 #ffffff60;border:1px solid #9cf0ff;border-bottom-color:#1f8aa3;background:linear-gradient(180deg,#93e8f8,#5fd3ec 55%,#48c1dd);box-shadow:inset 0 1px 0 #ffffff80,inset 0 -2px 0 #2ea6c4,0 2px 0 #0b4a5c,0 8px 16px -8px #000}
+.primary:hover,header .navlinks a[href="/"]:hover{color:#03222c;background:linear-gradient(180deg,#adf2fa,#72dbf1 55%,#55c9e4);border-color:#adf2fa;border-bottom-color:#1f8aa3}
+.outline,header .navlinks a:not([href="/"]){color:var(--ink);text-shadow:0 1px 0 #000a;border:1px solid #34496a;border-bottom-color:#0a1320;background:linear-gradient(180deg,#22344f,#172539);box-shadow:inset 0 1px 0 #ffffff1f,0 2px 0 #04080e,0 8px 16px -8px #000}
+.outline:hover,header .navlinks a:not([href="/"]):hover{color:#fff;border-color:#4f7298;border-bottom-color:#0a1320;background:linear-gradient(180deg,#2a4062,#1b2c44)}
+.primary:active,.outline:active,header .navlinks a:active{transform:translateY(2px);box-shadow:inset 0 1px 0 #ffffff14,0 0 0 #000,0 4px 10px -6px #000}
+@media(prefers-reduced-motion:reduce){.primary,.outline,header .navlinks a{transition:none}}

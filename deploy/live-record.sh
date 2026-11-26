@@ -70,4 +70,5 @@ echo "== checksum $(wc -l < "$TMP/SUMS" | tr -d ' ') files of $GUARD_COMMIT agai
 guard_remote bash -c 'cd "$1" && sha256sum -c - 2>&1 | grep -v ": OK$"; exit "${PIPESTATUS[0]}"' _ "$dir" < "$TMP/SUMS" ||
   guard_die "what is live in $dir is not $GUARD_COMMIT (the files above differ); record not written"
 echo "all files match"
+GUARD_SHIPPED_DIR=$compare
 guard_write_record "$RECORD" "$what"
