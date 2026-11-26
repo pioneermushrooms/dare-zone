@@ -25,14 +25,15 @@ async function post(path, body) {
 }
 
 // Wires a form: disables the button while waiting, shows the answer, then calls done(body, values).
-function wire(form, out, path, done, hint) {
+// extra() adds fields to the request body (not to values).
+function wire(form, out, path, done, hint, extra) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = form.querySelector("button[type=submit]");
     const v = values(form);
     btn.disabled = true;
     msg(out, "…", true);
-    const { body } = await post(path, v);
+    const { body } = await post(path, extra ? { ...v, ...extra() } : v);
     btn.disabled = false;
     msg(out, body.ok && hint ? body.message + " " + hint : body.message, body.ok);
     if (body.ok && done) done(body, v);
@@ -41,8 +42,36 @@ function wire(form, out, path, done, hint) {
 
 const NOTHING = "If nothing arrives in a few minutes, try again.";
 
+// Where the pilot was going before signing in: ?next= on these pages (kept across sign-up and
+// verify in sessionStorage). The server checks it and answers with the place to go (body.next);
+// only a same-site path starting with a single "/" is ever followed.
+const DEFAULT_NEXT = "/account/";
+function wanted() {
+  const q = new URLSearchParams(location.search).get("next");
+  if (q) store.set("acct_next", q);
+  return q || store.get("acct_next");
+}
+function safePath(p) { return typeof p === "string" && /^\/(?![\/\\])/.test(p) && !/[\\\s]/.test(p) ? p : ""; }
+function goNext(body, fallback) {
+  try { document.cookie = "dare_next=; Path=/; Max-Age=0; SameSite=Lax"; } catch { /* no cookies */ }
+  store.set("acct_next", "");
+  const next = safePath(body && body.next);
+  location.href = next && next !== DEFAULT_NEXT ? next : fallback;
+}
+// carries ?next= on to the other sign-in pages' links
+function keepNext() {
+  const next = wanted();
+  if (!next) return;
+  for (const a of document.querySelectorAll('a[href^="/account/signup"], a[href^="/account/login"]')) {
+    const u = new URL(a.getAttribute("href"), location.origin);
+    u.searchParams.set("next", next);
+    a.setAttribute("href", u.pathname + u.search + u.hash);
+  }
+}
+
 const pages = {
   signup() {
+    keepNext();
     const form = $("form");
     const noEmail = () => form.mode.value === "none";
     const show = () => {
@@ -61,13 +90,14 @@ const pages = {
       const v = values(form);
       btn.disabled = true;
       msg($("msg"), "…", true);
+      const next = wanted();
       const { body } = await post("/signup", noEmail()
-        ? { name: v.name, password: v.password, noEmail: true }
+        ? { name: v.name, password: v.password, noEmail: true, next }
         : { name: v.name, password: v.password, email: v.email });
       btn.disabled = false;
       msg($("msg"), body.message, body.ok);
       if (!body.ok) return;
-      if (noEmail()) { setTimeout(() => { location.href = "/"; }, 1500); return; }
+      if (noEmail()) { setTimeout(() => goNext(body, "/"), 1500); return; }
       store.set("acct_email", v.email); store.set("acct_sent", body.message);
       location.href = "/account/verify";
     });
@@ -75,10 +105,11 @@ const pages = {
   verify() {
     $("form").email.value = store.get("acct_email");
     if (store.get("acct_sent")) $("sent").textContent = store.get("acct_sent") + " It is valid for 10 minutes. " + NOTHING;
-    wire($("form"), $("msg"), "/verify", () => { location.href = "/account/"; });
+    wire($("form"), $("msg"), "/verify", (b) => goNext(b, DEFAULT_NEXT), undefined, () => ({ next: wanted() }));
   },
   login() {
-    wire($("form"), $("msg"), "/login", () => { location.href = "/account/"; });
+    keepNext();
+    wire($("form"), $("msg"), "/login", (b) => goNext(b, DEFAULT_NEXT), undefined, () => ({ next: wanted() }));
   },
   forgot() {
     wire($("form"), $("msg"), "/forgot", (b, v) => {

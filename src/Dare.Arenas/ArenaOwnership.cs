@@ -87,6 +87,7 @@ public sealed partial class ArenaOwnership : IModule
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             _store = new ArenaStore(DbPath, () => DateTimeOffset.UtcNow);
             _accounts = new AccountStore(DbPath, () => DateTimeOffset.UtcNow);
+            WebAuth.Attach(_accounts); // site sign-ins survive zone restarts
         }
         catch (Exception ex)
         {
@@ -110,6 +111,7 @@ public sealed partial class ArenaOwnership : IModule
             CloseConfs();
             _store.Dispose();
             _store = null;
+            WebAuth.Attach(null);
             _accounts?.Dispose();
             _accounts = null;
             return false;
@@ -147,6 +149,7 @@ public sealed partial class ArenaOwnership : IModule
         CloseConfs();
         _store?.Dispose();
         _store = null;
+        WebAuth.Attach(null);
         _accounts?.Dispose();
         _accounts = null;
         return true;

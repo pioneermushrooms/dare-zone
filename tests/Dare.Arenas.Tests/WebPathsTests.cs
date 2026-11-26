@@ -23,10 +23,11 @@ public sealed class WebPathsTests
     }
 
     [Fact]
-    public void session_cookie_is_httponly_secure_lax_24h_site_wide()
+    public void session_cookie_is_persistent_30_days_httponly_secure_lax_site_wide()
     {
         var c = WebPaths.SessionCookie("abc", secure: true);
-        Assert.Equal("dare_session=abc; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax", c);
+        Assert.Equal("dare_session=abc; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax", c);
+        Assert.DoesNotContain("Expires", c); // Max-Age makes it persistent, not a browser-session cookie
     }
 
     [Fact]
