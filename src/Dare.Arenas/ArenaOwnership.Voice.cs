@@ -71,7 +71,8 @@ public sealed partial class ArenaOwnership
         }
 
         var type = phrase.Scope == VoiceScope.Global ? ChatMessageType.Pub : ChatMessageType.Freq;
-        if (_chat.GetPlayerChatMask(player).IsRestricted(type))
+        // The player's own mask (?shutup) and the arena's (Chat:RestrictChat, ?setcm), as typed chat.
+        if ((_chat.GetPlayerChatMask(player) | _chat.GetArenaChatMask(arena)).IsRestricted(type))
         {
             Reply(player, "You can't talk right now.");
             return;
@@ -86,19 +87,24 @@ public sealed partial class ArenaOwnership
         }
         if (verdict.Kind == VoiceVerdictKind.Silenced) return;
 
-        var recipients = new HashSet<Player>();
+        // Continuum gets the text without the sound: ids 128-255 mean nothing to it, and what it
+        // would do with one is unverified. Every other client (the Dare client) hears the clip.
+        var withSound = new HashSet<Player>();
+        var textOnly = new HashSet<Player>();
         _playerData.Lock();
         try
         {
             foreach (var p in _playerData.Players)
                 if (p.Status == PlayerState.Playing && p.Arena == arena
                     && (phrase.Scope == VoiceScope.Global || p.Freq == player.Freq))
-                    recipients.Add(p);
+                    (p.Type == ClientType.Continuum ? textOnly : withSound).Add(p);
         }
         finally { _playerData.Unlock(); }
 
-        _chat.SendAnyMessage(recipients, type, (ChatSound)phrase.Sound, player, phrase.Text);
-        // The website's chat panel listens to chat callbacks; this line didn't come through Chat.
+        if (withSound.Count > 0) _chat.SendAnyMessage(withSound, type, (ChatSound)phrase.Sound, player, phrase.Text);
+        if (textOnly.Count > 0) _chat.SendAnyMessage(textOnly, type, ChatSound.None, player, phrase.Text);
+        // The website's chat panel listens to chat callbacks; this line didn't come through Chat, so
+        // other ChatMessageCallback listeners (none today besides the web panel) don't see it either.
         Callback_Chat(arena, player, type, (ChatSound)phrase.Sound, null, player.Freq, phrase.Text);
     }
 }
