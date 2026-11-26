@@ -173,6 +173,47 @@
     roles: Object.fromEntries(Object.keys(ROLES).map((r, i) => [r, i + 1])),
   };
 
+  /**
+   * Layouts from a standard tile layout file (format "dare-tile-layout", docs/tile-layout.md): one
+   * per pack, id "<pack id>". Roles are matched by their open edges, never by name (a layout may
+   * rename them). A role the pack has no piece for drops open edges until one exists (most edges
+   * kept first, a straight bar before a corner), else single, else fill: the spec's own rule.
+   * Returns { layouts, errors }.
+   */
+  function fromSpec(spec) {
+    const errors = [];
+    if (!spec || spec.format !== "dare-tile-layout") return { layouts: [], errors: ['not a "dare-tile-layout" file'] };
+    const norm = (o) => "NESW".split("").filter((e) => String(o || "").toUpperCase().includes(e)).join("");
+    const nameByOpen = new Map();
+    for (const [name, r] of Object.entries(spec.roles || {})) if (r && typeof r.open === "string") nameByOpen.set(norm(r.open), name);
+    const out = [];
+    for (const p of Array.isArray(spec.packs) ? spec.packs : []) {
+      if (!p || !p.id || !p.tiles) continue;
+      const tileFor = (o) => { const n = nameByOpen.get(o), t = n && p.tiles[n]; return Number.isInteger(t) && t >= 1 && t <= 161 ? t : undefined; };
+      const pick = (open) => {
+        let t = tileFor(open);
+        if (t) return t;
+        const subsets = [];
+        for (let m = (1 << open.length) - 2; m >= 0; m--) subsets.push(open.split("").filter((_, i) => m & (1 << i)).join(""));
+        const straight = (o) => (o === "NS" || o === "EW" ? 0 : 1);
+        subsets.sort((a, b) => b.length - a.length || straight(a) - straight(b));
+        for (const o of subsets) if ((t = tileFor(o))) return t;
+        return tileFor("NESW");
+      };
+      const roles = {};
+      for (const role of Object.keys(ROLES)) {
+        const t = pick(norm(roleSides(role)));
+        if (t) roles[role] = t;
+      }
+      const layout = { id: p.id, name: `${spec.name ? spec.name.replace(/\s*\(.*\)$/, "") + ": " : ""}${p.name || p.id}`, roles, fallback: roles.lone || roles.fill || 1, spec: true };
+      const errs = check(layout);
+      if (errs.length || !Object.keys(roles).length) { errors.push(`pack ${p.id}: ${errs.join("; ") || "no usable tiles"}`); continue; }
+      out.push(layout);
+    }
+    if (!out.length && !errors.length) errors.push("no packs");
+    return { layouts: out, errors };
+  }
+
   const layouts = new Map();
   function register(layout) {
     const errs = check(layout);
@@ -235,7 +276,7 @@
   }
 
   root.Autotile = {
-    B, ROLES, STAND_IN, layouts, register, check, roleOf, roleSides, fallbacks, resolve,
+    B, ROLES, STAND_IN, layouts, register, check, fromSpec, roleOf, roleSides, fallbacks, resolve,
     maskAt, tidy, isPlainWall, previewTileset,
   };
 })();
