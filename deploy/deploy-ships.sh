@@ -2,11 +2,12 @@
 # Installs the ship service (ships/: the ship generator behind a loopback HTTP API) on the
 # Foundation server, as systemd unit dare-ships. Run from your Mac. Safe to re-run.
 #
-#   deploy/deploy-ships.sh [--set-key]
+#   deploy/deploy-ships.sh [--set-key | --key-stdin]
 #
 #   --set-key     also asks (without echo) for the PixelLab API key and stores it on the server in
 #                 /etc/dare-ships.env (root, mode 600). Without a key, Random ships work and Prompt
 #                 answers "not set up on this server yet".
+#   --key-stdin   the same, reading the key from stdin (one line) instead of a prompt
 #   DEPLOY_HOST   ssh target (default root@5.161.238.245)
 #
 # On the server: /opt/dare-ships (code + venv with Pillow and requests), service user dare-ships,
@@ -18,33 +19,38 @@ set -euo pipefail
 HOST=${DEPLOY_HOST:-root@5.161.238.245}
 SSH=${SSH:-ssh}
 SET_KEY=0
-[ "${1:-}" = "--set-key" ] && SET_KEY=1
+case "${1:-}" in --set-key) SET_KEY=1 ;; --key-stdin) SET_KEY=2 ;; esac
 cd "$(dirname "$0")/.."
 
 KEY=""
-if [ $SET_KEY = 1 ]; then
+if [ $SET_KEY = 2 ]; then
+  IFS= read -r KEY || true
+elif [ $SET_KEY = 1 ]; then
   [ -t 0 ] || { echo "run this in a terminal: it asks for the key without echoing it" >&2; exit 2; }
   read -rsp "PixelLab API key (input hidden): " KEY; echo >&2
+fi
+if [ $SET_KEY != 0 ]; then
   if [ -z "$KEY" ] || [[ $KEY == *[[:space:]]* ]] || [[ $KEY == *[^[:print:]]* ]]; then
     echo "empty key, or whitespace/control characters in it; nothing was changed" >&2; exit 1
   fi
 fi
 
 echo "== copying ships/ to $HOST:/opt/dare-ships"
-tar -C ships -czf - shipgen.py service.py requirements.txt | $SSH "$HOST" 'set -e
+COPYFILE_DISABLE=1 tar -C ships -czf - shipgen.py service.py requirements.txt | $SSH "$HOST" 'set -e
   id -u dare-ships >/dev/null 2>&1 || useradd --system --home /opt/dare-ships --shell /usr/sbin/nologin dare-ships
-  mkdir -p /opt/dare-ships && tar -C /opt/dare-ships -xzf - && chown -R root:root /opt/dare-ships'
+  mkdir -p /opt/dare-ships && rm -f /opt/dare-ships/._* && tar -C /opt/dare-ships -xzf - && chown -R root:root /opt/dare-ships'
 
 echo "== venv, unit, start"
 # shellcheck disable=SC2016  # the $-expressions are meant for the remote shell
 printf '%s\n' "$KEY" | $SSH "$HOST" 'set -euo pipefail
 IFS= read -r key || true
 if [ -n "$key" ]; then
-  umask 077
-  printf "PIXEL_LAB_API_KEY=%s\n" "$key" > /etc/dare-ships.env.tmp && mv /etc/dare-ships.env.tmp /etc/dare-ships.env
+  (umask 077; printf "PIXEL_LAB_API_KEY=%s\n" "$key" > /etc/dare-ships.env.tmp && mv /etc/dare-ships.env.tmp /etc/dare-ships.env)
   echo "PixelLab key stored in /etc/dare-ships.env"
 fi
-[ -f /etc/dare-ships.env ] || { umask 077; : > /etc/dare-ships.env; }
+[ -f /etc/dare-ships.env ] || (umask 077; : > /etc/dare-ships.env)
+umask 022
+chmod -R a+rX /opt/dare-ships
 command -v python3 >/dev/null || { echo "python3 is missing" >&2; exit 1; }
 [ -x /opt/dare-ships/venv/bin/python ] || python3 -m venv /opt/dare-ships/venv \
   || { echo "python3 -m venv failed: apt-get install python3-venv, then re-run" >&2; exit 1; }
