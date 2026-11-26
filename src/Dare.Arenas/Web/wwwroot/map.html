@@ -6,6 +6,7 @@
 <title>Map editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <script src="/arena/lvl.js" defer></script>
+<script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
 <script src="/arena/editor.js" defer></script>
 </head>
@@ -19,6 +20,7 @@
     <button type="button" class="ghost small" id="tRect" aria-pressed="false">Rectangle <kbd>R</kbd></button>
     <button type="button" class="ghost small" id="tErase" aria-pressed="false">Eraser <kbd>E</kbd></button>
     <button type="button" class="ghost small" id="tPan" aria-pressed="false">Pan <kbd>Space</kbd></button>
+    <button type="button" class="ghost small" id="tTidy" aria-pressed="false" title="Drag over walls to give each the right end, bar, corner or junction tile">Tidy walls <kbd>T</kbd></button>
     <button type="button" class="ghost small" id="undo">Undo</button>
     <button type="button" class="ghost small" id="redo">Redo</button>
     <button type="button" class="ghost small" id="zoomOut" aria-label="Zoom out">−</button>
@@ -35,9 +37,20 @@
     <p class="kicker">Start from</p>
     <div class="row"><select id="startfrom" aria-label="Start from a map"><option value="">a ready-made map…</option><option value="!empty">an empty map</option></select></div>
     <div class="row"><button type="button" class="ghost small" id="randomize">Randomize</button>
-      <select id="gensize" aria-label="Size of a random map"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option></select>
-      <select id="gensym" aria-label="Symmetry of a random map"><option value="4">4-way</option><option value="2">2-way</option></select></div>
+      <select id="genlayout" aria-label="Kind of random map"></select></div>
+    <div class="row">
+      <select id="gensize" aria-label="Size of a random map"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option><option value="huge">huge</option></select>
+      <select id="gensym" aria-label="Symmetry of a random map"><option value="4">4-way</option><option value="2">2-way</option><option value="1">no mirror</option></select>
+      <select id="genthick" aria-label="Wall thickness"><option value="3">thick walls</option><option value="2">medium walls</option><option value="1">thin walls</option></select></div>
+    <div class="row"><label class="hint" for="gendensity">Rock</label>
+      <input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="How much rock">
+      <label class="hint"><input type="checkbox" id="genflags"> flags</label></div>
     <p class="hint" id="genseed"></p>
+    <p class="kicker">Wall tiles</p>
+    <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
+      <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
+    <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
+    <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
     <p class="kicker">Your maps</p>
     <ul class="libmaps" id="libmaps"></ul>
     <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>

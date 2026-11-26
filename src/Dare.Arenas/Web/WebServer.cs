@@ -430,6 +430,7 @@ internal sealed partial class WebServer : IDisposable
             case "/editor.js": return Get(method, () => Static("editor.js"));
             case "/lvl.js": return Get(method, () => Static("lvl.js"));
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
+            case "/autotile.js": return Get(method, () => Static("autotile.js"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/restart": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
@@ -1123,7 +1124,7 @@ internal sealed partial class WebServer : IDisposable
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "editor.js" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js" }.Concat(AccountStaticFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

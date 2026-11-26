@@ -19,7 +19,8 @@
   const undoStack = [], redoStack = [];
   let flatView = false; // "Plain colours": ignore the map's tileset
   let libId = null, libName = null; // the map from "Your maps" being edited, if any
-  const tileset = () => flatView ? null : (ownTileset || mapTileset);
+  let roleView = null; // "Show wall roles": a drawn tileset showing each tile's auto-tiling role
+  const tileset = () => roleView || (flatView ? null : (ownTileset || mapTileset));
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
   const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
@@ -152,11 +153,40 @@
     const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
     replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name}: ${m.count} tiles. Publish to use it.`);
   });
+  // ---- random maps, and tidying walls (autotile.js) -------------------------------------------------
+  for (const [id, label] of Object.entries(Lvl.GEN_LAYOUTS)) $("genlayout").append(new Option(label, id));
+  for (const l of Autotile.layouts.values()) $("tilelayout").append(new Option(l.name || l.id, l.id));
+  const tileLayout = () => Autotile.layouts.get($("tilelayout").value) || Autotile.STAND_IN;
+  $("genlayout").addEventListener("change", () => {
+    const teams = $("genlayout").value === "teams";
+    $("gensym").disabled = teams; // left vs right, always
+    $("genflags").disabled = teams; // always has flag rooms
+  });
   $("randomize").addEventListener("click", () => {
     const seed = (Math.random() * 2 ** 32) >>> 0;
-    const g = Lvl.generate(seed, { size: $("gensize").value, symmetry: Number($("gensym").value), tile: cur > 0 && cur <= 161 ? cur : 1 });
-    replaceMap(g.grid, undefined, undefined, "A random map. Randomize again for another, or draw on it.");
+    const g = Lvl.generate(seed, {
+      layout: $("genlayout").value, size: $("gensize").value, symmetry: Number($("gensym").value),
+      thickness: Number($("genthick").value), density: Number($("gendensity").value), flags: $("genflags").checked,
+      tile: cur > 0 && cur <= 161 ? cur : 1, tiles: $("genauto").checked ? tileLayout() : null,
+    });
+    replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`);
     $("genseed").textContent = `Seed ${seed}`;
+  });
+  // tidy walls over an area (x0, y0, x1, y1) or the whole map, as one undoable change
+  function tidy(area) {
+    const change = Autotile.tidy(grid, tileLayout(), area);
+    if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); }
+    draw();
+    say(change.length ? `Tidied ${change.length.toLocaleString()} wall tiles. Undo puts them back.` : "Those walls were already tidy.", true);
+  }
+  $("tidyall").addEventListener("click", () => tidy(null));
+  $("roleview").addEventListener("change", (e) => {
+    roleView = e.target.checked ? Autotile.previewTileset(tileLayout()) : null;
+    drawPalette(); draw();
+  });
+  $("tilelayout").addEventListener("change", () => {
+    if (roleView) roleView = Autotile.previewTileset(tileLayout());
+    drawPalette(); draw();
   });
 
   function centre() {
@@ -260,7 +290,7 @@
     if (e.button !== 0) return;
     const [x, y] = toTile(e.offsetX, e.offsetY);
     stroke = [];
-    if (tool === "rect") dragRect = [x, y, x, y]; else setTile(x, y, tool === "erase" ? 0 : cur);
+    if (tool === "rect" || tool === "tidy") dragRect = [x, y, x, y]; else setTile(x, y, tool === "erase" ? 0 : cur);
     draw();
   });
   view.addEventListener("pointermove", (e) => {
@@ -272,12 +302,18 @@
       draw(); return;
     }
     if (!stroke) return;
-    if (tool === "rect") { dragRect[2] = x; dragRect[3] = y; } else setTile(x, y, tool === "erase" ? 0 : cur);
+    if (tool === "rect" || tool === "tidy") { dragRect[2] = x; dragRect[3] = y; } else setTile(x, y, tool === "erase" ? 0 : cur);
     draw();
   });
   const up = () => {
     if (panning) { panning = null; return; }
     if (!stroke) return;
+    if (tool === "tidy" && dragRect) {
+      const [ax, ay, bx, by] = dragRect;
+      dragRect = null; stroke = null;
+      tidy([Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]);
+      return;
+    }
     if (tool === "rect" && dragRect) {
       const [ax, ay, bx, by] = dragRect;
       for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++) setTile(x, y, cur);
@@ -314,7 +350,7 @@
     const r = pal.getBoundingClientRect();
     const x = Math.floor((e.clientX - r.left) / r.width * 19), y = Math.floor((e.clientY - r.top) / r.height * 10);
     const t = y * 19 + x + 1;
-    if (t >= 1 && t <= 190) { cur = t; if (tool === "erase" || tool === "pan") setTool("pencil"); drawPalette(); }
+    if (t >= 1 && t <= 190) { cur = t; if (tool === "erase" || tool === "pan" || tool === "tidy") setTool("pencil"); drawPalette(); }
   });
   mini.addEventListener("click", (e) => {
     const r = mini.getBoundingClientRect();
@@ -324,12 +360,12 @@
     const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = col;
     const b = document.createElement("button"); b.type = "button"; b.className = "ghost small";
     b.append(sw, document.createTextNode(name));
-    b.addEventListener("click", () => { cur = t; if (tool === "erase" || tool === "pan") setTool("pencil"); drawPalette(); });
+    b.addEventListener("click", () => { cur = t; if (tool === "erase" || tool === "pan" || tool === "tidy") setTool("pencil"); drawPalette(); });
     $("specials").append(b);
   }
   function setTool(t) {
     tool = t;
-    for (const [id, n] of [["tPencil", "pencil"], ["tRect", "rect"], ["tErase", "erase"], ["tPan", "pan"]]) {
+    for (const [id, n] of [["tPencil", "pencil"], ["tRect", "rect"], ["tErase", "erase"], ["tPan", "pan"], ["tTidy", "tidy"]]) {
       $(id).classList.toggle("on", n === t); $(id).setAttribute("aria-pressed", String(n === t));
     }
     view.classList.toggle("panning", t === "pan");
@@ -338,13 +374,14 @@
   $("tRect").addEventListener("click", () => setTool("rect"));
   $("tErase").addEventListener("click", () => setTool("erase"));
   $("tPan").addEventListener("click", () => setTool("pan"));
+  $("tTidy").addEventListener("click", () => setTool("tidy"));
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement) return;
     if (e.key === " ") { space = true; e.preventDefault(); }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
     else if (!e.metaKey && !e.ctrlKey) {
-      if (e.key === "b") setTool("pencil"); else if (e.key === "r") setTool("rect"); else if (e.key === "e") setTool("erase");
+      if (e.key === "b") setTool("pencil"); else if (e.key === "r") setTool("rect"); else if (e.key === "e") setTool("erase"); else if (e.key === "t") setTool("tidy");
     }
   });
   window.addEventListener("keyup", (e) => { if (e.key === " ") space = false; });
