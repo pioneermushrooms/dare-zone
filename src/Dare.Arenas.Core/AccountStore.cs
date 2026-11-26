@@ -128,6 +128,17 @@ public sealed partial class AccountStore : IDisposable
               ship_id INTEGER NOT NULL,
               PRIMARY KEY (account_id, slot)
             );
+            CREATE TABLE IF NOT EXISTS pilot_graphics (
+              account_id INTEGER NOT NULL,
+              slot TEXT NOT NULL,
+              image BLOB NOT NULL,
+              updated TEXT NOT NULL,
+              PRIMARY KEY (account_id, slot)
+            );
+            CREATE TABLE IF NOT EXISTS pilot_graphics_prefs (
+              account_id INTEGER NOT NULL PRIMARY KEY,
+              use_own INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS account_meta (
               key TEXT NOT NULL PRIMARY KEY,
               value TEXT NOT NULL

@@ -14,6 +14,9 @@ public class GameGraphicsTests
         Assert.Equal(0, GameGraphics.ShipIndex("ship9"));
         Assert.Equal(0, GameGraphics.ShipIndex("ships"));
         Assert.Contains("prompt", GameGraphics.Find("bombs")!.Generate);
+        Assert.Contains("new", GameGraphics.Find("rocket")!.Generate);
+        Assert.DoesNotContain("prompt", GameGraphics.Find("exhaust")!.Generate);
+        Assert.Equal(["recolor"], GameGraphics.Find("goal")!.Generate);
     }
 
     [Fact]

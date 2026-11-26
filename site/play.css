@@ -165,7 +165,7 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 .gfxhead h2 { margin: 0; }
 .gfxtabs { flex: 1 1 auto; display: flex; gap: 6px; }
 .gfxtabs .tab { font: 700 .8rem Inter, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; min-height: 0; padding: 6px 12px;
-  color: var(--cyan); background: #12223a; border: 1px solid var(--cyan); }
+  color: var(--muted); background: transparent; border: 1px solid #344762; }
 .gfx .gfxhead .ghostbtn { min-height: 36px; padding: 4px 12px; font-size: 1rem; color: var(--muted); background: transparent; border-color: #344762; }
 .gfxbody { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 0; min-height: 0; }
 .gfxmain { display: grid; gap: 14px; align-content: start; padding: 18px 20px 20px; }
@@ -218,7 +218,25 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
   .gfxbody { grid-template-columns: minmax(0, 1fr); }
   .gfxyard { border-left: 0; border-top: 1px solid var(--line); }
   .yardlist { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  .gfxhead { flex-wrap: wrap; gap: 10px 14px; }
+  .gfxhead h2 { flex: 1 1 auto; }
+  .gfxtabs { order: 3; flex-basis: 100%; }
 }
+.gfxtabs .tab[aria-current="page"] { color: var(--cyan); background: #12223a; border-color: var(--cyan); }
+.gfx .useown { display: flex; flex-direction: row; align-items: center; gap: 8px; font: 600 .85rem Inter, system-ui, sans-serif; white-space: nowrap; }
+.gfx .useown input { width: auto; accent-color: var(--cyan); }
+.gfxother .small { margin: 0; font-size: .85rem; }
+.gfxother .dim { color: var(--muted); }
+.otherview { display: grid; gap: 8px; }
+#gfx-o-gens { display: contents; }
+.otherview .label, .gfxother .gfxreview .label { margin: 0; font-weight: 600; }
+.gfx canvas.sheet.wide { width: auto !important; max-width: 100%; background: #04070d; }
+.gfx .slotlist { display: grid; gap: 4px; }
+.gfx .slotlist h4 { margin: 8px 0 2px; font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.gfx .slotlist button { font: 600 .82rem Inter, system-ui, sans-serif; min-height: 30px; padding: 4px 8px; text-align: left; color: var(--ink);
+  background: #070d18; border: 1px solid #263449; display: flex; justify-content: space-between; gap: 6px; }
+.gfx .slotlist button[aria-pressed="true"] { border-color: var(--cyan); background: #12223a; }
+.gfx .slotlist button .mine { color: var(--cyan); font-size: .72rem; }
 @media (prefers-reduced-motion: reduce) { .gfx.busy .gfxstatus::before { animation: none; } }
 
 /* the loading screen: after Enter, until the game takes the page (loading.js) */
