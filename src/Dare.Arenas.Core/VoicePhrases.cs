@@ -86,9 +86,10 @@ public sealed partial class VoicePhrases
         return CodePattern().IsMatch(code) ? code : throw Bad(code, "code must be lower-case letters");
     }
 
+    // SubSpace chat is single-byte text: anything outside printable ASCII arrives garbled.
     private static string Str(JsonElement e, string name, string code) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString())
-            ? v.GetString()!
+            ? v.GetString()!.All(c => c is >= ' ' and <= '~') ? v.GetString()! : throw Bad(code, $"{name} must be plain ASCII")
             : throw Bad(code, $"missing {name}");
 
     private static FormatException Bad(string code, string why) => new($"voice table: '{code}' {why}");

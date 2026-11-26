@@ -51,6 +51,7 @@ public class VoicePhrasesTests
     [InlineData("""{"menus":[],"phrases":[{"code":"gy","sound":128,"scope":"global","label":"Y","text":"Y","delivery":"calm"}]}""")] // orphan
     [InlineData("""{"menus":[{"code":"g","label":"G"}],"phrases":[{"code":"gy","sound":128,"scope":"global","label":"Y","text":"Y","delivery":"calm"},{"code":"gn","sound":128,"scope":"global","label":"N","text":"N","delivery":"calm"}]}""")] // duplicate id
     [InlineData("""{"menus":[{"code":"g","label":"G"}],"phrases":[{"code":"gy","sound":128,"scope":"global","label":"Y","text":"Y","delivery":"loud"}]}""")] // unknown delivery
+    [InlineData("""{"menus":[{"code":"g","label":"G"}],"phrases":[{"code":"gy","sound":128,"scope":"global","label":"Y","text":"Yes — sir","delivery":"calm"}]}""")] // chat is single-byte: ASCII only
     [InlineData("""{"menus":[{"code":"g","label":"G"}],"phrases":[{"code":"g","sound":128,"scope":"global","label":"Y","text":"Y","delivery":"calm"}]}""")] // code is a menu too
     public void Parse_rejects_bad_tables(string json) =>
         Assert.Throws<FormatException>(() => VoicePhrases.Parse(json));

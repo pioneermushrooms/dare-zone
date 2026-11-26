@@ -123,7 +123,7 @@ silence). If it plays anything, the plugin sends sound 0 to non-Dare clients.
   chat to the sender's freq with the sound id. Uses existing chat types so every client,
   Continuum included, shows `Name> text` in the right colour.
 - Spam limit (Claude's call, configurable): at most **3 voice lines per 6 s**; the 4th silences
-  voice for **10 s**, told privately: "Voice silenced for 10 s — too many voice lines." Voice
+  voice for **10 s**, told privately: "Voice silenced for 10 s - too many voice lines." Voice
   attempts during the silence don't extend it and are dropped without a second notice; the
   client's menu shows the countdown instead. Normal typed chat isn't affected.
 - `arena.conf` `[Voice]`: `Enabled` (default 1), `Burst` (3), `Window` (6 s), `Silence` (10 s).

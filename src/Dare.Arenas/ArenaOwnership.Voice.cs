@@ -81,7 +81,7 @@ public sealed partial class ArenaOwnership
         var verdict = _voiceLimiter.Try(player.Name, limits);
         if (verdict.Kind == VoiceVerdictKind.SilencedNow)
         {
-            Reply(player, $"Voice silenced for {(int)limits.Silence.TotalSeconds} s — too many voice lines.");
+            Reply(player, $"Voice silenced for {(int)limits.Silence.TotalSeconds} s - too many voice lines.");
             return;
         }
         if (verdict.Kind == VoiceVerdictKind.Silenced) return;

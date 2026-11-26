@@ -18,7 +18,7 @@
 
 - Voice sound ids are **128–255**, assigned once per phrase in tree order starting at 128, never reused.
 - Scope per phrase: `global` → chat type Pub (2) to the whole arena; `team` → chat type Freq (3) to the sender's freq.
-- Spam defaults: **3 voice lines per 6 s**; the 4th silences voice for **10 s**. Notice text, exact: `Voice silenced for 10 s — too many voice lines.` (number = configured silence).
+- Spam defaults: **3 voice lines per 6 s**; the 4th silences voice for **10 s**. Notice text, exact: `Voice silenced for 10 s - too many voice lines.` (number = configured silence).
 - `arena.conf` `[Voice]`: `Enabled` (1), `Burst` (3), `Window` (6, seconds), `Silence` (10, seconds).
 - Menu: `V` opens; leaf **sends and closes in the same frame**; `Backspace` up a level (closes at top); `Esc` closes; closes after **4 s** idle.
 - Client setting `[chat] enter_to_chat`, default **yes**.
@@ -170,7 +170,7 @@ public void Parse_rejects_bad_tables(string json) => Assert.Throws<FormatExcepti
   2. table failed to load or `Voice:Enabled` is 0 → `Voice is off in this arena.`;
   3. chat mask restricts `Pub` (global) or `Freq` (team) → `You can't talk right now.`;
   4. unknown code → `Unknown voice command.`;
-  5. limiter: `SilencedNow` → `Voice silenced for {Silence} s — too many voice lines.`; `Silenced` → nothing (silently dropped);
+  5. limiter: `SilencedNow` → `Voice silenced for {Silence} s - too many voice lines.`; `Silenced` → nothing (silently dropped);
   6. send: recipients = players in the arena with `Status == Playing` (global) or additionally `Freq == player.Freq` (team), **including the sender**; `SendAnyMessage(set, Pub|Freq, (ChatSound)phrase.Sound, player, phrase.Text)`.
   Limits from `arena.Cfg` `[Voice]` `Burst`/`Window`/`Silence` (clamp Burst 1–20, Window 1–60, Silence 0–300).
 - [ ] **Step 4: Build** — `dotnet build Dare.sln -c Release` → 0 errors, and `dotnet test` → all pass.
@@ -315,7 +315,7 @@ Received chat with `sound != 0`: `if let Some(n) = clip_name(sound) { self.sound
 - [ ] **Step 1: Failing tests**
 
 ```rust
-#[test] fn silence_notice_parses() { assert_eq!(silence_from_notice("Voice silenced for 10 s — too many voice lines."), Some(10)); assert_eq!(silence_from_notice("Voice is off in this arena."), None); }
+#[test] fn silence_notice_parses() { assert_eq!(silence_from_notice("Voice silenced for 10 s - too many voice lines."), Some(10)); assert_eq!(silence_from_notice("Voice is off in this arena."), None); }
 #[test] fn unknown_voice_id_names_a_clip_and_never_panics() { for id in 0..=255u8 { let _ = clip_name(id); } assert_eq!(clip_name(254).as_deref(), Some("voice254")); }
 ```
 
