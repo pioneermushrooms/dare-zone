@@ -61,6 +61,48 @@ test("parse refuses broken layouts", () => {
   assert.ok(TileLayout.parse("{not json").errors[0].startsWith("not JSON"));
 });
 
+test("a pack's optional interior tile is checked, owned and kept", () => {
+  const shipped = TileLayout.parse(layoutText).layout;
+  assert.ok(shipped.packs.every((p) => Number.isInteger(p.interior)), "the standard packs name their interiors");
+  const j = JSON.parse(layoutText);
+  for (const p of j.packs) delete p.interior;
+  j.packs[0].interior = 150;
+  const { layout, errors } = TileLayout.parse(j);
+  assert.deepEqual(errors, []);
+  assert.equal(layout.packs[0].interior, 150);
+  assert.equal(layout.packs[1].interior, null);
+  assert.equal(JSON.parse(TileLayout.toJson(layout)).packs[0].interior, 150);
+  assert.equal(TileLayout.parse(TileLayout.toJson(layout)).layout.packs[0].interior, 150);
+  const bad = (v, pack = 0) => { const k = JSON.parse(layoutText); for (const p of k.packs) delete p.interior; k.packs[pack].interior = v; return TileLayout.parse(k).errors.join(" "); };
+  assert.match(bad(0), /interior tile 0/);
+  assert.match(bad(200), /interior tile 200/);
+  assert.match(bad(170), /reserved/);
+  assert.match(bad(2), /tile 2 is in grey-plate\/single and grey-plate\/interior/);
+  assert.match(bad(42, 1), /tile 42 is in/); // another pack's fill
+  assert.match(bad("x"), /interior tile x/);
+});
+
+test("a pack's optional calm edge pieces are checked, owned and kept", () => {
+  const base = () => { const k = JSON.parse(layoutText); for (const p of k.packs) { delete p.calm; } return k; };
+  const j = base();
+  j.packs[0].calm = { ESW: 150, sen: 151 }; // keys in any order or case
+  const { layout, errors } = TileLayout.parse(j);
+  assert.deepEqual(errors, []);
+  assert.deepEqual([...layout.packs[0].calm], [["ESW", 150], ["NES", 151]]);
+  assert.equal(layout.packs[1].calm.size, 0);
+  const again = TileLayout.parse(TileLayout.toJson(layout)).layout;
+  assert.deepEqual([...again.packs[0].calm], [["ESW", 150], ["NES", 151]]);
+  assert.equal(JSON.parse(TileLayout.toJson(again)).packs[1].calm, undefined);
+  const bad = (calm) => { const k = base(); k.packs[0].calm = calm; return TileLayout.parse(k).errors.join(" "); };
+  assert.match(bad({ NS: 150 }), /calm key "NS"/);
+  assert.match(bad({ ESW: 150, SWE: 151 }), /given twice/);
+  assert.match(bad({ ESW: 0 }), /calm ESW tile 0/);
+  assert.match(bad({ ESW: 170 }), /reserved/);
+  assert.match(bad({ ESW: 3 }), /tile 3 is in grey-plate\/end-left and grey-plate\/calm-ESW/);
+  assert.match(bad({ ESW: 150, NEW: 150 }), /tile 150 is in/);
+  assert.match(bad([150]), /calm must be an object/);
+});
+
 test("a layout survives toJson and parse unchanged", () => {
   const { layout } = TileLayout.parse(layoutText);
   const again = TileLayout.parse(TileLayout.toJson(layout)).layout;

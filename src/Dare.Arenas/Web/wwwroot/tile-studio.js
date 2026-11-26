@@ -358,7 +358,11 @@ window.TileStudio = (() => {
 
     // ---- slot, roles and packs ------------------------------------------------------------------------
     const currentPack = () => layout.packs.find((p) => p.id === packId) || null;
-    const otherLabel = (t) => { for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
+    const otherLabel = (t) => {
+      const ip = layout.packs.find((p) => p.interior === t);
+      if (ip) return `${ip.name}: interior (the plain inside of a thick wall)`;
+      for (const p of layout.packs) for (const [open, t2] of p.calm || []) if (t2 === t) return `${p.name}: calm ${open} edge (next to interior)`;
+      for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
     function showSlot() {
       const [x, y] = slotXY(sel), r = TileLayout.roleOfTile(layout, sel), reserved = sel >= layout.reserved[0] && sel <= layout.reserved[1];
       q("st-slotname").textContent = `Tile ${sel} · column ${x / TS + 1}, row ${y / TS + 1}`;
@@ -840,6 +844,11 @@ window.TileStudio = (() => {
           const f = await fetchBytes(API + "/maps/file?name=" + encodeURIComponent(id));
           if (!f) { say(`Couldn't open ${id}.`, false); return; }
           const [im, from] = fromLvl(id, f.bytes); libId = null; setImage(im, from); say(`Opened ${id}.`, true);
+        } else if (kind === "std") {
+          const f = await fetchBytes("/arena/standard-tiles.bmp");
+          if (!f) { say("Couldn't load the standard tiles.", false); return; }
+          libId = null; setImage(Bmp.fitSheet(Bmp.read(f.bytes)), { name: "standard tiles", elvl: null, tiles: new Uint8Array(0), from: "file" });
+          say("Opened the standard tiles.", true);
         } else if (kind === "set") await openTileset(+id);
       } catch (err) { say(err.message, false); }
     }
@@ -883,6 +892,7 @@ window.TileStudio = (() => {
       const open = q("st-open"); open.replaceChildren(new Option("Open…", ""));
       const group = (label, items) => { if (!items.length) return; const g = document.createElement("optgroup"); g.label = label; for (const [v, t2] of items) g.append(new Option(t2, v)); open.append(g); };
       if (arena) group("This arena", [["arena:", `${arena}'s current map`]]);
+      group("Standard", [["std:", "Standard tiles (the standard layout's packs)"]]);
       group("Your tilesets", tilesets.map((x) => ["set:" + x.id, x.name]));
       group("Your maps", maps.map((x) => ["map:" + x.id, x.name]));
       group("Ready-made maps", ((s.body && s.body.maps) || []).map((n) => ["shared:" + n, n]));
