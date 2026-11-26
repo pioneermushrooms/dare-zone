@@ -151,6 +151,46 @@
     return changes;
   }
 
+  /**
+   * Retile some cells (indices into the 1024x1024 grid) after drawing: `cells` get `layout`'s
+   * pieces (plain walls only); with `ring`, the walls next to them are re-joined too, each in the
+   * layout its tile already belongs to (walls in no known layout are left as they are: decor, text).
+   * Returns the changes [index, old, new], applied.
+   */
+  function tidyCells(grid, layout, cells, ring = true) {
+    const todo = new Map(); // index -> layout
+    for (const i of cells) if (isPlainWall(grid[i])) todo.set(i, layout);
+    if (ring) for (const i of cells) {
+      const x = i % N, y = (i - x) / N;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy, j = ny * N + nx;
+        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= N || ny >= N || todo.has(j)) continue;
+        const own = owner(grid[j]);
+        if (own) todo.set(j, own);
+      }
+    }
+    const changes = [];
+    for (const [i, l] of todo) {
+      const x = i % N, y = (i - x) / N, t = grid[i];
+      const next = resolve(l, roleOf(maskAt(grid, x, y)), x, y);
+      if (next !== t) changes.push([i, t, next]);
+    }
+    for (const [i, , t] of changes) grid[i] = t;
+    return changes;
+  }
+
+  // the registered layout a tile belongs to (the stand-in only when no real layout claims it)
+  let owners = null;
+  function owner(t) {
+    if (!isPlainWall(t)) return null;
+    if (!owners) {
+      owners = new Map();
+      const all = [...layouts.values()].sort((a, b) => (a === STAND_IN) - (b === STAND_IN));
+      for (const l of all) for (const v of Object.values(l.roles).flat()) if (!owners.has(v)) owners.set(v, l);
+    }
+    return owners.get(t) || null;
+  }
+
   /** Errors in a layout (unknown roles, tiles out of range), as strings; [] when it's usable. */
   function check(layout) {
     const errs = [];
@@ -189,7 +229,12 @@
     const out = [];
     for (const p of Array.isArray(spec.packs) ? spec.packs : []) {
       if (!p || !p.id || !p.tiles) continue;
-      const tileFor = (o) => { const n = nameByOpen.get(o), t = n && p.tiles[n]; return Number.isInteger(t) && t >= 1 && t <= 161 ? t : undefined; };
+      const ok = (t) => Number.isInteger(t) && t >= 1 && t <= 161;
+      const tileFor = (o) => {
+        const n = nameByOpen.get(o), t = n && p.tiles[n];
+        if (Array.isArray(t)) return t.length && t.every(ok) ? t : undefined; // variants
+        return ok(t) ? t : undefined;
+      };
       const pick = (open) => {
         let t = tileFor(open);
         if (t) return t;
@@ -205,7 +250,13 @@
         const t = pick(norm(roleSides(role)));
         if (t) roles[role] = t;
       }
-      const layout = { id: p.id, name: `${spec.name ? spec.name.replace(/\s*\(.*\)$/, "") + ": " : ""}${p.name || p.id}`, roles, fallback: roles.lone || roles.fill || 1, spec: true };
+      // a plain interior piece (optional): where every neighbour is wall, so thick walls read as
+      // one solid wall rather than a grid of the pack's decorated fill pieces
+      if (ok(p.interior) || (Array.isArray(p.interior) && p.interior.length && p.interior.every(ok))) {
+        roles.fill = p.interior;
+        for (const d of ["ne", "se", "sw", "nw"]) roles["inner-" + d] = p.interior;
+      }
+      const layout = { id: p.id, name: `${spec.name ? spec.name.replace(/\s*\(.*\)$/, "") + ": " : ""}${p.name || p.id}`, roles, fallback: [roles.lone, roles.fill, 1].find(Number.isInteger), spec: true };
       const errs = check(layout);
       if (errs.length || !Object.keys(roles).length) { errors.push(`pack ${p.id}: ${errs.join("; ") || "no usable tiles"}`); continue; }
       out.push(layout);
@@ -219,6 +270,7 @@
     const errs = check(layout);
     if (errs.length) throw new Error(`tile layout ${layout && layout.id}: ${errs.join("; ")}`);
     layouts.set(layout.id, layout);
+    owners = null;
     return layout;
   }
   register(STAND_IN);
@@ -277,6 +329,6 @@
 
   root.Autotile = {
     B, ROLES, STAND_IN, layouts, register, check, fromSpec, roleOf, roleSides, fallbacks, resolve,
-    maskAt, tidy, isPlainWall, previewTileset,
+    maskAt, tidy, tidyCells, owner, isPlainWall, previewTileset,
   };
 })();
