@@ -72,16 +72,19 @@ public sealed partial class ArenaOwnership
         {
             WriteArenaSetting(cfg, arenaName, "General", "Map", storedName, $"{actor} uploaded a map with Dare.Arenas");
             Log(LogLevel.Info, $"{actor} uploaded map '{fileName}' ({content.Length} bytes) to [{arenaName}] as {storedName}.");
+            MarkPendingRestart(arenaName, "map");
             return new Result(true, $"Map saved as {storedName} ({content.Length} bytes) and set as this arena's map; it takes effect after ?recyclearena or when the arena next starts.");
         }
 
         if (existingEntry is not null)
         {
+            MarkPendingRestart(arenaName, "graphics");
             Log(LogLevel.Info, $"{actor} replaced graphics '{storedName}' ({content.Length} bytes) in [{arenaName}]; LevelFiles unchanged.");
             return new Result(true, $"Graphics {storedName} replaced ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files. {GraphicsTakeEffect}");
         }
 
         WriteArenaSetting(cfg, arenaName, "General", "LevelFiles", updatedLevelFiles, $"{actor} uploaded {storedName} with Dare.Arenas");
+        MarkPendingRestart(arenaName, "graphics");
         Log(LogLevel.Info, $"{actor} uploaded graphics '{storedName}' ({content.Length} bytes) to [{arenaName}]; LevelFiles = {updatedLevelFiles}.");
         return new Result(true, $"Graphics {storedName} saved ({content.Length} bytes); {LevelFiles.Parse(updatedLevelFiles).Count}/{MaxLevelFiles} files. {GraphicsTakeEffect}");
     }
@@ -100,6 +103,7 @@ public sealed partial class ArenaOwnership
             return new Result(false, error);
 
         WriteArenaSetting(cfg, arenaName, "General", "LevelFiles", updated, $"{actor} removed {removed} with Dare.Arenas");
+        MarkPendingRestart(arenaName, "graphics");
         Log(LogLevel.Info, $"{actor} removed graphics '{removed}' from [{arenaName}]; LevelFiles = {updated}.");
 
         // Only files of the safe shape that resolve inside the arena folder are deleted.

@@ -39,6 +39,14 @@
       <label for="arenapick">Editing arena</label>
       <select id="arenapick"></select>
       <span class="tag" id="arenastatus"></span>
+      <span class="ctx-actions">
+        <span class="dim" id="ctxonline"></span>
+        <a class="btn small" id="enterarena" href="/">Enter arena</a>
+        <button type="button" class="ghost small" id="restartenter" disabled title="Nothing saved is waiting for a restart">Restart and enter</button>
+      </span>
+      <p class="msg" id="ctxmsg" role="status"></p>
+      <div class="restart-plan" id="restartplan" hidden><span id="restartplantext"></span>
+        <button type="button" class="small" id="restartcancel">Cancel restart</button></div>
     </div>
     <!-- no arena yet: launch one (staff can also make one for someone else) -->
     <section data-view="make" hidden>
@@ -145,20 +153,28 @@
       <p class="dim">Current map: <b class="name" id="curmap"></b></p>
       <div id="mapowner">
         <div class="actions"><a class="btn hot" id="openeditor" href="/arena/map">Open the map editor</a></div>
-        <p class="dim">Or upload a map you made elsewhere:</p>
+        <p class="dim">Or bring in a map you made elsewhere. It goes to <b>your maps</b> and opens in the map editor as a draft; the arena changes only when you press Publish there.</p>
         <div class="drop" id="mapdrop">Drop a <b>.lvl</b> map here (2 MB max), or <label><u>choose a file</u><input type="file" id="mapfile" accept=".lvl" hidden></label></div>
+        <h3>Your maps</h3>
+        <ul class="maplib" id="maplib"></ul>
       </div>
       <p class="msg" id="mapmsg"></p>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
       <p class="dim" id="maponly" hidden>Only the owner can change the map. <a id="viewmap" href="/arena/map">Look at it in the editor</a>.</p>
     </section>
 
     <section data-view="graphics" hidden>
       <p class="kicker">Graphics</p>
-      <h2>Graphics files</h2>
+      <h2>Game graphics</h2>
+      <p class="dim">Give this arena its own ships, bombs, bullets, items and effects: upload a picture or generate one. Each keeps the game's frame layout, shown under its name. Players see them after the arena restarts.</p>
+      <div id="gfxgroups" class="gfxgroups"></div>
+      <p class="msg" id="gfxmsg" role="status"></p>
+      <h2>Graphics files (.lvz)</h2>
       <p class="dim" id="lvzcount"></p>
       <div class="drop" id="lvzdrop">Drop a <b>.lvz</b> file here (5 MB max; the same name replaces the old one), or <label><u>choose a file</u><input type="file" id="lvzfile" accept=".lvz" hidden></label></div>
       <ul class="files" id="lvzlist"></ul>
       <p class="msg" id="lvzmsg"></p>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
       <p class="dim" id="lvzonly" hidden>Only the owner can change graphics.</p>
     </section>
 
@@ -168,6 +184,7 @@
       <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>.</p>
       <input type="search" class="filter" id="filter" placeholder="Filter, e.g. warbird bulletspeed" aria-label="Filter settings">
       <p class="msg" id="setmsg"></p>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
       <div id="settings"></div>
     </section>
 
@@ -185,5 +202,68 @@
     </section>
   </div>
 </div>
+
+<dialog id="gfxdlg" class="gfxdlg" aria-labelledby="gfxdlgtitle">
+  <h3 id="gfxdlgtitle">Generate</h3>
+  <form class="row gfxprompt" id="gfxpromptform" hidden>
+    <input id="gfxprompt" maxlength="500" placeholder="e.g. a glowing purple plasma orb" aria-label="Describe what to draw" autocomplete="off">
+    <button type="submit" id="gfxdraw">Draw</button>
+  </form>
+  <div class="gfxpreview"><canvas id="gfxcanvas" width="640" height="160" aria-label="The generated picture"></canvas>
+    <div class="gfxloading" id="gfxloading" hidden><span class="gfxspin" aria-hidden="true"></span><b id="gfxloadingtext">Drawing…</b><span id="gfxloadingtime"></span></div></div>
+  <p class="msg" id="gfxdlgmsg" role="status"></p>
+  <div class="row dlg-actions">
+    <button type="button" class="hot" id="gfxuse" disabled>Use this</button>
+    <button type="button" class="ghost" id="gfxagain" disabled>Again</button>
+    <button type="button" class="ghost" data-close>Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="enterdlg" aria-labelledby="entertitle">
+  <h3 id="entertitle">Restart first?</h3>
+  <p id="entertext"></p>
+  <div class="row dlg-actions">
+    <button type="button" class="hot" id="enterrestart">Restart and enter</button>
+    <button type="button" class="ghost" id="enteranyway">Enter without restarting</button>
+    <button type="button" class="ghost" value="cancel" data-close>Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="restartdlg" aria-labelledby="restarttitle">
+  <form method="dialog" id="restartform">
+    <h3 id="restarttitle">Restart arena</h3>
+    <p class="warn" id="restartwho"></p>
+    <div class="row dlg-actions">
+      <button type="button" class="hot" id="restartnow">Restart now</button>
+      <button type="button" class="ghost" data-close>Cancel</button>
+    </div>
+    <label class="dlg-field">Announcement (optional)
+      <textarea id="restartmsg" rows="2" maxlength="200" placeholder="New map coming in, back in a second!"></textarea>
+      <span class="hint">Sent to everyone in the arena. With <b>Restart now</b> it goes out just before the restart.</span></label>
+    <details id="restartlater">
+      <summary>Restart later, on a countdown</summary>
+      <div class="stack dlg-later">
+        <label class="inline"><input type="radio" name="when" value="in" checked> In
+          <input type="number" id="restartin" min="1" max="10080" value="5" aria-label="Minutes from now"> minutes</label>
+        <label class="inline"><input type="radio" name="when" value="at"> At
+          <input type="datetime-local" id="restartat" aria-label="Date and time (your time zone)"></label>
+        <label class="inline">Announce
+          <select id="restartevery">
+            <option value="0">at the start and 10 seconds before</option>
+            <option value="60" selected>every minute</option>
+            <option value="120">every 2 minutes</option>
+            <option value="300">every 5 minutes</option>
+            <option value="600">every 10 minutes</option>
+            <option value="900">every 15 minutes</option>
+            <option value="1800">every 30 minutes</option>
+            <option value="3600">every hour</option>
+          </select></label>
+        <span class="hint">Each announcement says how long is left, then your message. Nobody gets dropped until the time comes.</span>
+        <button type="button" id="restartschedule">Schedule restart</button>
+      </div>
+    </details>
+    <p class="msg" id="restartdlgmsg" role="status"></p>
+  </form>
+</dialog>
 </body>
 </html>

@@ -13,6 +13,7 @@
 <header class="edbar">
   <a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a>
   <span class="edname" id="edname">Map editor</span>
+  <span class="tag draft" id="drafttag" hidden title="Not published: the arena still has its old map">Draft</span>
   <div class="edtools" role="toolbar" aria-label="Tools">
     <button type="button" class="ghost small on" id="tPencil" aria-pressed="true">Pencil <kbd>B</kbd></button>
     <button type="button" class="ghost small" id="tRect" aria-pressed="false">Rectangle <kbd>R</kbd></button>
@@ -37,11 +38,18 @@
       <select id="gensize" aria-label="Size of a random map"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option></select>
       <select id="gensym" aria-label="Symmetry of a random map"><option value="4">4-way</option><option value="2">2-way</option></select></div>
     <p class="hint" id="genseed"></p>
+    <p class="kicker">Your maps</p>
+    <ul class="libmaps" id="libmaps"></ul>
+    <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>
+      <button type="button" class="ghost small" id="libsave" title="Keep this draft in your maps without publishing it">Save to my maps</button></div>
+    <p class="hint">Your maps are yours only. Open one to edit it here; the arena changes only when you Publish.</p>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
     <p class="kicker">Tiles</p>
     <canvas id="palette" class="px" width="304" height="160" aria-label="Tile palette: click a tile to draw with it"></canvas>
     <p class="hint" id="tilesetnote"></p>
+    <p class="hint warnnote" id="blanknote" hidden></p>
+    <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
     <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>
@@ -55,5 +63,19 @@
     <div class="edmsg" id="msg" role="status"></div>
   </main>
 </div>
+
+<dialog id="pubdlg" aria-labelledby="pubtitle">
+  <h3 id="pubtitle">Publish?</h3>
+  <p class="warn" id="pubwho"></p>
+  <label class="dlg-field">Announcement (optional)
+    <textarea id="pubmsg" rows="2" maxlength="200" placeholder="New map coming in, back in a second!"></textarea>
+    <span class="hint">Sent to everyone in the arena just before the restart.</span></label>
+  <div class="row dlg-actions">
+    <button type="button" class="hot" id="pubnow">Publish and restart now</button>
+    <button type="button" class="ghost" id="publater">Publish, restart later</button>
+    <button type="button" class="ghost" id="pubcancel">Cancel</button>
+  </div>
+  <p class="hint">Restart later saves the map without dropping anyone; restart it from the arena editor, now or on a countdown.</p>
+</dialog>
 </body>
 </html>

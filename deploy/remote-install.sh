@@ -35,7 +35,7 @@
 # Never deletes arenas, maps, data or staff entries. Keeps the 3 newest staging folders
 # (dare-arenas-deploy-*) beside <stageDir> and moves nothing else.
 #
-# Test seams (production defaults): ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD,
+# Test seams (production defaults): ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD, BOT_COUNT_CMD,
 # HEALTH_TRIES, HEALTH_SLEEP.
 set -Eeuo pipefail
 
@@ -73,7 +73,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
 
 # ---- helpers ------------------------------------------------------------------------------
-players_online() { # prints a number, or "unknown" when the zone does not answer
+zone_ping() { # the zone's own count (arena bots included), or "unknown" when it does not answer
   if [ -n "${ZONE_PING_CMD:-}" ]; then bash -c "$ZONE_PING_CMD"; return; fi
   python3 - "$ZONE_PING_PORT" <<'EOF' 2>/dev/null || echo "unknown"
 import socket, struct, sys
@@ -81,6 +81,20 @@ s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(3)
 s.sendto(struct.pack("<I", 4242), ("127.0.0.1", int(sys.argv[1])))
 print(struct.unpack("<I", s.recv(64)[:4])[0])
 EOF
+}
+
+running_bots() { # arena bots (oss-bot processes; each is one player in the zone's count)
+  if [ -n "${BOT_COUNT_CMD:-}" ]; then bash -c "$BOT_COUNT_CMD"; return; fi
+  pgrep -c -x oss-bot 2>/dev/null || true # prints 0 itself when none run
+}
+
+players_online() { # people online (arena bots left out), or "unknown" when the zone does not answer
+  local total bots
+  total=$(zone_ping)
+  [[ "$total" =~ ^[0-9]+$ ]] || { echo "$total"; return; }
+  bots=$(running_bots)
+  [[ "$bots" =~ ^[0-9]+$ ]] || bots=0
+  echo $(( total > bots ? total - bots : 0 ))
 }
 
 zone_log_since() { journalctl -u subspace --since "$1" --no-pager -o cat 2>/dev/null || true; }
@@ -289,6 +303,18 @@ echo "caddy reloaded: $(systemctl is-active caddy || true)"
 # ---- 4. zone files ------------------------------------------------------------------------
 trap 'on_err $LINENO' ERR
 step "zone files ($ZONE)"
+# Arena bots need the oss-bot program beside the plugin. It is built from the client repo and only
+# bundled when deploy.sh gets OSS_BOT_LINUX, so otherwise keep the one installed (or, if a deploy
+# already dropped it, the newest backed-up copy): a plugin deploy must never switch the bots off.
+if [ ! -f "$STAGE/plugin/oss-bot" ]; then
+  keep=$(ls -t "$ZONE/bin/modules/Dare.Arenas/oss-bot" "$BACKUP_ROOT"/backup-arena-ownership-*/zone-bin-modules/Dare.Arenas/oss-bot 2>/dev/null | head -1 || true)
+  if [ -n "$keep" ]; then
+    install -m 0755 "$keep" "$STAGE/plugin/oss-bot"
+    echo "oss-bot kept from $keep"
+  else
+    echo "WARNING: no oss-bot to install: arena bots stay off until a deploy with OSS_BOT_LINUX" >&2
+  fi
+fi
 bash "$STAGE/deploy/apply-local.sh" "$ZONE" "$STAGE/plugin"
 chown -R "$OWNER" "$ZONE/bin/modules/Dare.Arenas" "$ZONE/arenas/_template"
 # the server's native SQLite (the version the plugin builds against; same C API as before)

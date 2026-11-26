@@ -6,3 +6,6 @@ obj/
 .DS_Store
 .local-zone/
 out/
+__pycache__/
+ships/*.egg-info/
+ships/build/

@@ -126,6 +126,7 @@ public sealed partial class ArenaOwnership : IModule
         LoadWebChat(broker);
         StartWeb();
         StartBots();
+        StartRestarts(broker);
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
         return true;
@@ -133,6 +134,7 @@ public sealed partial class ArenaOwnership : IModule
 
     bool IModule.Unload(IComponentBroker broker)
     {
+        StopRestarts(broker);
         StopBots();
         StopWeb(); // first: no new web work reaches the mainloop after this
         UnloadWebChat(broker);
