@@ -8,6 +8,8 @@ Refuses if any phrase has no pick.
 """
 import argparse
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 from voicetool import FINISH, MONSTER, PICKS, TAKES, ffmpeg, load_phrases, rust_table
@@ -34,6 +36,8 @@ def main() -> None:
         ffmpeg(raw, sound_dir / f"voice{p['sound']}.wav", f"{MONSTER},{FINISH}",
                "-ar", "11025", "-c:a", "pcm_s16le")
     table_rs.write_text(rust_table(table))
+    rustfmt = shutil.which("rustfmt") or str(Path.home() / ".cargo/bin/rustfmt")
+    subprocess.run([rustfmt, "--edition", "2024", str(table_rs)], check=True)  # the client's fmt gate
     print(f"exported {len(table['phrases'])} clips to {sound_dir} and {table_rs}")
 
 
