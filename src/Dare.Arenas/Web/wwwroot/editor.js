@@ -142,7 +142,7 @@
     }
   }
   async function renameLib(m) {
-    const name = prompt(`Rename ${m.name} to:`, m.name);
+    const name = await Dlg.prompt(`A new name for ${m.name}:`, { title: "Rename map", value: m.name, ok: "Rename" });
     if (name === null || !name.trim() || name.trim() === m.name) return;
     const j = await postJson("/library/rename", { id: m.id, name: name.trim() });
     say(j.message, j.ok);
@@ -150,7 +150,7 @@
     loadLibrary();
   }
   async function removeLib(m) {
-    if (!confirm(`Delete ${m.name} from your maps? Arenas using it keep their copy.`)) return;
+    if (!await Dlg.confirm(`Delete ${m.name} from your maps? Arenas using it keep their copy.`, { title: "Delete map", ok: "Delete", danger: true })) return;
     const j = await postJson("/library/remove", { id: m.id });
     say(j.message, j.ok);
     if (j.ok && m.id === libId) { libId = null; libName = null; }
