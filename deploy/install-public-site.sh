@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 stage="${1:?usage: install-public-site.sh SITE_SOURCE}"
-site=/var/www/foundation
+site=${SITE:-/var/www/foundation}
 host=subspacefoundation.com
 files=(
   style.css home.css play.css chat.js graphics.js graphics-other.js loading.js jump.webp sector.png
@@ -13,7 +13,7 @@ for name in "${files[@]}"; do
 done
 systemctl is-active --quiet caddy
 test -f "$site/index.html"
-backup="$(mktemp -d /root/foundation-site-backup.XXXXXXXX)"
+backup="$(mktemp -d "${BACKUP_ROOT:-/root}/foundation-site-backup.XXXXXXXX")"
 work="$(mktemp -d "$site/.site-stage.XXXXXXXX")"
 installed=()
 cleanup() {
