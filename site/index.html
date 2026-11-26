@@ -14,9 +14,10 @@
 <script type="module" src="/chat.js?v=8"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
+// Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
 setTimeout(function () {
   var b = document.getElementById("start"), s = document.getElementById("status");
-  if (b && b.disabled && s && !s.textContent) {
+  if (!window.foundationSignIn && b && b.disabled && s && !s.textContent) {
     s.textContent = "The game didn't load. Reload the page (Shift+Reload), or use desktop Chrome or Edge.";
     s.className = "error";
   }
