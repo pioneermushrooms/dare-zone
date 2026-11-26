@@ -9,6 +9,8 @@
 <script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
+<script src="/arena/tileart-styles.js" defer></script>
+<script src="/arena/tileart.js" defer></script>
 <script src="/arena/editor.js" defer></script>
 </head>
 <body class="editor">
@@ -68,6 +70,7 @@
     <p class="hint warnnote" id="blanknote" hidden></p>
     <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
     <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
+    <div id="tileart"></div>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>
     <p class="kicker">Whole map</p>
