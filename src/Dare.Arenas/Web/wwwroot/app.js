@@ -433,12 +433,14 @@ function botFields() {
 }
 function editBot(bot) {
   $("botform").reset();
+  $("botpriority").value = ""; // a hidden field is not cleared by reset
   $("botlabel").value = bot.label;
   for (const line of botLines(bot.script)) {
     const [, key, value] = /^(\S+) +(.*)$/.exec(line) || [];
     switch (key) {
       case "ship": $("botship").value = value; break;
       case "team": $("botteam").value = value; break;
+      case "priority": $("botpriority").value = value; break; // set by ?bots; kept through a web save
       case "behaviour": $("botmode").value = value; break;
       case "range": $("botrange").value = value; break;
       case "greet": $("botgreet").value = value; break;
@@ -471,11 +473,12 @@ async function changeBot(action, payload) {
 function wireBots() {
   for (const id of ["botmode", "botcasual", "botactivity"]) $(id).addEventListener("input", botFields);
   $("botpoints").addEventListener("input", drawBotWaypoints);
-  $("botform").addEventListener("reset", () => setTimeout(botFields, 0));
+  $("botform").addEventListener("reset", () => { $("botpriority").value = ""; setTimeout(botFields, 0); });
   botFields();
   $("botform").onsubmit = (event) => {
     event.preventDefault();
     const script = ["ship " + $("botship").value, "behaviour " + $("botmode").value, "team " + ($("botteam").value || 0)];
+    if ($("botpriority").value) script.push("priority " + $("botpriority").value);
     for (const point of botLines($("botpoints").value)) script.push("point " + point);
     if ($("botrange").value) script.push("range " + $("botrange").value);
     if ($("botgreet").value.trim()) script.push("greet " + $("botgreet").value.trim());

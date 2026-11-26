@@ -159,7 +159,7 @@ public static class BotCommand
     }
 
     /// <summary>"fighter, Warbird, team 2" for a saved script.</summary>
-    public static string Describe(string script)
+    public static string Describe(string script, bool withTeam = true)
     {
         string? behaviour = null;
         int ship = 1, points = 0;
@@ -174,8 +174,20 @@ public static class BotCommand
             else if (line.StartsWith("team ", StringComparison.Ordinal)) hasTeam = true;
         }
         var text = $"{behaviour ?? "idle"}, {ShipNames[ship - 1]}";
-        if (hasTeam) text += $", team {Team(script)}";
+        if (hasTeam && withTeam) text += $", team {Team(script)}";
         if (points > 0) text += $", {points} waypoint{(points == 1 ? "" : "s")}";
         return text + (chat ? ", chats" : "");
+    }
+
+    /// <summary>A <c>?bots list</c> line: name, behaviour and ship, team and priority once, then the state.</summary>
+    public static string ListLine(string label, string script, string state) =>
+        $"{label}  {Describe(script, withTeam: false)}  team {Team(script)}, priority {Priority(script)}  [{state}]";
+
+    /// <summary>"not launched: a pilot uses this name" from the store's "Not launched: a pilot uses this name." (case of the reason kept).</summary>
+    public static string NotLaunched(string problem)
+    {
+        const string prefix = "Not launched:";
+        var why = (problem.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? problem[prefix.Length..] : problem).Trim().TrimEnd('.');
+        return "not launched: " + why;
     }
 }

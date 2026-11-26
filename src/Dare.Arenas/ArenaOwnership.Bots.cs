@@ -719,14 +719,14 @@ public sealed partial class ArenaOwnership
         foreach (var bot in bots)
         {
             var state = !bot.Deployed ? "stopped"
-                : Store.BotProblem(arena, bot.Label, n => _accounts?.Find(n) is not null)?.ToLowerInvariant().TrimEnd('.')
+                : (Store.BotProblem(arena, bot.Label, n => _accounts?.Find(n) is not null) is { } problem ? BotCommand.NotLaunched(problem) : null)
                     ?? SeatOf(arena, bot.Label) switch
                     {
                         BotSeat.In => "in",
                         BotSeat.Spectating => "spectating",
                         _ => "out",
                     };
-            Reply(player, $"Bots: {bot.Label}  {BotCommand.Describe(bot.Script)}  team {BotCommand.Team(bot.Script)}, priority {BotCommand.Priority(bot.Script)}  [{state}]");
+            Reply(player, "Bots: " + BotCommand.ListLine(bot.Label, bot.Script, state));
         }
         var sizes = Store.MatchSizes(arena);
         foreach (var (team, size) in sizes.OrderBy(kv => kv.Key))
@@ -737,7 +737,7 @@ public sealed partial class ArenaOwnership
             {
                 foreach (var p in _playerData.Players)
                     if (p.Status == PlayerState.Playing && p.Ship != ShipType.Spec && p.Freq == team &&
-                        string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase) && p.Type != ClientType.Fake) flying++;
+                        string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase) && p.Type != ClientType.Fake && !IsBot(p)) flying++;
             }
             finally { _playerData.Unlock(); }
             Reply(player, $"Bots: team {team}: size {size}, {flying} player{(flying == 1 ? "" : "s")} flying");

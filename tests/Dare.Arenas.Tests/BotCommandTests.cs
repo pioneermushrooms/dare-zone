@@ -82,4 +82,13 @@ public class BotCommandTests
         Assert.Equal((1, (int?)null), BotCommand.ParseMatch("1 off"));
         Assert.Null(BotCommand.ParseMatch("x 4"));
     }
+
+    [Fact]
+    public void list_line_shows_team_once_and_keeps_the_reason_as_is()
+    {
+        var script = BotCommand.Apply(null, "fighter", 3, null, 2, 8);
+        Assert.Equal("Sparring  fighter, Spider  team 2, priority 8  [in]", BotCommand.ListLine("Sparring", script, "in"));
+        Assert.Equal("not launched: a pilot uses this name", BotCommand.NotLaunched("Not launched: a pilot uses this name."));
+        Assert.Equal("not launched: Bob uses it", BotCommand.NotLaunched("Not launched: Bob uses it."));
+    }
 }
