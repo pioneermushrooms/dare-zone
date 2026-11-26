@@ -1,17 +1,19 @@
 #!/bin/bash
 # Builds the browser game client and puts it live at https://subspacefoundation.com/play/.
-# Run from your Mac. Replaces copying a build to /play by hand.
+# Run from your Mac. Deploys only the pushed tip of the client's main branch.
 #
-#   deploy/deploy-client.sh --by '<session or branch label>' --client <checkout> [--force-rollback]
+#   deploy/deploy-client.sh --by '<session or branch label>' [--client <checkout>] [--force-rollback]
 #
 #   --by              who deploys; published in /play/DEPLOYED.json (required)
-#   --client DIR      the client checkout to build (its HEAD is what goes live)
+#   --client DIR      a client checkout on main or detached at dare/main
+#                     (default: $CLIENT_DIR or ~/oss-src/deploy)
 #   --force-rollback  deploy even if the live client has commits this one lacks (lists them first)
 #
-#   CLIENT_REMOTE  the checkout's remote named in the record (default dare)
+#   CLIENT_BRANCH  integration branch (default main); CLIENT_REMOTE  its remote (default dare)
 #   DEPLOY_HOST    ssh target (default root@5.161.238.245)
 #
-# Refuses a dirty tree, or a HEAD that does not contain the live commit (live record).
+# Refuses: a checkout that is not the pushed tip of main, a dirty tree, a build that does not contain
+# the live commit (live record), or a deploy while another one runs (server lock).
 # Builds with web/build-client.sh, backs up /var/www/foundation/play to /root/play-backup-<utc ts>,
 # copies the build over it, checks every file by checksum (restores the backup if one differs) and
 # writes the live record. Neither the zone nor the site is touched.
@@ -22,7 +24,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=deploy/live-guard.sh
 . "$HERE/live-guard.sh"
 
-CLIENT=${CLIENT_DIR:-}
+CLIENT=${CLIENT_DIR:-$HOME/oss-src/deploy}
+GUARD_BRANCHES=${CLIENT_BRANCH:-main}
 REMOTE=${CLIENT_REMOTE:-dare}
 BUILD_CMD=${CLIENT_BUILD_CMD:-}   # test seam: replaces "bash web/build-client.sh <out>"
 usage() { sed -n '5,9p' "$0" >&2; exit 2; }
@@ -35,7 +38,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 guard_need_by
-[ -n "$CLIENT" ] || guard_die "say which checkout to build: --client <dir>"
 [ -f "$CLIENT/web/build-client.sh" ] || guard_die "$CLIENT is not a client checkout (no web/build-client.sh)"
 CLIENT=$(cd "$CLIENT" && pwd)
 RECORD=$GUARD_PLAY_DIR/DEPLOYED.json
@@ -56,7 +58,8 @@ done
   guard_die "$CLIENT changed during the build"
 (cd "$STAGE/play" && find . -type f | sort | xargs shasum -a 256) > "$STAGE/SUMS"
 
-echo "== re-check the live record"
+echo "== lock and re-check"
+guard_lock "client $GUARD_PLAY_DIR"
 guard_check_ancestry "$RECORD"
 
 TS=$(date -u +%Y%m%d-%H%M%S)
@@ -82,6 +85,7 @@ if ! guard_remote bash -c 'cd "$1" && sha256sum --quiet -c -' _ "$GUARD_PLAY_DIR
 fi
 echo "all $(wc -l < "$STAGE/SUMS" | tr -d ' ') files match the build"
 guard_write_record "$RECORD" client
+guard_unlock
 
 if [ "${DEPLOY_PUBLIC_CHECK:-1}" = 1 ]; then
   echo "== public check"

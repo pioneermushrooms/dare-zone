@@ -2,18 +2,34 @@
 
 ## Deploying safely
 
-Deploy only through these scripts, never by copying files to the server by hand:
+Many sessions work at once; whoever deploys last must never roll back anyone else. So:
 
-- `deploy/deploy.sh --by <label>`: plugin + site + zone config.
-- `deploy/publish-site-from-mac.sh --by <label> <full sha>`: static site only.
-- `deploy/deploy-client.sh --by <label> --client <client checkout>`: the browser game at `/play/`.
-- `deploy/live-record.sh`: shows what is live.
+1. **Work on your own branch** in your own worktree. Never commit into another session's branch or
+   worktree; message that session instead.
+2. **Ship by merging.** Merge the integration branch into yours, test, then merge yours into the
+   integration branch and push. Integration branches: this repo `custom-graphics` (becomes `main`
+   once PR #2 lands); the browser client (dare-client) `main`.
+3. **Deploy only from the pushed tip of the integration branch**, from a deploy checkout:
+   ```bash
+   git -C ~/dare-zone/.claude/worktrees/deploy fetch origin && git -C ~/dare-zone/.claude/worktrees/deploy switch --detach origin/custom-graphics
+   git -C ~/oss-src/deploy fetch dare && git -C ~/oss-src/deploy switch --detach dare/main
+   ```
+   then run one of:
+   - `deploy/deploy.sh --by <label>`: plugin + site + zone config.
+   - `deploy/publish-site-from-mac.sh --by <label> <full sha>`: static site only.
+   - `deploy/deploy-client.sh --by <label>`: the browser game at `/play/` (builds `~/oss-src/deploy`).
+   - `deploy/live-record.sh`: shows what is live and who holds the deploy lock.
+4. **Never copy files to the server by hand**, and ask Chris before every deploy.
 
-The server records what is live in `/var/www/foundation/DEPLOYED.json` (site) and
-`/var/www/foundation/play/DEPLOYED.json` (client): repo, branch, commit, UTC time and `--by`. Both
-files are public, so `--by` is a plain session or branch label. A deploy is refused unless its commit
-contains the live commit. If it is refused, merge the live commit into your branch and deploy again.
-`--force-rollback` overrides the check, after listing the live commits it would drop. Use it only
-when dropping them is the point.
+What the scripts enforce:
+
+- the checkout is clean and is exactly the pushed tip of the integration branch;
+- the commit contains what is live, read from `/var/www/foundation/DEPLOYED.json` (site) or
+  `/var/www/foundation/play/DEPLOYED.json` (client). If refused, merge the live commit and push.
+  `--force-rollback` overrides after listing the commits it would drop; only when Chris says so;
+- one deploy at a time (`flock` on `/var/lock/foundation-deploy.lock`; a refused deploy is told
+  who holds it). The server-side installers refuse to run outside a deploy;
+- each deploy writes the new record: repo, branch, commit, UTC time and `--by` (public: use a
+  session or branch label).
 
 Tests: `deploy/test-live-guard.sh`.

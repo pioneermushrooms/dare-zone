@@ -9,8 +9,8 @@
 #   site    every file of the commit's site/ must equal the server's /var/www/foundation/<file>
 #   client  every file of <build dir> (web/build-client.sh output of that commit) must equal
 #           /var/www/foundation/play/<file>
-# It refuses to overwrite an existing record unless --replace.
-#   --repo <dir>  the repository holding the commit (site: this repo; client: required)
+# It refuses to overwrite an existing record unless --replace. Runs under the deploy lock.
+#   --repo <dir>  the repository holding the commit (site: this repo; client: $CLIENT_DIR or ~/oss-src/deploy)
 #   --remote <r>  its remote for the record's repo URL (site: origin; client: dare)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -23,6 +23,8 @@ if [ "$cmd" = show ]; then
     echo "== $GUARD_HOST:$r"
     guard_read_record "$r"; echo "${GUARD_LIVE_JSON:-(no record)}"
   done
+  # shellcheck disable=SC2016
+  guard_remote bash -c 'if [ -s "$1.who" ]; then echo "== lock held: $(cat "$1.who")"; else echo "== lock free"; fi' _ "$GUARD_LOCK_FILE"
   exit 0
 fi
 [ "$cmd" = seed ] || { sed -n '3,6p' "$0" >&2; exit 2; }
@@ -42,8 +44,7 @@ while [ $# -gt 0 ]; do
 done
 case "$what" in
   site) repo=${repo:-$(cd "$HERE/.." && pwd)} remote=${remote:-origin} dir=$GUARD_SITE_DIR ;;
-  client) remote=${remote:-dare} dir=$GUARD_PLAY_DIR
-          [ -n "$repo" ] || guard_die "seed client needs --repo <client checkout>"
+  client) repo=${repo:-${CLIENT_DIR:-$HOME/oss-src/deploy}} remote=${remote:-dare} dir=$GUARD_PLAY_DIR
           [ -n "$compare" ] || guard_die "seed client needs --compare <web/build-client.sh output of $commit>" ;;
   *) guard_die "seed what? site or client" ;;
 esac
@@ -60,6 +61,7 @@ if [ "$what" = site ]; then
 fi
 (cd "$compare" && find . -type f | sort | xargs shasum -a 256) > "$TMP/SUMS"
 
+guard_lock "seed $what record"
 guard_read_record "$RECORD"
 [ -z "$GUARD_LIVE_JSON" ] || [ "$replace" = 1 ] || guard_die "$RECORD exists (use --replace):
 $GUARD_LIVE_JSON"

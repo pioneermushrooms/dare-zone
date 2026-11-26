@@ -35,7 +35,7 @@
 # Never deletes arenas, maps, data or staff entries. Keeps the 3 newest staging folders
 # (dare-arenas-deploy-*) beside <stageDir> and moves nothing else.
 #
-# Test seams (production defaults): ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD, BOT_COUNT_CMD,
+# Test seams (production defaults): DEPLOY_LOCK_CHECK, ZONE, SITE, CADDYFILE, BACKUP_ROOT, ZONE_PING_CMD, BOT_COUNT_CMD,
 # HEALTH_TRIES, HEALTH_SLEEP.
 set -Eeuo pipefail
 
@@ -54,6 +54,13 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option $1" >&2; usage ;;
   esac
 done
+
+# Only a guarded deploy may install (it holds the deploy lock: deploy/live-guard.sh).
+DEPLOY_LOCK_FILE=${DEPLOY_LOCK_FILE:-/var/lock/foundation-deploy.lock}
+if [ "${DEPLOY_LOCK_CHECK:-1}" = 1 ] && flock -n "$DEPLOY_LOCK_FILE" true; then
+  echo "Refused: no deploy holds $DEPLOY_LOCK_FILE. Deploy from your Mac with deploy/deploy.sh (see deploy/README.md)." >&2
+  exit 1
+fi
 
 ZONE=${ZONE:-/opt/subspace/zone}
 SITE=${SITE:-/var/www/foundation}

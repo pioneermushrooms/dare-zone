@@ -2,6 +2,12 @@
 set -euo pipefail
 stage="${1:?usage: install-public-site.sh SITE_SOURCE}"
 site=${SITE:-/var/www/foundation}
+# Only a guarded deploy may install (it holds the deploy lock: deploy/live-guard.sh).
+DEPLOY_LOCK_FILE=${DEPLOY_LOCK_FILE:-/var/lock/foundation-deploy.lock}
+if [ "${DEPLOY_LOCK_CHECK:-1}" = 1 ] && flock -n "$DEPLOY_LOCK_FILE" true; then
+  echo "Refused: no deploy holds $DEPLOY_LOCK_FILE. Deploy from your Mac with deploy/publish-site-from-mac.sh (see deploy/README.md)." >&2
+  exit 1
+fi
 host=subspacefoundation.com
 files=(
   style.css home.css play.css chat.js graphics.js graphics-other.js loading.js jump.webp sector.png

@@ -1,22 +1,27 @@
 # shellcheck shell=bash
-# Live record and rollback guard for the Foundation server. Sourced (not run) by deploy/deploy.sh,
-# deploy/publish-site-from-mac.sh, deploy/deploy-client.sh and deploy/live-record.sh.
+# Rollback guard, deploy lock and live record for the Foundation server. Sourced (not run) by
+# deploy/deploy.sh, deploy/publish-site-from-mac.sh, deploy/deploy-client.sh and
+# deploy/live-record.sh, on the deploying machine. See deploy/README.md, "Deploying safely".
 #
 # The live record is a JSON file on the server beside what it describes:
 #   site + plugin   $DEPLOY_SITE_DIR/DEPLOYED.json        (/var/www/foundation/DEPLOYED.json)
 #   browser client  $DEPLOY_PLAY_DIR/DEPLOYED.json        (/var/www/foundation/play/DEPLOYED.json)
 # Both are public (Caddy serves the folder), so --by is public too: a session or branch label.
-# A deploy is refused unless its commit contains the live commit
-# (git merge-base --is-ancestor live new); --force-rollback overrides after listing what is dropped.
+#
+# The guard refuses a deploy whose commit does not contain the live commit
+# (git merge-base --is-ancestor live new); --force-rollback overrides and lists what is dropped.
+# The lock is flock on $DEPLOY_LOCK_FILE, held by one ssh connection for the whole deploy and
+# released when this script exits (or its connection drops). $DEPLOY_LOCK_FILE.who names the holder.
 #
 # Test seams (production defaults): DEPLOY_HOST, DEPLOY_SSH (command used as "$DEPLOY_SSH host cmd"),
-# DEPLOY_SITE_DIR, DEPLOY_PLAY_DIR, DEPLOY_BACKUP_ROOT.
+# DEPLOY_SITE_DIR, DEPLOY_PLAY_DIR, DEPLOY_LOCK_FILE, DEPLOY_BACKUP_ROOT, DEPLOY_LOCK_WAIT.
 
 # shellcheck disable=SC2034  # used by the scripts that source this
 GUARD_HOST=${DEPLOY_HOST:-root@5.161.238.245}
 GUARD_SSH=${DEPLOY_SSH:-ssh}
 GUARD_SITE_DIR=${DEPLOY_SITE_DIR:-/var/www/foundation}
 GUARD_PLAY_DIR=${DEPLOY_PLAY_DIR:-$GUARD_SITE_DIR/play}
+GUARD_LOCK_FILE=${DEPLOY_LOCK_FILE:-/var/lock/foundation-deploy.lock}
 GUARD_BACKUP_ROOT=${DEPLOY_BACKUP_ROOT:-/root}
 GUARD_BY=""
 GUARD_FORCE_ROLLBACK=0
@@ -37,20 +42,64 @@ guard_need_by() {
   case "$GUARD_BY" in *[[:cntrl:]]*) guard_die "--by must be one line of plain text" ;; esac
 }
 
-# guard_check_tree <repo> <remote> <shipped paths...>: the checkout must be clean (tracked files;
-#   untracked files only under the shipped paths), since its HEAD is what the record names.
+# guard_check_tree <repo> <remote> <shipped paths...>
+#   The checkout must be clean (tracked files; untracked files only under the shipped paths) and
+#   exactly the pushed tip of <remote>/<integration branch> ($GUARD_BRANCHES, space separated), so
+#   every other session can fetch what goes live. It may be on that branch or detached at its tip
+#   (git switch --detach <remote>/<branch>), which works while the branch is checked out elsewhere.
 #   Sets GUARD_REPO_DIR GUARD_BRANCH GUARD_COMMIT GUARD_REMOTE GUARD_REPO_URL.
 guard_check_tree() {
-  local repo=$1 remote=$2 dirty; shift 2
+  local repo=$1 remote=$2; shift 2
   GUARD_REPO_DIR=$repo GUARD_REMOTE=$remote
-  GUARD_BRANCH=$(git -C "$repo" symbolic-ref --short -q HEAD) || GUARD_BRANCH="(detached)"
+  # GUARD_BRANCHES (integration branches, space separated) is set by the calling script
+  # shellcheck disable=SC2153
+  local b
+  GUARD_BRANCH=$(git -C "$repo" symbolic-ref --short -q HEAD) || {
+    for b in $GUARD_BRANCHES; do
+      git -C "$repo" fetch -q "$remote" "$b" 2>/dev/null || continue
+      if [ "$(git -C "$repo" rev-parse "refs/remotes/$remote/$b")" = "$(git -C "$repo" rev-parse HEAD)" ]; then
+        GUARD_BRANCH=$b; break
+      fi
+    done
+    [ -n "$GUARD_BRANCH" ] || guard_die "$repo is detached at a commit that is not the pushed tip of $GUARD_BRANCHES.
+  Run: git -C $repo fetch $remote && git -C $repo switch --detach $remote/<branch>"
+  }
+  case " $GUARD_BRANCHES " in
+    *" $GUARD_BRANCH "*) ;;
+    *) guard_die "$repo is on '$GUARD_BRANCH'. Deploy only from an integration branch ($GUARD_BRANCHES):
+  merge your branch into it, push it, and deploy from a checkout of it." ;;
+  esac
+  local dirty
   dirty=$(git -C "$repo" status --porcelain --untracked-files=no)
   [ -z "$dirty" ] || guard_die "uncommitted changes in $repo:
 $dirty"
   dirty=$(git -C "$repo" ls-files --others --exclude-standard -- "$@")
   [ -z "$dirty" ] || guard_die "untracked files in shipped folders of $repo:
 $dirty"
+  git -C "$repo" fetch -q "$remote" "$GUARD_BRANCH" || guard_die "git fetch $remote $GUARD_BRANCH failed"
   GUARD_COMMIT=$(git -C "$repo" rev-parse HEAD)
+  local pushed
+  pushed=$(git -C "$repo" rev-parse "refs/remotes/$remote/$GUARD_BRANCH" 2>/dev/null) ||
+    guard_die "$remote/$GUARD_BRANCH does not exist; push the integration branch first"
+  [ "$pushed" = "$GUARD_COMMIT" ] || guard_die "HEAD ($GUARD_COMMIT) is not $remote/$GUARD_BRANCH ($pushed).
+  Pull (merge) $remote/$GUARD_BRANCH and push, so what goes live is what everyone can fetch."
+  GUARD_REPO_URL=$(git -C "$repo" remote get-url "$remote")
+}
+
+# guard_use_commit <repo> <remote> <full sha>: like guard_check_tree for a deploy that ships a
+#   commit from the remote rather than the checkout: the commit must be on the pushed tip of an
+#   integration branch. Sets the same variables.
+guard_use_commit() {
+  local repo=$1 remote=$2 sha=$3 b
+  GUARD_REPO_DIR=$repo GUARD_REMOTE=$remote GUARD_COMMIT=$sha GUARD_BRANCH=""
+  for b in $GUARD_BRANCHES; do
+    git -C "$repo" fetch -q "$remote" "$b" 2>/dev/null || continue
+    if git -C "$repo" merge-base --is-ancestor "$sha" "refs/remotes/$remote/$b" 2>/dev/null; then
+      GUARD_BRANCH=$b; break
+    fi
+  done
+  [ -n "$GUARD_BRANCH" ] || guard_die "$sha is not on $remote's integration branch ($GUARD_BRANCHES).
+  Merge it into one, push, and deploy that."
   GUARD_REPO_URL=$(git -C "$repo" remote get-url "$remote")
 }
 
@@ -72,7 +121,7 @@ guard_field() {
 
 # guard_check_ancestry <record path>: refuses unless GUARD_COMMIT contains the live commit.
 guard_check_ancestry() {
-  local record=$1 live repo=$GUARD_REPO_DIR desc
+  local record=$1 live repo=$GUARD_REPO_DIR
   guard_read_record "$record"
   if [ -z "$GUARD_LIVE_JSON" ]; then
     if [ "$GUARD_FORCE_ROLLBACK" = 1 ]; then
@@ -83,6 +132,7 @@ guard_check_ancestry() {
   Seed it (deploy/live-record.sh seed ...) after checking what is live, or pass --force-rollback."
   fi
   live=$(guard_field commit)
+  local desc
   desc="$live (branch $(guard_field branch), by $(guard_field by), $(guard_field deployed_at))"
   echo "live:      $desc"
   echo "deploying: $GUARD_COMMIT ($GUARD_BRANCH)"
@@ -95,8 +145,8 @@ guard_check_ancestry() {
       return 0
     fi
     guard_die "the live commit $live is not in this repository (nor on $GUARD_REMOTE).
-  It was deployed from work you do not have. Get it pushed, merge it into your branch,
-  then deploy. Do not deploy over it."
+  It was deployed from work you do not have. Ask its owner to push and merge it into
+  $GUARD_BRANCH, then merge that here. Do not deploy over it."
   fi
   if git -C "$repo" merge-base --is-ancestor "$live" "$GUARD_COMMIT"; then
     echo "ok: keeps everything live, adds $(git -C "$repo" rev-list --count "$live..$GUARD_COMMIT") commit(s)"
@@ -108,8 +158,57 @@ guard_check_ancestry() {
     echo "WARNING: --force-rollback given; rolling them back" >&2
     return 0
   fi
-  guard_die "the live build has commits this one does not. Merge $live into your branch and
-  deploy that, or pass --force-rollback if dropping them is intended."
+  guard_die "the live build has commits this one does not. Merge $live (or its branch) into
+  $GUARD_BRANCH and deploy that, or pass --force-rollback if dropping them is intended."
+}
+
+# guard_lock <what>: takes the server's deploy lock for the rest of this script's life.
+guard_lock() {
+  local what=$1 dir wait=${DEPLOY_LOCK_WAIT:-30} i=0 who
+  dir=$(mktemp -d)
+  GUARD_LOCK_DIR=$dir
+  mkfifo "$dir/hold"
+  who="$GUARD_BY | $what | $GUARD_BRANCH $GUARD_COMMIT | since $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # The remote side holds flock while its stdin stays open; this script keeps fd 9 (the fifo's write
+  # end) open until it exits, so the lock is released on exit, ^C, or a dropped connection.
+  # shellcheck disable=SC2016  # runs on the server
+  guard_remote bash -c '
+    exec 8>>"$1" || exit 3
+    if ! flock -n 8; then echo "BUSY $(cat "$1.who" 2>/dev/null || echo "(holder unknown)")"; exit 75; fi
+    printf "%s\n" "$2" > "$1.who"
+    echo LOCKED
+    cat > /dev/null
+    rm -f "$1.who"' _ "$GUARD_LOCK_FILE" "$who" < "$dir/hold" > "$dir/out" 2>&1 &
+  GUARD_LOCK_PID=$!
+  exec 9> "$dir/hold"
+  while :; do
+    if grep -q '^LOCKED' "$dir/out" 2>/dev/null; then
+      echo "lock: holding $GUARD_HOST:$GUARD_LOCK_FILE"
+      return 0
+    fi
+    if grep -q '^BUSY' "$dir/out" 2>/dev/null; then
+      exec 9>&-
+      guard_die "another deploy is running on $GUARD_HOST:
+  $(sed -n 's/^BUSY //p' "$dir/out")
+  Wait for it to finish (or ask that session), then run this again."
+    fi
+    if ! kill -0 "$GUARD_LOCK_PID" 2>/dev/null && ! grep -q '^LOCKED' "$dir/out"; then
+      exec 9>&-
+      guard_die "could not take the deploy lock on $GUARD_HOST: $(cat "$dir/out")"
+    fi
+    i=$((i + 1))
+    [ "$i" -le $((wait * 5)) ] || { exec 9>&-; guard_die "no answer from the lock on $GUARD_HOST after ${wait}s"; }
+    sleep 0.2
+  done
+}
+
+# guard_unlock: releases the lock now (it is also released when the script exits).
+guard_unlock() {
+  [ -n "${GUARD_LOCK_PID:-}" ] || return 0
+  exec 9>&-
+  wait "$GUARD_LOCK_PID" 2>/dev/null || true
+  rm -rf "$GUARD_LOCK_DIR"
+  GUARD_LOCK_PID=""
 }
 
 # guard_write_record <record path> <parts, e.g. "site" or "plugin site" or "client">

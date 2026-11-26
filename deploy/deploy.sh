@@ -7,8 +7,9 @@
 #   --force-rollback  deploy even if the live site/plugin has commits this one lacks (lists them first)
 #   --force           restart the zone even with players online (default: refuse)
 #
-# Deploys only a clean checkout whose commit contains the live one (/var/www/foundation/DEPLOYED.json)
-# and records the new one there. See deploy/README.md, "Deploying safely".
+# Deploys only a clean checkout of an integration branch (custom-graphics, later main) that is
+# exactly its pushed tip, only if it contains the live commit (/var/www/foundation/DEPLOYED.json),
+# and only one deploy at a time (server lock). See deploy/README.md, "Deploying safely".
 #
 #   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle (arena bots). Without it the
 #                  server keeps the oss-bot it has (or the newest backed-up one), so bots stay on.
@@ -62,6 +63,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 [ -d /usr/local/share/dotnet ] && export PATH=/usr/local/share/dotnet:$PATH
 # shellcheck source=deploy/live-guard.sh
 . "$REPO/deploy/live-guard.sh"
+GUARD_BRANCHES=${SITE_BRANCHES:-custom-graphics main}
 PASS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -102,7 +104,8 @@ NATIVE="${NUGET_PACKAGES:-$HOME/.nuget/packages}/sqlitepclraw.lib.e_sqlite3/$SQL
 mkdir -p "$STAGE/native" && cp "$NATIVE" "$STAGE/native/libe_sqlite3.so"
 cp "$REPO/site/"* "$STAGE/site/"
 
-echo "== re-check the live record"
+echo "== lock and re-check"
+guard_lock "site+plugin deploy.sh"
 guard_check_ancestry "$RECORD"
 
 TS=$(date -u +%Y%m%d-%H%M%S)
@@ -117,6 +120,7 @@ remote_cmd=$(printf '%q ' bash "$REMOTE/deploy/remote-install.sh" "$REMOTE" "$@"
 # shellcheck disable=SC2029  # expanded locally on purpose, already quoted with %q
 ssh "$HOST" "$remote_cmd"
 guard_write_record "$RECORD" "plugin site"
+guard_unlock
 
 echo
 echo "== public check"

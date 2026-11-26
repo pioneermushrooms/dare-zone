@@ -3,12 +3,14 @@
 #
 #   deploy/publish-site-from-mac.sh --by '<session or branch label>' [--force-rollback] <full commit sha>
 #
-# The commit must contain the live one (/var/www/foundation/DEPLOYED.json); it is recorded there.
+# The commit must be on origin's integration branch (custom-graphics, later main) and contain the
+# live commit (/var/www/foundation/DEPLOYED.json); one deploy at a time (server lock).
 # See deploy/README.md, "Deploying safely".
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=deploy/live-guard.sh
 . "$REPO/deploy/live-guard.sh"
+GUARD_BRANCHES=${SITE_BRANCHES:-custom-graphics main}
 SOURCE_URL=${SITE_SOURCE_URL:-https://github.com/pioneermushrooms/dare-zone.git}
 revision=""
 while [ $# -gt 0 ]; do
@@ -28,11 +30,8 @@ git init -q "$scratch"
 git -C "$scratch" fetch -q --depth=1 "$SOURCE_URL" "$revision"
 git -C "$scratch" archive -o "$scratch/site.tar.gz" --format=tar.gz FETCH_HEAD site deploy/install-public-site.sh
 
-git -C "$REPO" fetch -q origin "$revision" 2>/dev/null || true
-GUARD_REPO_DIR=$REPO GUARD_REMOTE=origin GUARD_COMMIT=$revision
-GUARD_REPO_URL=$(git -C "$REPO" remote get-url origin)
-GUARD_BRANCH=$(git -C "$REPO" branch -r --contains "$revision" --format='%(refname:short)' 2>/dev/null | head -1)
-GUARD_BRANCH=${GUARD_BRANCH:-(unknown)}
+guard_use_commit "$REPO" origin "$revision"
+guard_lock "site only (publish-site-from-mac.sh)"
 guard_check_ancestry "$RECORD"
 
 # shellcheck disable=SC2016  # runs on the server
@@ -44,3 +43,4 @@ guard_remote bash -c 'cat > "$1/site.tar.gz"' _ "$remote" < "$scratch/site.tar.g
 guard_remote bash -c 'cd "$1" && tar -xzf site.tar.gz && bash deploy/install-public-site.sh site' _ "$remote"
 guard_remote rm -rf -- "$remote"
 guard_write_record "$RECORD" site
+guard_unlock
