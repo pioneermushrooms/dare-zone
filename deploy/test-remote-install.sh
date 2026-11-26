@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test harness for deploy/remote-install.sh (runs on macOS/Linux, no root, no server): fake zone + stubbed systemctl/journalctl/caddy/ss/curl.
 #   deploy/test-remote-install.sh <scenario>
-# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players players-bots sysop-bad sysop-ok store-backup store-backup-nocli
+# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players players-bots sysop-bad sysop-ok store-backup store-backup-nocli oss-bot-host
 # Needs a Release build in out/modules/Dare.Arenas (deploy.sh or dotnet build -c Release).
 set -uo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -138,6 +138,28 @@ case $SC in
     bash "$RI" "$S" --no-restart --sysop 'Dare Dev' 2>&1 | grep -E 'sysop|ERROR'; echo "exit ${PIPESTATUS[0]}"
     bash "$RI" "$S" --no-restart --sysop 'dare dev' 2>&1 | grep -E 'sysop|ERROR'
     sed -n '/^\[(global)\]/,/^\[/p' $H/zone/conf/staff.conf | grep -v '^;' ;;
+  oss-bot-host)
+    # the oss-bot it will run must have --host (one host per arena); an old one would leave every bot off
+    fake_bot() { printf '#!/bin/bash\necho "Usage: oss-bot [options]"\n%s\n' "$2" > "$1"; chmod +x "$1"; }
+    mkdir -p "$H/zone/bin/modules/Dare.Arenas"; echo "old plugin" > "$H/zone/bin/modules/Dare.Arenas/MARK-previous"
+    echo "### kept oss-bot without --host:"
+    fake_bot "$H/zone/bin/modules/Dare.Arenas/oss-bot" 'echo "  --script <file>"'
+    bash "$RI" "$S" 2>&1 | grep -E '^oss-bot|ERROR|WARNING|^done'; echo "exit ${PIPESTATUS[0]}"
+    echo "### nothing touched: backups $(ls -d $H/root/backup-* 2>/dev/null | wc -l | tr -d ' '), restarts $(cat "$H/calls" 2>/dev/null | grep -c restart), old plugin $(ls $H/zone/bin/modules/Dare.Arenas | grep -c MARK-previous)"
+    echo "### bundled oss-bot without --host (kept one has it):"
+    fake_bot "$H/zone/bin/modules/Dare.Arenas/oss-bot" 'echo "  --host   Run an arena'"'"'s bots"'
+    fake_bot "$S/plugin/oss-bot" 'exit 2'
+    bash "$RI" "$S" 2>&1 | grep -E '^oss-bot|ERROR|WARNING|^done'; echo "exit ${PIPESTATUS[0]}"
+    echo "### kept oss-bot with --host:"
+    rm "$S/plugin/oss-bot"
+    bash "$RI" "$S" 2>&1 | grep -E '^oss-bot|ERROR|WARNING|^done'; echo "exit ${PIPESTATUS[0]}"
+    echo "### installed oss-bot has --host: $("$H/zone/bin/modules/Dare.Arenas/oss-bot" --help | grep -c -- --host)"
+    echo "### bundled oss-bot with --host:"
+    fake_bot "$S/plugin/oss-bot" 'echo "  --host   new"'
+    bash "$RI" "$S" 2>&1 | grep -E '^oss-bot|ERROR|WARNING|^done'; echo "exit ${PIPESTATUS[0]}"
+    echo "### no oss-bot anywhere (first install): warns, installs"
+    rm -f "$S/plugin/oss-bot"; rm -rf "$H/zone/bin/modules/Dare.Arenas" "$H"/root/backup-*
+    bash "$RI" "$S" 2>&1 | grep -E '^oss-bot|ERROR|WARNING|^done'; echo "exit ${PIPESTATUS[0]}" ;;
   store-backup|store-backup-nocli)
     sqlite3 "$H/zone/data/dare-arenas.db" "CREATE TABLE arenas(name TEXT); INSERT INTO arenas VALUES('skyrace');"
     if [ "$SC" = store-backup-nocli ]; then

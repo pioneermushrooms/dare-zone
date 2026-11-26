@@ -10,7 +10,8 @@
 # What it does, in order:
 #  0. preflight: the zone's server must be SubspaceServer v4.0.0 with the Microsoft.Data.Sqlite /
 #     SQLitePCLRaw files the plugin uses in bin/ (the plugin ships no copy); a --sysop name must be
-#     a plain player name; unless --no-restart, nobody may be online (override: --force)
+#     a plain player name; the oss-bot it will run (bundled or kept) must have --host (arena bots);
+#     unless --no-restart, nobody may be online (override: --force)
 #  1. backs up every file it may change to /root/backup-arena-ownership-<utc timestamp>/
 #     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
 #     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
@@ -236,6 +237,21 @@ if [ "$RESTART" = 1 ]; then
     die "players online: $online - not restarting the zone; re-run later, with --no-restart, or with --force"
   fi
 fi
+# Arena bots: the oss-bot this install will run (bundled with OSS_BOT_LINUX, else the installed or
+# newest backed-up one) must have --host, the one-host-per-arena mode the plugin starts. An older
+# oss-bot exits at once on every start, which leaves every arena's bots off.
+if [ -f "$STAGE/plugin/oss-bot" ]; then
+  BOT_BIN=$STAGE/plugin/oss-bot; BOT_FROM="bundled (OSS_BOT_LINUX)"
+else
+  BOT_BIN=$(ls -t "$ZONE/bin/modules/Dare.Arenas/oss-bot" "$BACKUP_ROOT"/backup-arena-ownership-*/zone-bin-modules/Dare.Arenas/oss-bot 2>/dev/null | head -1 || true)
+  BOT_FROM="kept from $BOT_BIN"
+fi
+if [ -n "$BOT_BIN" ]; then
+  bot_help=$("$BOT_BIN" --help 2>&1 || true)
+  grep -q -- '--host' <<<"$bot_help" \
+    || die "the oss-bot this install would run ($BOT_FROM) has no --host, so every arena's bots would stay off. Build oss-bot for Linux x86-64 from the client repo and deploy with OSS_BOT_LINUX=<path to it> (see deploy/deploy.sh)"
+  echo "oss-bot has --host ($BOT_FROM)"
+fi
 echo "SubspaceServer v4.0.0, server sqlite present, plugin OK"
 
 # ---- 1. backup ----------------------------------------------------------------------------
@@ -303,11 +319,11 @@ step "zone files ($ZONE)"
 # Arena bots need the oss-bot program beside the plugin. It is built from the client repo and only
 # bundled when deploy.sh gets OSS_BOT_LINUX, so otherwise keep the one installed (or, if a deploy
 # already dropped it, the newest backed-up copy): a plugin deploy must never switch the bots off.
+# (Preflight chose it and checked it has --host: BOT_BIN.)
 if [ ! -f "$STAGE/plugin/oss-bot" ]; then
-  keep=$(ls -t "$ZONE/bin/modules/Dare.Arenas/oss-bot" "$BACKUP_ROOT"/backup-arena-ownership-*/zone-bin-modules/Dare.Arenas/oss-bot 2>/dev/null | head -1 || true)
-  if [ -n "$keep" ]; then
-    install -m 0755 "$keep" "$STAGE/plugin/oss-bot"
-    echo "oss-bot kept from $keep"
+  if [ -n "$BOT_BIN" ]; then
+    install -m 0755 "$BOT_BIN" "$STAGE/plugin/oss-bot"
+    echo "oss-bot $BOT_FROM"
   else
     echo "WARNING: no oss-bot to install: arena bots stay off until a deploy with OSS_BOT_LINUX" >&2
   fi

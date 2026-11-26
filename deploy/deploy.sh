@@ -13,6 +13,8 @@
 #
 #   OSS_BOT_LINUX  optional Linux x86-64 oss-bot executable to bundle (arena bots). Without it the
 #                  server keeps the oss-bot it has (or the newest backed-up one), so bots stay on.
+#                  The install refuses an oss-bot (bundled or kept) without --host: build the
+#                  current one (cargo build --release -p oss-bot, Linux x86-64) and pass it here.
 #   DEPLOY_HOST   ssh target (default root@5.161.238.245)
 #
 # Builds the plugin (Release), copies it with deploy/ and site/ to
