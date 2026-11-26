@@ -9,7 +9,8 @@ public sealed partial class ArenaOwnership
 {
     // Generated ships, per pilot name. Prompted ones are paid (PixelLab), so they are scarcer;
     // the ship service also draws only one prompted ship at a time for the whole zone.
-    internal readonly RateLimiter ShipPromptPerAccount = new(12, TimeSpan.FromHours(1), Clock);
+    // A prompt draws a batch of options (about $0.12); Try again takes the next one from it for free.
+    internal readonly RateLimiter ShipPromptPerAccount = new(10, TimeSpan.FromHours(1), Clock);
     internal readonly RateLimiter ShipRandomPerAccount = new(120, TimeSpan.FromHours(1), Clock);
     internal readonly RateLimiter ShipPromptPerIp = new(24, TimeSpan.FromHours(1), Clock);
 }
@@ -24,7 +25,8 @@ internal sealed partial class WebServer
 {
     private const int MaxShipJsonBytes = 400 * 1024; // a base64 sheet is at most ~350 KB
 
-    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(120) };
+    // PixelLab's queue can take a few minutes for a fresh batch.
+    private static readonly HttpClient ShipService = new() { Timeout = TimeSpan.FromSeconds(300) };
 
     /// <summary>The ship service's base URL: DARE_SHIPS_URL, else the loopback default.</summary>
     private static readonly string ShipServiceUrl =
@@ -97,6 +99,12 @@ internal sealed partial class WebServer
             if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
             request = new { mode = "random" };
         }
+        else if (mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } batch)
+        {
+            // The next option from a batch already drawn (and paid for): cheap, like Random.
+            if (!_m.ShipRandomPerAccount.TryTake("ship:random:" + accountId)) return Bad(TooMany, 429);
+            request = new { mode = "prompt", batch };
+        }
         else if (mode == "prompt")
         {
             var prompt = (Str(body, "prompt") ?? "").Trim();
@@ -119,7 +127,7 @@ internal sealed partial class WebServer
             // The service's answers are written for pilots (and carry no secrets), so pass them on.
             var status = (int)res.StatusCode is >= 200 and < 600 ? (int)res.StatusCode : 502;
             _m.Log(status == 200 ? LogLevel.Info : LogLevel.Warn, $"Ship {mode} for account {accountId}: {status}.");
-            return JsonBytes(status == 200 ? 200 : status is 400 or 429 or 503 ? status : 502, bytes);
+            return JsonBytes(status == 200 ? 200 : status is 400 or 410 or 429 or 503 ? status : 502, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
