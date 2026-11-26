@@ -23,6 +23,11 @@ internal static class BotPasses
 
     internal static void Revoke(string name) => Pending.TryRemove(name, out _);
 
+    internal static bool IsPending(string name, string password) =>
+        Pending.TryGetValue(name, out var pending) && pending == password;
+
+    internal static BotPassBook NewBook() => new(Issue, IsPending, Revoke);
+
     // Players who logged in on a bot pass. This, not the name, makes a player a bot: a pilot
     // account that holds a registered bot's name logs in as a pilot and stays one.
     private static readonly ConcurrentDictionary<Player, byte> Sessions = new();
@@ -59,7 +64,7 @@ public sealed partial class ArenaOwnership
         /// <summary>What the lineup shows each bot now (Out = absent).</summary>
         public IReadOnlyList<BotPlacement> Shown = [];
         /// <summary>Each listed bot's one-time pass, kept (so the text stays the same) until it is replaced.</summary>
-        public readonly Dictionary<string, (string Password, DateTimeOffset Issued)> Passes = new(StringComparer.OrdinalIgnoreCase);
+        public readonly BotPassBook Passes = BotPasses.NewBook();
     }
 
     /// <summary>A bot's casual chat in progress (replies to pilots, exchanges with another bot).</summary>
@@ -79,9 +84,6 @@ public sealed partial class ArenaOwnership
         public string? ExchangeFollowup;
         public DateTimeOffset FollowupAt;
     }
-
-    /// <summary>A listed bot that has not shown up in the zone this long gets a fresh pass.</summary>
-    private static readonly TimeSpan PassLifetime = TimeSpan.FromSeconds(15);
 
     private readonly Dictionary<string, DateTimeOffset> _botOccupancy = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HostRun> _hosts = new(StringComparer.OrdinalIgnoreCase);
@@ -392,7 +394,7 @@ public sealed partial class ArenaOwnership
             // then it comes in like any arriving bot, after its own short wait.
             var target = BotDirector.Plan(bots, Store.MatchSizes(arena),
                     flying.TryGetValue(arena, out var freqs) ? freqs : new Dictionary<int, int>())
-                .Select(p => botsInZone.Contains(p.Label) && !run.Passes.ContainsKey(p.Label) ? p with { Seat = BotSeat.Out } : p)
+                .Select(p => botsInZone.Contains(p.Label) && !run.Passes.Holds(p.Label) ? p with { Seat = BotSeat.Out } : p)
                 .ToList();
             run.Shown = run.Stagger.Apply(run.Seats.Step(target));
             if (run.Process is not { } host) continue;
@@ -401,22 +403,11 @@ public sealed partial class ArenaOwnership
             foreach (var placement in run.Shown)
             {
                 if (placement.Seat == BotSeat.Out) continue;
-                bool inZone = botsInZone.Contains(placement.Label);
-                if (run.Passes.TryGetValue(placement.Label, out var pass))
-                {
-                    // the bot has not come in on this pass: replace it, so the host (re)connects it on a fresh one
-                    if (!inZone && now - pass.Issued >= PassLifetime)
-                        run.Passes[placement.Label] = pass = (BotPasses.Issue(placement.Label), now);
-                }
-                else if (inZone) continue; // an old session still in the zone: no pass (and not listed) until it has left
-                else run.Passes[placement.Label] = pass = (BotPasses.Issue(placement.Label), now);
-                lineup.Add((bots.First(b => b.Label == placement.Label), placement, pass.Password));
+                // null: an old session still in the zone, not listed until it has left
+                if (run.Passes.PassFor(placement.Label, botsInZone.Contains(placement.Label), now) is not { } pass) continue;
+                lineup.Add((bots.First(b => b.Label == placement.Label), placement, pass));
             }
-            foreach (var label in run.Passes.Keys.Where(l => !lineup.Any(e => e.Bot.Label == l)).ToList())
-            {
-                BotPasses.Revoke(label);
-                run.Passes.Remove(label);
-            }
+            run.Passes.KeepOnly(lineup.Select(e => e.Bot.Label).ToList());
 
             var text = BotLineup.Render(arena, owner, lineup);
             if (text != run.LastLineup)
@@ -485,7 +476,6 @@ public sealed partial class ArenaOwnership
 
     private static void RevokePasses(HostRun run)
     {
-        foreach (var label in run.Passes.Keys) BotPasses.Revoke(label);
         run.Passes.Clear();
     }
 
