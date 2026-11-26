@@ -32,6 +32,11 @@
     <EmbeddedResource Include="Web/wwwroot/*" LogicalName="wwwroot/%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The voice-menu phrase table (single source: voice/phrases.json). -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../voice/phrases.json" LogicalName="voice.phrases.json" />
+  </ItemGroup>
+
   <!--
     The server ships Microsoft.Data.Sqlite 9.0.3 / SQLitePCLRaw (managed + native) in its bin/.
     Exclude their runtime/native assets so the plugin folder carries no copy and the server's are used.

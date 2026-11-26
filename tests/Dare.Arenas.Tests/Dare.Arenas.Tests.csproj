@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\voice\phrases.json" Link="phrases.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Dare.Arenas.Core\Dare.Arenas.Core.csproj" />
   </ItemGroup>
 
