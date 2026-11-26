@@ -7,8 +7,9 @@ namespace Dare.Arenas;
 
 // Restarting an owned arena from the web: which saved changes the running arena isn't using yet
 // (map, graphics, settings that wait for a recycle), who is inside, an announcement, and an
-// optional countdown with repeated announcements. Plans live in memory: a server restart drops
-// them (and restarts every arena anyway). All of this runs on the mainloop.
+// optional countdown with repeated announcements. Plans are kept in the store, so a server restart
+// picks them up again (one that came due while the server was down is dropped: the arena just
+// started fresh anyway). All of this runs on the mainloop.
 public sealed partial class ArenaOwnership
 {
     internal const int MaxAnnouncementLength = 200;
@@ -33,6 +34,16 @@ public sealed partial class ArenaOwnership
     private void StartRestarts(IComponentBroker broker)
     {
         ArenaActionCallback.Register(broker, Callback_ArenaActionRestarts);
+        var now = DateTimeOffset.UtcNow;
+        foreach (var p in Store.Restarts())
+        {
+            if (p.At <= now) { Store.RemoveRestart(p.Arena); continue; }
+            _restartPlans[p.Arena] = new RestartPlan
+            {
+                Arena = p.Arena, At = p.At, EverySeconds = p.EverySeconds, Message = p.Message, By = p.By,
+                NextAnnounce = p.EverySeconds > 0 ? now.AddSeconds(p.EverySeconds) : DateTimeOffset.MaxValue,
+            };
+        }
         _mainloopTimer.SetTimer(TickRestarts, 1000, 1000, null);
     }
 
@@ -128,7 +139,7 @@ public sealed partial class ArenaOwnership
         var now = DateTimeOffset.UtcNow;
         if (at is null || at.Value <= now.AddSeconds(2))
         {
-            _restartPlans.Remove(arena);
+            ForgetRestart(arena);
             if (message is not null) Announce(arena, $"{player}: {message}");
             return RestartNow(player, arena);
         }
@@ -140,6 +151,7 @@ public sealed partial class ArenaOwnership
 
         var plan = new RestartPlan { Arena = arena, At = at.Value, EverySeconds = everySeconds, Message = message, By = player };
         _restartPlans[arena] = plan;
+        Store.SaveRestart(new ScheduledRestart(arena, plan.At, everySeconds, message, player));
         AnnouncePlan(plan, now);
         plan.NextAnnounce = everySeconds > 0 ? now.AddSeconds(everySeconds) : DateTimeOffset.MaxValue;
         Log(LogLevel.Info, $"(web) {player} scheduled a restart of [{arena}] for {plan.At:u} (announce every {everySeconds}s).");
@@ -150,7 +162,7 @@ public sealed partial class ArenaOwnership
     {
         if (!HasRole(arena, player, ownerOnly: true))
             return new Result(false, "Only the arena's owner can cancel its restart.");
-        if (!_restartPlans.Remove(arena))
+        if (!ForgetRestart(arena))
             return new Result(true, "No restart was scheduled.");
         Announce(arena, "The scheduled arena restart is cancelled.");
         Log(LogLevel.Info, $"(web) {player} cancelled the scheduled restart of [{arena}].");
@@ -177,7 +189,7 @@ public sealed partial class ArenaOwnership
         {
             if (now >= plan.At)
             {
-                _restartPlans.Remove(plan.Arena);
+                ForgetRestart(plan.Arena);
                 Announce(plan.Arena, "Restarting the arena now.");
                 var result = RestartNow(plan.By + " (scheduled)", plan.Arena);
                 if (!result.Ok) Log(LogLevel.Warn, $"Scheduled restart of [{plan.Arena}]: {result.Message}");
@@ -189,13 +201,19 @@ public sealed partial class ArenaOwnership
                 plan.FinalSent = true;
                 AnnouncePlan(plan, now);
             }
-            else if (now >= plan.NextAnnounce && left > TimeSpan.FromSeconds(15))
+            else if (now >= plan.NextAnnounce && left > TimeSpan.FromSeconds(12))
             {
                 AnnouncePlan(plan, now);
                 while (plan.NextAnnounce <= now) plan.NextAnnounce = plan.NextAnnounce.AddSeconds(plan.EverySeconds);
             }
         }
         return true;
+    }
+
+    private bool ForgetRestart(string arena)
+    {
+        Store.RemoveRestart(arena);
+        return _restartPlans.Remove(arena);
     }
 
     private void AnnouncePlan(RestartPlan plan, DateTimeOffset now) =>

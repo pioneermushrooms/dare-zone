@@ -296,7 +296,16 @@
     if (bytes.length === 0) { say("The map is empty; draw something first.", false); return; }
     if (bytes.length > 2 * 1024 * 1024) { say("Maps must be 2 MB or smaller.", false); return; }
     const target = liveName || arena;
-    if (!confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`)) return;
+    // pilots inside: ask (restart now with an optional announcement, or save and restart later);
+    // nobody inside: a plain confirm, then it restarts
+    let choice = { restart: true, message: null };
+    const info = liveName ? null : await fetch(API + "/me?arena=" + encodeURIComponent(arena), { credentials: "same-origin" })
+      .then((r) => r.json()).catch(() => null);
+    const inside = info?.restart;
+    if (inside?.running && inside.online > 0) {
+      choice = await askPublish(inside);
+      if (!choice) return;
+    } else if (!confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`)) return;
     $("publish").disabled = true;
     say("Publishing…", true);
     const hdr = { "X-Requested-With": "dare-arena" };
@@ -307,14 +316,42 @@
     if (!j.ok) { say(j.message, false); setDirty(true); return; }
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
+    if (!liveName && !choice.restart) {
+      setDirty(false);
+      say(`Saved to ${arena}; the running arena keeps the old map until you restart it. `, true);
+      $("msg").append(Object.assign(document.createElement("a"),
+        { href: "/arena/me?arena=" + encodeURIComponent(arena) + "#map", textContent: "Restart it in the arena editor" }));
+      $("edname").textContent = `${arena} · ${fileName}`;
+      return;
+    }
     const rr = liveName
       ? await fetch(API + "/drafts/publish", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ name: liveName }) })
-      : await fetch(API + "/recycle", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena }) });
+      : await fetch(API + "/restart", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena, message: choice.message }) });
     const jj = await rr.json().catch(() => ({ ok: false, message: "HTTP " + rr.status }));
     setDirty(false);
     say(jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`, jj.ok);
     $("edname").textContent = `${arena} · ${fileName}`;
   });
+
+  // {restart, message} from the publish dialog, or null when cancelled
+  function askPublish(inside) {
+    const dlg = $("pubdlg");
+    const names = inside.onlineNames || [];
+    const more = inside.online > names.length ? ` and ${inside.online - names.length} more` : "";
+    $("pubtitle").textContent = `Publish this map to ${arena}?`;
+    $("pubwho").textContent = `${inside.online} pilot${inside.online === 1 ? " is" : "s are"} in the arena right now`
+      + (names.length ? ` (${names.join(", ")}${more})` : "")
+      + ". Restarting disconnects them from the arena for a moment; they're put straight back in with the new map.";
+    return new Promise((resolve) => {
+      const done = (value) => { dlg.close(); resolve(value); };
+      $("pubnow").onclick = () => done({ restart: true, message: $("pubmsg").value.trim() || null });
+      $("publater").onclick = () => done({ restart: false, message: null });
+      $("pubcancel").onclick = () => done(null);
+      dlg.oncancel = () => resolve(null);
+      dlg.showModal();
+      $("pubnow").focus();
+    });
+  }
 
   window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("resize", resize);

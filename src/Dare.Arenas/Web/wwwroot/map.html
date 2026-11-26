@@ -55,5 +55,19 @@
     <div class="edmsg" id="msg" role="status"></div>
   </main>
 </div>
+
+<dialog id="pubdlg" aria-labelledby="pubtitle">
+  <h3 id="pubtitle">Publish?</h3>
+  <p class="warn" id="pubwho"></p>
+  <label class="dlg-field">Announcement (optional)
+    <textarea id="pubmsg" rows="2" maxlength="200" placeholder="New map coming in, back in a second!"></textarea>
+    <span class="hint">Sent to everyone in the arena just before the restart.</span></label>
+  <div class="row dlg-actions">
+    <button type="button" class="hot" id="pubnow">Publish and restart now</button>
+    <button type="button" class="ghost" id="publater">Publish, restart later</button>
+    <button type="button" class="ghost" id="pubcancel">Cancel</button>
+  </div>
+  <p class="hint">Restart later saves the map without dropping anyone; restart it from the arena editor, now or on a countdown.</p>
+</dialog>
 </body>
 </html>
