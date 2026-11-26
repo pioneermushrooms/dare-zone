@@ -68,6 +68,7 @@
     const body = await me.json().catch(() => null);
     if (!me.ok || !body || !body.arena) { say((body && body.message) || "You don't own or co-mod an arena yet.", false); return; }
     arena = body.arena; role = body.role;
+    $("enterarena").href = enterUrl(arena);
     $("edname").textContent = `${arena} · ${body.map || "no map"}`;
     document.title = `${arena} map · SubSpace Foundation`;
     if (role !== "owner") say("You can look and download; only the owner can publish.", false);
@@ -566,11 +567,14 @@
       : `Downloaded ${name}.lvl, but it couldn't be kept in Your maps: ${(j && j.message) || "no connection"}`, !!(j && j.ok));
   });
 
-  $("publish").addEventListener("click", async () => {
-    if (role !== "owner") return;
+  // Publish: true once the map is saved and the arena restarted with it. thenEnter (from Enter arena,
+  // where the pilot already chose "Publish and restart"): no second confirm, and with pilots inside
+  // the dialog offers only "Publish and restart now".
+  async function publish(thenEnter) {
+    if (role !== "owner") return false;
     const bytes = Lvl.serialize(grid, prefix);
-    if (bytes.length === 0) { say("The map is empty; draw something first.", false); return; }
-    if (bytes.length > 2 * 1024 * 1024) { say("Maps must be 2 MB or smaller.", false); return; }
+    if (bytes.length === 0) { say("The map is empty; draw something first.", false); return false; }
+    if (bytes.length > 2 * 1024 * 1024) { say("Maps must be 2 MB or smaller.", false); return false; }
     const target = liveName || arena;
     // pilots inside: ask (restart now with an optional announcement, or save and restart later);
     // nobody inside: a plain confirm, then it restarts
@@ -579,9 +583,9 @@
       .then((r) => r.json()).catch(() => null);
     const inside = info?.restart;
     if (inside?.running && inside.online > 0) {
-      choice = await askPublish(inside);
-      if (!choice) return;
-    } else if (!await Dlg.confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`, { title: "Publish map", ok: "Publish" })) return;
+      choice = await askPublish(inside, thenEnter);
+      if (!choice) return false;
+    } else if (!thenEnter && !await Dlg.confirm(`Publish this map to ${target}? Players inside are sent back in with the new map.`, { title: "Publish map", ok: "Publish" })) return false;
     $("publish").disabled = true;
     say("Publishing…", true);
     const hdr = { "X-Requested-With": "dare-arena" };
@@ -589,7 +593,7 @@
     const url = `${API}/upload?kind=map&arena=${encodeURIComponent(arena)}&name=${encodeURIComponent(fileName)}&libname=${encodeURIComponent(libName || arena.replace(/^#/, ""))}`;
     const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/octet-stream" }, hdr), body: bytes });
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
-    if (!j.ok) { say(j.message, false); setDirty(true); return; }
+    if (!j.ok) { say(j.message, false); setDirty(true); return false; }
     if (j.library) { libId = j.library; libName = libName || arena.replace(/^#/, ""); loadLibrary(); } // the server kept a copy in Your maps
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
@@ -599,7 +603,7 @@
       $("msg").append(Object.assign(document.createElement("a"),
         { href: "/arena/me?arena=" + encodeURIComponent(arena) + "#map", textContent: "Restart it in the arena editor" }));
       $("edname").textContent = `${arena} · ${fileName}`;
-      return;
+      return false;
     }
     const rr = liveName
       ? await fetch(API + "/drafts/publish", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ name: liveName }) })
@@ -608,10 +612,36 @@
     setDirty(false);
     say(jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`, jj.ok);
     $("edname").textContent = `${arena} · ${fileName}`;
+    return !!jj.ok;
+  }
+  $("publish").addEventListener("click", () => publish(false));
+
+  // ---- enter the arena in game (as the arena editor's Enter arena): ask first if the map has changes
+  // the running arena doesn't have yet
+  const PUBLIC = "(public)"; // the public arenas' shared folder; in game it is arena 0
+  const playName = (a) => a === PUBLIC ? "0" : a;
+  const enterUrl = (a) => "/?arena=" + encodeURIComponent(playName(a)) + "&enter=1"; // the home page presses Enter
+  $("enterarena").addEventListener("click", async (e) => {
+    if (!arena) { e.preventDefault(); return; }
+    $("enterarena").href = enterUrl(arena);
+    if (!dirty) return; // nothing pending: the link goes straight in
+    e.preventDefault();
+    const owner = role === "owner";
+    const what = libName ? `Your draft of ${libName} isn't` : "Your changes to this map aren't";
+    const pick = await Dlg.choose(
+      `${what} published, so ${arena} still has its old map. ` + (owner
+        ? "Publish and restart it first to play the new map, or go in and play the old one."
+        : "Only the owner can publish; going in now, you play the old map."),
+      { title: "Publish first?", choices: [
+        ...(owner ? [{ value: "publish", label: "Publish and restart, then enter" }] : []),
+        { value: "enter", label: "Enter without publishing" }] });
+    if (pick === "enter") { leaving = true; location.href = enterUrl(arena); return; }
+    if (pick !== "publish") return;
+    if (await publish(true)) { say("Published. Taking you in…", true); location.href = enterUrl(arena); }
   });
 
   // {restart, message} from the publish dialog, or null when cancelled
-  function askPublish(inside) {
+  function askPublish(inside, nowOnly) {
     const dlg = $("pubdlg");
     const names = inside.onlineNames || [];
     const more = inside.online > names.length ? ` and ${inside.online - names.length} more` : "";
@@ -619,6 +649,7 @@
     $("pubwho").textContent = `${inside.online} pilot${inside.online === 1 ? " is" : "s are"} in the arena right now`
       + (names.length ? ` (${names.join(", ")}${more})` : "")
       + ". Restarting disconnects them from the arena for a moment; they're put straight back in with the new map.";
+    $("publater").hidden = !!nowOnly;
     return new Promise((resolve) => {
       const done = (value) => { dlg.close(); resolve(value); };
       $("pubnow").onclick = () => done({ restart: true, message: $("pubmsg").value.trim() || null });
@@ -630,7 +661,8 @@
     });
   }
 
-  window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+  let leaving = false; // the pilot already chose to leave the changes behind (Enter without publishing)
+  window.addEventListener("beforeunload", (e) => { if (dirty && !leaving) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("resize", resize);
   resize();
   load().then(async () => {

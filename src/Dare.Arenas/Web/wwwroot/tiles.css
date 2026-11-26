@@ -1,0 +1,31 @@
+/* Tile editor (/arena/tiles). Builds on style.css's map editor frame (body.editor, .edbar, .edside). */
+.tiled .edside .row { display:flex; gap:6px; align-items:center; }
+.tiled .edside .row.wrap { flex-wrap:wrap; }
+.tiled .edside label.hint { display:flex; gap:6px; align-items:center; }
+.tiled .edside label.hint select { flex:1; min-width:0; font-size:.8rem; }
+.tiled .edside #shared { width:100%; font-size:.85rem; }
+.slotinfo { display:flex; gap:10px; align-items:center; font-size:.85rem; }
+.slotinfo canvas { width:48px; height:48px; border:1px solid var(--line); flex:none; }
+.swatch { display:inline-block; width:14px; height:14px; border:1px solid var(--line); }
+.swatch.big { width:28px; height:28px; flex:none; }
+#pal { width:304px; height:152px; cursor:pointer; border:1px solid var(--line); }
+.packlist { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
+.packlist li { display:flex; align-items:center; gap:6px; font-size:.8rem; }
+.packlist li .dot { width:10px; height:10px; border-radius:50%; flex:none; }
+.packlist li button.open { flex:1; text-align:left; justify-content:flex-start; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.packlist li.on button.open { border-color:var(--accent); color:var(--accent); }
+.tilemain { overflow:auto; padding:14px; display:flex; flex-direction:column; gap:16px; }
+.tilemain > section { flex:none; }
+.sheetwrap { position:relative; align-self:flex-start; max-width:100%; overflow:auto; }
+#sheet { display:block; cursor:pointer; border:1px solid var(--line); background:#000; }
+.sheetzoom { position:absolute; right:6px; top:6px; display:flex; gap:4px; }
+.workrow { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+.workcol { display:flex; flex-direction:column; gap:6px; max-width:100%; }
+.workcol .kicker { margin:0; }
+.workcol .row { display:flex; gap:8px; align-items:center; }
+#tile { width:min(480px, 90vw); height:auto; aspect-ratio:1; cursor:crosshair; touch-action:none; border:1px solid var(--line); }
+#prev { width:min(480px, 90vw); height:auto; aspect-ratio:3/2; cursor:cell; touch-action:none; border:1px solid var(--line); }
+.tilemain .edstatus { position:fixed; left:auto; right:12px; bottom:8px; }
+.tilemain .edmsg { position:fixed; left:auto; right:12px; top:64px; max-width:min(520px, 70vw); z-index:5; }
+.warnnote { color:var(--hot); }
+@media (max-width:820px) { #pal { width:100%; height:auto; } }

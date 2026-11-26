@@ -430,12 +430,16 @@ internal sealed partial class WebServer : IDisposable
             case "/editor.js": return Get(method, () => Static("editor.js"));
             case "/lvl.js": return Get(method, () => Static("lvl.js"));
             case "/lvlgen.js": return Get(method, () => Static("lvlgen.js"));
+            case "/tiles": return Get(method, () => Static("tiles.html"));
+            case "/tiles.js": return Get(method, () => Static("tiles.js"));
+            case "/tiles-editor.js": return Get(method, () => Static("tiles-editor.js"));
+            case "/tiles.css": return Get(method, () => Static("tiles.css"));
+            case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
             case "/dialogs.js": return Get(method, () => Static("dialogs.js"));
             case "/tiles.bm2": return Get(method, () => Static("tiles.bm2"));
             case "/tileart.js": return Get(method, () => Static("tileart.js"));
             case "/tileart-styles.js": return Get(method, () => Static("tileart-styles.js"));
-            case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/api/map": return method == "GET" ? await MapAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/recycle": return method == "POST" ? await RecycleAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/restart": return method == "POST" ? await OwnerActionAsync(req, (p, a, b) =>
@@ -1128,11 +1132,14 @@ internal sealed partial class WebServer : IDisposable
         }
     }
 
+    /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tiles-editor.js", "tiles.css", "tile-layout.json"];
+
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js", "tile-layout.json" }.Concat(AccountStaticFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js" }.Concat(AccountStaticFiles).Concat(TileEditorFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");

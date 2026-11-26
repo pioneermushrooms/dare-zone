@@ -56,6 +56,10 @@ end-bottom corner-bl  edge-bottom corner-br
 | `steel-blue` | 5,4 | 82–85, 101–104, 120–123, 139–142 |
 | `navy` | 9,4 | 86–89, 105–108, 124–127, 143–146 |
 
+Each pack built into sample walls by `TileLayout.pick` (pick by neighbours, nothing else):
+
+![tactical2's six packs as walls](tile-layout-joins.png)
+
 The rest of the sheet is listed under `other` (decor that is not a full pack) and `reserved`.
 
 ## The file
@@ -74,15 +78,33 @@ The rest of the sheet is listed under `other` (decor that is not a full pack) an
 }
 ```
 
-Rules a reader can rely on (checked by `TileLayout.parse` in `tiles.js` and its tests):
+Rules a reader can rely on (checked by `TileLayout.parse` in
+[`tiles.js`](../src/Dare.Arenas/Web/wwwroot/tiles.js); tests: `node --test tests/js/*.test.js`):
 - every pack lists its tiles explicitly; `packTemplate` is only a convenience for editors;
 - each `open` is a subset of `NESW` and no two roles share the same set;
 - tile numbers are 1–161, outside `reserved`, and no tile is in two packs;
 - a pack may leave roles out (a partial pack); tools fall back as below.
 
-**Fallbacks** when a pack lacks the exact role: drop open edges one at a time and take the
-first role that exists (a missing T becomes a corner or bar), else `single`, else `fill`.
+**Fallbacks** when a pack lacks the exact role: drop open edges, fewest first, and take the
+first role that exists; among two-edge pieces a straight bar comes before a corner, so a missing
+T keeps the line running through. Else `single`, else `fill`.
 `TileLayout.pick(layout, packId, openSet)` implements this.
+
+## The tile editor
+
+`/arena/tiles` (`tiles.html`, `tiles-editor.js`, `tiles.css`; shared code in `tiles.js`).
+Open a tileset from a ready-made map (`?map=tactical2.lvl` opens one directly), a `.lvl`, a
+`.bmp`/`.bm2` or a `.png` (reduced to 256 colours). Then:
+
+- the sheet shows each pack's pieces: closed edges as a line, open edges as a notch; reserved slots dimmed;
+- select a slot to set its pack and piece, or make a new pack laid out like the template at that slot;
+- pencil, fill and colour picker on the selected tile (with 4 px of its sheet neighbours, to match seams);
+  right-click draws colour 0 (empty); palette colours can be changed;
+- copy, paste, flip and rotate a tile; flipping a corner can move its role with it (corner-tl → corner-tr);
+- **Check edges** reads every tile's edges and marks pack pieces whose art doesn't look like their role;
+  **Roles from edges** sets the selected pack's roles from what the edges look like;
+- **How the pack joins** builds sample walls from the selected pack; click cells to draw your own;
+- save as `.lvl` (the map's walls and eLVL data kept), `.bmp`, the roles as JSON, or into Your maps.
 
 ## Role maps for one tileset
 
