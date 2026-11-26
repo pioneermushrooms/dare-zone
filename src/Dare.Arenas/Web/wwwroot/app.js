@@ -534,12 +534,98 @@ const GEN_LABELS = { recolor: "Recolour", new: "New look", prompt: "From a descr
 const PROMPTED = new Set(["prompt", "ship-prompt"]);
 let gfxArena = "";
 
+// What you make here is also kept on your account, as in the game's Graphics overlay: weapons in
+// your armory, ships in your shipyard (/account/api/...), so you can wear it, download it, or put it
+// on another arena later. Other graphics are only the arena's.
+const ARMORY_KINDS = new Set(["bullets", "bombs", "mines", "shrapnel", "repel", "rocket"]);
+const ACCT = "/account/api";
+let saved = null; // { armory: items[], ships: ships[] } of the signed-in pilot, or null
+const isShipSlot = (name) => /^ship[1-8]$/.test(name);
+const keepsOnAccount = (slot) => ARMORY_KINDS.has(slot.name) || isShipSlot(slot.name);
+const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+async function loadSaved() {
+  const [a, y] = await Promise.all([getJson(ACCT + "/armory"), getJson(ACCT + "/shipyard")]);
+  saved = a.body?.ok || y.body?.ok ? { armory: a.body?.ok ? a.body.items : [], ships: y.body?.ok ? y.body.ships : [] } : null;
+}
+
+/** The pilot's saved items that fit `slot`: armory items of its kind, or any shipyard ship. */
+function savedFor(slot) {
+  if (!saved) return [];
+  if (ARMORY_KINDS.has(slot.name)) return saved.armory.filter((i) => i.kind === slot.name).map((i) => ({ ...i, url: `${ACCT}/armory/sheet?id=${i.id}` }));
+  if (isShipSlot(slot.name)) return saved.ships.map((s) => ({ ...s, url: `${ACCT}/shipyard/sheet?id=${s.id}` }));
+  return [];
+}
+
+function toBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** Adds a picture to the pilot's armory (weapons) or shipyard (ships); returns a note for the message. */
+async function keepOnAccount(slot, bytes, name, source) {
+  if (!keepsOnAccount(slot)) return "";
+  const ship = isShipSlot(slot.name);
+  const where = ship ? "shipyard" : "armory";
+  const payload = { name: (name || slot.label).slice(0, 40), source, sheet: toBase64(bytes) };
+  if (!ship) payload.kind = slot.name;
+  try {
+    const { status, body } = await post(`${ACCT}/${where}/add`, JSON.stringify(payload), "application/json");
+    if (status === 401) return ` Sign in to the site to keep it in your ${where} as well.`;
+    if (!body?.ok) return ` It wasn't added to your ${where}: ${body?.message || "try again"}`;
+    await loadSaved();
+    return ` Added to your ${where}.`;
+  } catch {
+    return ` It wasn't added to your ${where}.`;
+  }
+}
+
+/** Saves bytes as a file in the browser's downloads (PNG or BMP, by what they are). */
+function saveFile(bytes, stem) {
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const url = URL.createObjectURL(new Blob([bytes], { type: png ? "image/png" : "image/bmp" }));
+  const a = el("a", { href: url, download: `${stem}.${png ? "png" : "bmp"}` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The picture a card shows, as a file: a stock ship is cut out of the shared ships sheet. */
+async function downloadGraphic(arena, slot) {
+  try {
+    const r = await fetch(`${API}/graphics/image?arena=${encodeURIComponent(arena)}&name=${slot.name}`, { credentials: "same-origin" });
+    if (!r.ok) throw new Error();
+    const ship = /^ship([1-8])$/.exec(slot.name);
+    const stem = ship ? `${slug(slot.label) || slot.name}-rotations` : slot.name;
+    if (ship && r.headers.get("X-Graphic-Source") === "stock") {
+      const img = await createImageBitmap(await r.blob());
+      const h = img.height / 8, c = el("canvas", { width: String(img.width), height: String(h) });
+      c.getContext("2d").drawImage(img, 0, (Number(ship[1]) - 1) * h, img.width, h, 0, 0, img.width, h);
+      const blob = await new Promise((done) => c.toBlob(done, "image/png"));
+      saveFile(new Uint8Array(await blob.arrayBuffer()), stem);
+    } else {
+      saveFile(new Uint8Array(await r.arrayBuffer()), stem);
+    }
+  } catch {
+    msg($("gfxmsg"), `Couldn't download ${slot.label}.`, false);
+  }
+}
+
+/** Puts one of the pilot's saved items on the arena's `slot`. */
+async function useSaved(arena, slot, item) {
+  const r = await fetch(item.url, { credentials: "same-origin" });
+  if (!r.ok) return msg($("gfxmsg"), `Couldn't load ${item.name}.`, false);
+  await setGraphic(arena, slot, await r.blob());
+}
+
 async function loadGraphics() {
   const arena = current?.arena;
   if (!arena) return;
   const host = $("gfxgroups");
   if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; }
-  const { body } = await getJson(API + "/graphics?arena=" + encodeURIComponent(arena));
+  const [{ body }] = await Promise.all([getJson(API + "/graphics?arena=" + encodeURIComponent(arena)), loadSaved()]);
   if (current?.arena !== arena) return;
   if (!body?.ok) { host.replaceChildren(el("p", { class: "msg bad", text: body?.message || "Couldn't load the graphics." })); return; }
   const owner = current.role === "owner";
@@ -566,7 +652,7 @@ function gfxCard(arena, slot, owner) {
     up.addEventListener("click", () => file.click());
     file.addEventListener("change", async () => {
       const f = file.files[0]; file.value = "";
-      if (f) await setGraphic(arena, slot, f);
+      if (f) await setGraphic(arena, slot, f, { name: f.name.replace(/\.[^.]+$/, ""), source: "uploaded" });
     });
     const acts = el("div", { class: "acts" }, up, file);
     if (slot.generate.length) {
@@ -574,6 +660,18 @@ function gfxCard(arena, slot, owner) {
       gen.append(el("option", { value: "", text: "Generate…" }), ...slot.generate.map((m) => el("option", { value: m, text: GEN_LABELS[m] || m })));
       gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, slot, m); });
       acts.append(gen);
+    }
+    const mine = savedFor(slot);
+    if (mine.length) {
+      const where = isShipSlot(slot.name) ? "shipyard" : "armory";
+      const pick = el("select", { "aria-label": `Put one from your ${where} on ${slot.label}` });
+      pick.append(el("option", { value: "", text: `Your ${where}…` }), ...mine.map((it) => el("option", { value: String(it.id), text: it.name })));
+      pick.addEventListener("change", () => {
+        const it = mine.find((m) => String(m.id) === pick.value);
+        pick.value = "";
+        if (it) void useSaved(arena, slot, it);
+      });
+      acts.append(pick);
     }
     if (slot.source === "arena") {
       const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
@@ -587,6 +685,9 @@ function gfxCard(arena, slot, owner) {
     }
     card.append(acts);
   }
+  const download = el("button", { type: "button", class: "small ghost", text: "Download", title: `Save ${slot.label} as a file` });
+  download.addEventListener("click", () => void downloadGraphic(arena, slot));
+  (card.querySelector(".acts") ?? card.appendChild(el("div", { class: "acts" }))).append(download);
   return card;
 }
 
@@ -612,10 +713,12 @@ function paintSheet(canvas, img, sx = 0, sy = 0, sw = img.width, sh = img.height
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw * k, sh * k);
 }
 
-async function setGraphic(arena, slot, blob) {
+/** Saves a picture to the arena; a new one (`keep`: { name, source }) is also kept on the pilot's account. */
+async function setGraphic(arena, slot, blob, keep = null) {
   msg($("gfxmsg"), `Saving ${slot.label}…`, true);
   const { body } = await post(`${API}/graphics/set?arena=${encodeURIComponent(arena)}&name=${slot.name}`, blob, "application/octet-stream");
-  msg($("gfxmsg"), webMessage(body?.message), body?.ok);
+  const note = body?.ok && keep ? await keepOnAccount(slot, new Uint8Array(await blob.arrayBuffer()), keep.name, keep.source) : "";
+  msg($("gfxmsg"), webMessage(body?.message) + note, body?.ok);
   if (body?.ok) { loadGraphics(); refreshRestart(); }
   return !!body?.ok;
 }
@@ -688,7 +791,8 @@ function wireGraphics() {
   $("gfxuse").addEventListener("click", async () => {
     if (!gen?.png) return;
     $("gfxuse").disabled = true;
-    if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }))) $("gfxdlg").close();
+    const keep = { name: gen.prompt ? gen.prompt.slice(0, 40) : `${GEN_LABELS[gen.mode].replace("…", "")} ${gen.slot.label.toLowerCase()}`, source: PROMPTED.has(gen.mode) ? "generated" : "random" };
+    if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }), keep)) $("gfxdlg").close();
     else { msg($("gfxdlgmsg"), $("gfxmsg").textContent, false); $("gfxuse").disabled = false; }
   });
   $("gfxdlg").addEventListener("close", () => { gen = null; });

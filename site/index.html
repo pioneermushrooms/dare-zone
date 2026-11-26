@@ -7,15 +7,15 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=19">
+<link rel="stylesheet" href="/play.css?v=20">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
 <script type="module" src="/play/start.mjs?v=17"></script>
 <script type="module" src="/chat.js?v=17"></script>
-<script type="module" src="/graphics.js?v=16"></script>
+<script type="module" src="/graphics.js?v=17"></script>
 <script type="module" src="/loading.js?v=16"></script>
 <script type="module" src="/graphics-other.js?v=17"></script>
-<script type="module" src="/graphics-armory.js?v=17"></script>
+<script type="module" src="/graphics-armory.js?v=18"></script>
 <script>
 // zone staff see an Admin link (the server says who is staff; the page itself checks again)
 fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
@@ -164,6 +164,7 @@ setTimeout(function () {
       </div>
       <div class="gfxactions" id="gfx-actions">
         <button type="button" class="ghost" id="gfx-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-download" disabled title="Save this ship's 40 rotations as a PNG">Download</button>
         <button type="button" class="ghost" id="gfx-upload">Upload…</button>
         <button type="button" id="gfx-generate" aria-controls="gfx-genchoice">Generate</button>
         <input type="file" id="gfx-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>
@@ -218,6 +219,7 @@ setTimeout(function () {
       </div>
       <div class="gfxactions" id="gfx-a-actions">
         <button type="button" class="ghost" id="gfx-a-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-a-download" disabled title="Save this sheet as a PNG">Download</button>
         <button type="button" class="ghost" id="gfx-a-upload">Upload…</button>
         <button type="button" id="gfx-a-generate" aria-controls="gfx-a-genchoice">Generate</button>
         <input type="file" id="gfx-a-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>

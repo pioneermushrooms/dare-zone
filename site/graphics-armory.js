@@ -45,6 +45,7 @@ let kind = "bombs";
 let ship = 0; // 0 = every ship, else 1..8
 let pending = null; // { sheet (canvas), name, source, again } awaiting Approve
 let busy = false;
+let shown = null; // { bytes, stem } of the sheet shown as current, for Download
 
 const kindOf = (name) => kinds.find((k) => k.name === name);
 const gameName = (k, s) => (s ? `${k}@${s}` : k);
@@ -138,6 +139,22 @@ async function pngBytes(sheet) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** A file name from a pilot's name for a sheet: "Green plasma" -> "green-plasma". */
+const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/** Saves bytes as a file in the browser's downloads (PNG or BMP, by what they are). */
+function saveFile(bytes, stem) {
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const url = URL.createObjectURL(new Blob([bytes], { type: png ? "image/png" : "image/bmp" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${stem}.${png ? "png" : "bmp"}`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function base64(bytes) {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -202,7 +219,7 @@ function say(text, bad = false) {
 function setBusy(on, text = "") {
   busy = on;
   for (const b of panel.querySelectorAll("button, textarea, input, select")) b.disabled = on;
-  if (!on) $("gfx-a-restore").disabled = !worn().own;
+  if (!on) { $("gfx-a-restore").disabled = !worn().own; $("gfx-a-download").disabled = !shown; }
   if (text) say(text);
   dialog.classList.toggle("busy", on);
 }
@@ -257,20 +274,25 @@ async function showCurrent() {
   $("gfx-a-hint").textContent = k?.hint ?? "";
   $("gfx-a-restore").disabled = busy || !own;
   $("gfx-a-prompted").hidden = !k?.generate?.includes("prompt");
-  let sheet = null;
+  let sheet = null, bytes = null, stem = "";
   try {
     if (item) {
-      sheet = await sheetFromBytes(await itemBytes(item.id));
+      bytes = await itemBytes(item.id);
+      stem = `${kind}-${slug(item.name) || item.id}`;
+      sheet = await sheetFromBytes(bytes);
       label.textContent = `${k.label}${where}: ${item.name} (from your armory${own || !ship ? "" : ", for every ship"})`;
     } else {
-      const stock = await stockBytes(kind);
-      sheet = stock ? await sheetFromBytes(stock) : null;
+      bytes = await stockBytes(kind);
+      stem = kind;
+      sheet = bytes ? await sheetFromBytes(bytes) : null;
       label.textContent = `${k?.label ?? kind}${where}: the game's own (an arena may show its own)`;
     }
   } catch (error) {
     label.textContent = error.message;
   }
   if (asked !== `${kind}@${ship}`) return; // another weapon or ship was picked meanwhile
+  shown = sheet ? { bytes, stem } : null;
+  $("gfx-a-download").disabled = busy || !shown;
   play(current, sheet, kind);
   showSheet(currentSheet, sheet);
   $("gfx-a-note").textContent = armory
@@ -315,7 +337,14 @@ function renderList() {
     remove.setAttribute("aria-label", `Remove ${it.name}`);
     remove.textContent = "✕";
     remove.addEventListener("click", () => void removeItem(it));
-    li.append(pick, remove);
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "download";
+    save.title = `Download ${it.name}`;
+    save.setAttribute("aria-label", `Download ${it.name}`);
+    save.textContent = "⤓";
+    save.addEventListener("click", () => void downloadItem(it));
+    li.append(pick, remove, save);
     return li;
   }));
   if (armory && !items.length) {
@@ -362,6 +391,14 @@ async function useItem(it, s) {
   } finally {
     setBusy(false);
     await refresh();
+  }
+}
+
+async function downloadItem(it) {
+  try {
+    saveFile(await itemBytes(it.id), `${it.kind}-${slug(it.name) || it.id}`);
+  } catch (error) {
+    say(error.message, true);
   }
 }
 
@@ -470,6 +507,7 @@ async function approve() {
 
 // ---- wiring ----------------------------------------------------------------------------------------
 $("gfx-a-restore").addEventListener("click", () => void restoreDefault());
+$("gfx-a-download").addEventListener("click", () => { if (shown) saveFile(shown.bytes, shown.stem); });
 $("gfx-a-upload").addEventListener("click", () => { if (needArmory()) fileInput.click(); });
 fileInput.addEventListener("change", () => { void upload(fileInput.files?.[0]); fileInput.value = ""; });
 $("gfx-a-generate").addEventListener("click", () => {

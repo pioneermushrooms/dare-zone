@@ -35,6 +35,7 @@ let selected = 1; // the ship (1..8) being looked at
 let yard = null; // { ships, slots, max } when signed in, else null
 let pending = null; // { sheet (canvas), name, source, again, front } awaiting Approve
 let busy = false;
+let currentShown = null; // { sheet, stem } of the ship shown as current, for Download
 
 // ---- sheets: canvases holding a 10x4 sheet -------------------------------------------------
 const isSheet = (w, h) => w >= 80 && w % COLS === 0 && h === (w / COLS) * ROWS;
@@ -92,6 +93,22 @@ function rebased(sheet, front) {
 async function pngBytes(sheet) {
   const blob = await new Promise((resolve) => sheet.toBlob(resolve, "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** A file name from a ship's name: "Bronze Gunship" -> "bronze-gunship". */
+const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/** Saves bytes as a file in the browser's downloads (PNG or BMP, by what they are). */
+function saveFile(bytes, stem) {
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const url = URL.createObjectURL(new Blob([bytes], { type: png ? "image/png" : "image/bmp" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${stem}.${png ? "png" : "bmp"}`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function base64(bytes) {
@@ -202,8 +219,12 @@ async function showCurrent() {
   const own = id ? yard.ships.find((s) => s.id === id) : null;
   currentLabel.textContent = own ? `${SHIPS[selected - 1]}: ${own.name} (from your shipyard)` : `${SHIPS[selected - 1]}: the game's own ship`;
   $("gfx-restore").disabled = !own;
-  const shown = globalThis.dareShips?.sheet(selected);
-  const sheet = shown ? sheetFromRgba(shown) : null;
+  const drawn = globalThis.dareShips?.sheet(selected);
+  let sheet = drawn ? sheetFromRgba(drawn) : null;
+  // Off the game (or before it has drawn), a saved ship is shown from the shipyard.
+  if (!sheet && own) try { sheet = await sheetFromBlob(new Blob([await sheetBytes(own.id)])); } catch { /* none */ }
+  currentShown = sheet ? { sheet, stem: `${slug(own?.name ?? SHIPS[selected - 1]) || "ship"}-rotations` } : null;
+  $("gfx-download").disabled = busy || !currentShown;
   spin(current, sheet);
   showSheet(currentSheet, sheet);
   if (!sheet) currentLabel.textContent += " (it appears once the game has drawn)";
@@ -242,7 +263,14 @@ function renderYard() {
     remove.setAttribute("aria-label", `Remove ${ship.name}`);
     remove.textContent = "✕";
     remove.addEventListener("click", () => void removeShip(ship));
-    item.append(pick, remove);
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "download";
+    save.title = `Download ${ship.name}`;
+    save.setAttribute("aria-label", `Download ${ship.name}`);
+    save.textContent = "⤓";
+    save.addEventListener("click", () => void downloadShip(ship));
+    item.append(pick, remove, save);
     return item;
   }));
   if (yard && !yard.ships.length) {
@@ -274,6 +302,14 @@ async function useShip(ship, slot) {
   } finally {
     setBusy(false);
     await refresh();
+  }
+}
+
+async function downloadShip(ship) {
+  try {
+    saveFile(await sheetBytes(ship.id), `${slug(ship.name) || "ship"}-rotations`);
+  } catch (error) {
+    say(error.message, true);
   }
 }
 
@@ -407,6 +443,7 @@ shipList.replaceChildren(...SHIPS.map((name, i) => {
 applyTo.replaceChildren(...SHIPS.map((name, i) => new Option(`${i + 1} · ${name}`, String(i + 1))));
 
 $("gfx-restore").addEventListener("click", () => void restoreDefault());
+$("gfx-download").addEventListener("click", async () => { if (currentShown) saveFile(await pngBytes(currentShown.sheet), currentShown.stem); });
 $("gfx-upload").addEventListener("click", () => { if (needYard()) fileInput.click(); });
 fileInput.addEventListener("change", () => { void upload(fileInput.files?.[0]); fileInput.value = ""; });
 $("gfx-generate").addEventListener("click", () => {
