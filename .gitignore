@@ -6,3 +6,7 @@ obj/
 .DS_Store
 .local-zone/
 out/
+
+# voice tooling: venv and raw takes stay local (picks.json is committed)
+voice/.venv
+voice/takes/
