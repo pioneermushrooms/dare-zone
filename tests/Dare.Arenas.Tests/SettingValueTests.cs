@@ -41,4 +41,40 @@ public class SettingValueTests
         Assert.Equal("", value);
         Assert.NotEqual("", error);
     }
+
+    [Theory]
+    [InlineData("Misc", "GreetMessage", true)]
+    [InlineData("misc", "periodicmessage0", true)]
+    [InlineData("Misc", "PeriodicMessage9", true)]
+    [InlineData("Misc", "PeriodicMessage10", false)]
+    [InlineData("Misc", "PeriodicMessageX", false)]
+    [InlineData("Misc", "SeeEnergy", false)]
+    [InlineData("Warbird", "GreetMessage", false)]
+    public void Knows_the_message_settings(string section, string key, bool expected) =>
+        Assert.Equal(expected, SettingValue.IsMessage(section, key));
+
+    [Fact]
+    public void A_message_may_be_empty_which_turns_it_off()
+    {
+        Assert.True(SettingValue.TryValidate("Misc", "PeriodicMessage0", "  ", out var value, out _));
+        Assert.Equal("", value);
+        Assert.False(SettingValue.TryValidate("Warbird", "BulletSpeed", "", out _, out _));
+    }
+
+    [Fact]
+    public void A_message_may_be_200_chars_other_values_64()
+    {
+        var long200 = "5 0 " + new string('x', 196);
+        Assert.True(SettingValue.TryValidate("Misc", "GreetMessage", long200, out _, out _));
+        Assert.False(SettingValue.TryValidate("Misc", "GreetMessage", long200 + "x", out _, out var error));
+        Assert.Contains("200", error);
+        Assert.False(SettingValue.TryValidate("Misc", "SeeEnergy", new string('x', 65), out _, out _));
+    }
+
+    [Fact]
+    public void A_message_still_refuses_semicolons_and_backslashes()
+    {
+        Assert.False(SettingValue.TryValidate("Misc", "GreetMessage", "hi; there", out _, out _));
+        Assert.False(SettingValue.TryValidate("Misc", "GreetMessage", "hi \\ there", out _, out _));
+    }
 }
