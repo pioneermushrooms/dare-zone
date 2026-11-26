@@ -10,6 +10,9 @@
 #
 # The guard refuses a deploy whose commit does not contain the live commit
 # (git merge-base --is-ancestor live new); --force-rollback overrides and lists what is dropped.
+# Each record also lists the sha256 of every file the deploy shipped ("files"); a deploy is refused
+# when the server's files no longer match it, i.e. someone changed them by hand since (the record
+# no longer says what is live). --force-rollback overrides that too, after listing the files.
 # The lock is flock on $DEPLOY_LOCK_FILE, held by one ssh connection for the whole deploy and
 # released when this script exits (or its connection drops). $DEPLOY_LOCK_FILE.who names the holder.
 #
@@ -25,6 +28,7 @@ GUARD_LOCK_FILE=${DEPLOY_LOCK_FILE:-/var/lock/foundation-deploy.lock}
 GUARD_BACKUP_ROOT=${DEPLOY_BACKUP_ROOT:-/root}
 GUARD_BY=""
 GUARD_FORCE_ROLLBACK=0
+GUARD_SHIPPED_DIR=""   # set by the deploy: a local folder whose files (relative paths) the deploy ships
 
 guard_die() { echo "DEPLOY REFUSED: $*" >&2; exit 1; }
 
@@ -131,6 +135,7 @@ guard_check_ancestry() {
     guard_die "no live record at $GUARD_HOST:$record, so nothing proves this deploy keeps what is live.
   Seed it (deploy/live-record.sh seed ...) after checking what is live, or pass --force-rollback."
   fi
+  guard_check_files "$record"
   live=$(guard_field commit)
   local desc
   desc="$live (branch $(guard_field branch), by $(guard_field by), $(guard_field deployed_at))"
@@ -160,6 +165,34 @@ guard_check_ancestry() {
   fi
   guard_die "the live build has commits this one does not. Merge $live (or its branch) into
   $GUARD_BRANCH and deploy that, or pass --force-rollback if dropping them is intended."
+}
+
+# guard_check_files <record path>: refuses when a file the record lists differs on the server.
+guard_check_files() {
+  local record=$1 dir sums out
+  dir=$(dirname "$record")
+  sums=$(printf '%s' "$GUARD_LIVE_JSON" | python3 -c '
+import json, sys
+for name, sha in sorted((json.load(sys.stdin).get("files") or {}).items()):
+    print(f"{sha}  {name}")') || guard_die "the live record is not valid JSON"
+  if [ -z "$sums" ]; then
+    echo "note: the live record has no file list (older record), so a hand change cannot be detected"
+    return 0
+  fi
+  # shellcheck disable=SC2016  # runs on the server
+  if out=$(printf '%s\n' "$sums" | guard_remote bash -c 'cd "$1" && sha256sum -c - 2>&1 | grep -v ": OK$"; exit "${PIPESTATUS[0]}"' _ "$dir"); then
+    echo "files: all $(printf '%s\n' "$sums" | wc -l | tr -d ' ') recorded files are as deployed"
+    return 0
+  fi
+  echo "These files in $GUARD_HOST:$dir changed since the last recorded deploy (by hand?):" >&2
+  printf '%s\n' "$out" | sed 's/^/  /' >&2
+  if [ "$GUARD_FORCE_ROLLBACK" = 1 ]; then
+    echo "WARNING: --force-rollback given; overwriting them" >&2
+    return 0
+  fi
+  guard_die "what is live is not what the record says, so the rollback check cannot be trusted.
+  Find who changed it (deploy/live-record.sh shows the record), get that work merged into main and
+  deployed through these scripts, or pass --force-rollback if overwriting it is intended."
 }
 
 # guard_lock <what>: takes the server's deploy lock for the rest of this script's life.
@@ -214,8 +247,14 @@ guard_unlock() {
 # guard_write_record <record path> <parts, e.g. "site" or "plugin site" or "client">
 #   Writes the new live record. A site-only deploy carries the plugin part of the old record over.
 guard_write_record() {
-  local record=$1 parts=$2 json
-  json=$(GUARD_LIVE_JSON=$GUARD_LIVE_JSON python3 - "$GUARD_REPO_URL" "$GUARD_BRANCH" "$GUARD_COMMIT" \
+  local record=$1 parts=$2 json sums=""
+  if [ -n "$GUARD_SHIPPED_DIR" ]; then
+    # shellcheck disable=SC2016  # runs on the server
+    sums=$( (cd "$GUARD_SHIPPED_DIR" && find . -type f | sort) |
+      guard_remote bash -c 'cd "$1" && while IFS= read -r f; do if [ -f "$f" ]; then sha256sum "$f"; fi; done' _ "$(dirname "$record")") ||
+      guard_die "the deploy went out but reading its files back failed; write the record by hand (deploy/live-record.sh seed)"
+  fi
+  json=$(GUARD_LIVE_JSON=$GUARD_LIVE_JSON GUARD_SUMS=$sums python3 - "$GUARD_REPO_URL" "$GUARD_BRANCH" "$GUARD_COMMIT" \
       "$GUARD_BY" "$parts" "$(git -C "$GUARD_REPO_DIR" log -1 --format=%s "$GUARD_COMMIT")" <<'PY'
 import json, os, sys, datetime
 repo, branch, commit, by, parts, subject = sys.argv[1:7]
@@ -224,6 +263,13 @@ now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"
 rec = {"repo": repo, "branch": branch, "commit": commit, "subject": subject,
        "deployed_at": now, "by": by, "parts": parts.split(),
        "previous_commit": old.get("commit")}
+files = {}
+for line in os.environ.get("GUARD_SUMS", "").splitlines():
+    sha, _, name = line.partition("  ")
+    if sha and name:
+        files[name] = sha
+if files:
+    rec["files"] = files
 if "plugin" in rec["parts"]:
     rec["plugin"] = {"commit": commit, "deployed_at": now, "by": by}
 elif "plugin" in old:
