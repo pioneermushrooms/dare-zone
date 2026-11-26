@@ -36,6 +36,17 @@
     if (tiles) note.textContent = `${tiles.toLocaleString()} wall tiles (${kinds.size} kinds) sit in slots this map's own tileset fills with one flat colour, so they show as solid blocks here and in game. Maps like this usually come with a .lvz graphics file that draws over them: add it under Graphics. Plain colours shows them as ordinary walls.`;
   }
 
+  // Generated wall art (tileart.js): paint blank slots or restyle every wall; changes the map's
+  // own tileset, so it is published with the map.
+  const tileArt = window.TileArt && TileArt.mount($("tileart"), {
+    get: () => ({ grid, prefix, tileset: mapTileset, blank: Lvl.blankSlots(mapTileset) }),
+    set: (p, ts, note) => {
+      prefix = p; mapTileset = ts; ownTileset = null; flatView = false; $("flatview").checked = false;
+      $("tilesetnote").textContent = mapTileset ? "Tiles from this map's own tileset." : "This map has no tileset of its own: tiles show as flat colours (players see their client's tiles).";
+      setDirty(true); noteBlankSlots(); drawPalette(); draw(); say(note, true);
+    },
+  });
+
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
     const me = await fetch(API + "/me" + (arena ? "?arena=" + encodeURIComponent(arena) : ""), { credentials: "same-origin" });
@@ -57,6 +68,7 @@
     }
     $("tilesetnote").textContent = mapTileset ? "Tiles from this map's own tileset." : "This map has no tileset of its own: tiles show as flat colours (players see their client's tiles).";
     noteBlankSlots();
+    if (tileArt) tileArt.forget();
     centre();
     drawPalette(); drawMini(); draw();
     setDirty(false);
@@ -69,8 +81,9 @@
     for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
     for (const [i, , t] of change) grid[i] = t;
     if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); }
-    if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; drawPalette(); }
+    if (nextPrefix !== undefined) { prefix = nextPrefix; mapTileset = nextTileset; drawPalette(); if (tileArt) tileArt.forget(); }
     noteBlankSlots();
+    if (tileArt) tileArt.refresh();
     centre(); drawMini(); draw();
     say(note, true);
     return true;
