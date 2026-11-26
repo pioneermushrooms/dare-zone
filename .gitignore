@@ -10,3 +10,4 @@ out/
 # voice tooling: venv and raw takes stay local (picks.json is committed)
 voice/.venv
 voice/takes/
+voice/takes-gen.log
