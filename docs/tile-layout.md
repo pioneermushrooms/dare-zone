@@ -73,7 +73,8 @@ The rest of the sheet is listed under `other` (decor that is not a full pack) an
   "packTemplate": { "size": [4, 4], "cells": { "<role>": [col, row] } }, // optional
   "packs": [ { "id": "…", "name": "…", "origin": [col, row],          // origin optional
                "tiles": { "<role>": tileNumber },                     // required, explicit
-               "interior": tileNumber } ],                            // optional, see below
+               "interior": tileNumber,                                // optional, see below
+               "calm": { "ESW": t, "NES": t, "NSW": t, "NEW": t } } ], // optional, any subset
   "other": [ { "tile": n | "tiles": [n…], "label": "…" } ],            // optional
   "reserved": { "from": 162, "to": 190, "label": "…" }                 // optional
 }
@@ -85,13 +86,20 @@ Rules a reader can rely on (checked by `TileLayout.parse` in
 - each `open` is a subset of `NESW` and no two roles share the same set;
 - tile numbers are 1–161, outside `reserved`, and no tile is in two packs;
 - a pack may leave roles out (a partial pack); tools fall back as below;
-- `interior`, when given, follows the same tile rules and is not a role (it has no `open` set).
+- `interior` and `calm` tiles follow the same tile rules; neither is a role.
 
 **Interior** (optional, per pack): a plain piece for a cell whose eight neighbours, diagonals
 included, are all wall: the inside of a thick wall. `fill` stays the piece for crosses and the
 edge of a fill area; packs whose `fill` is decorated (all of tactical2's carry a stud or pyramid)
 would otherwise turn a thick wall into a waffle. Same checks as pack tiles (1–161, not reserved,
 in no other pack or role). Tools that don't know it, or packs without it, use `fill`.
+
+**Calm edges** (optional, per pack): a plainer version of each T piece (`edge-top` ESW,
+`edge-left` NES, `edge-right` NSW, `edge-bottom` NEW), keyed by its open edges like roles. A tool
+uses it where the cell on the edge's inner side is `interior`, so the edge of a thick wall stays
+quiet while a thin line's T junction keeps its decoration. Any subset may be given; a missing one
+means the ordinary T piece. Same tile checks as pack tiles; keys must be one of those four sets
+(letters in any order).
 
 **Fallbacks** when a pack lacks the exact role: drop open edges, fewest first, and take the
 first role that exists; among two-edge pieces a straight bar comes before a corner, so a missing

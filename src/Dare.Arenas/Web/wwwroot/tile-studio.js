@@ -361,6 +361,7 @@ window.TileStudio = (() => {
     const otherLabel = (t) => {
       const ip = layout.packs.find((p) => p.interior === t);
       if (ip) return `${ip.name}: interior (the plain inside of a thick wall)`;
+      for (const p of layout.packs) for (const [open, t2] of p.calm || []) if (t2 === t) return `${p.name}: calm ${open} edge (next to interior)`;
       for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
     function showSlot() {
       const [x, y] = slotXY(sel), r = TileLayout.roleOfTile(layout, sel), reserved = sel >= layout.reserved[0] && sel <= layout.reserved[1];

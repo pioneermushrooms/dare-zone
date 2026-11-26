@@ -82,6 +82,27 @@ test("a pack's optional interior tile is checked, owned and kept", () => {
   assert.match(bad("x"), /interior tile x/);
 });
 
+test("a pack's optional calm edge pieces are checked, owned and kept", () => {
+  const base = () => { const k = JSON.parse(layoutText); for (const p of k.packs) { delete p.calm; } return k; };
+  const j = base();
+  j.packs[0].calm = { ESW: 150, sen: 151 }; // keys in any order or case
+  const { layout, errors } = TileLayout.parse(j);
+  assert.deepEqual(errors, []);
+  assert.deepEqual([...layout.packs[0].calm], [["ESW", 150], ["NES", 151]]);
+  assert.equal(layout.packs[1].calm.size, 0);
+  const again = TileLayout.parse(TileLayout.toJson(layout)).layout;
+  assert.deepEqual([...again.packs[0].calm], [["ESW", 150], ["NES", 151]]);
+  assert.equal(JSON.parse(TileLayout.toJson(again)).packs[1].calm, undefined);
+  const bad = (calm) => { const k = base(); k.packs[0].calm = calm; return TileLayout.parse(k).errors.join(" "); };
+  assert.match(bad({ NS: 150 }), /calm key "NS"/);
+  assert.match(bad({ ESW: 150, SWE: 151 }), /given twice/);
+  assert.match(bad({ ESW: 0 }), /calm ESW tile 0/);
+  assert.match(bad({ ESW: 170 }), /reserved/);
+  assert.match(bad({ ESW: 3 }), /tile 3 is in grey-plate\/end-left and grey-plate\/calm-ESW/);
+  assert.match(bad({ ESW: 150, NEW: 150 }), /tile 150 is in/);
+  assert.match(bad([150]), /calm must be an object/);
+});
+
 test("a layout survives toJson and parse unchanged", () => {
   const { layout } = TileLayout.parse(layoutText);
   const again = TileLayout.parse(TileLayout.toJson(layout)).layout;
