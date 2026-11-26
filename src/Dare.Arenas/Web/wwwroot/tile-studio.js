@@ -843,6 +843,11 @@ window.TileStudio = (() => {
           const f = await fetchBytes(API + "/maps/file?name=" + encodeURIComponent(id));
           if (!f) { say(`Couldn't open ${id}.`, false); return; }
           const [im, from] = fromLvl(id, f.bytes); libId = null; setImage(im, from); say(`Opened ${id}.`, true);
+        } else if (kind === "std") {
+          const f = await fetchBytes("/arena/standard-tiles.bmp");
+          if (!f) { say("Couldn't load the standard tiles.", false); return; }
+          libId = null; setImage(Bmp.fitSheet(Bmp.read(f.bytes)), { name: "standard tiles", elvl: null, tiles: new Uint8Array(0), from: "file" });
+          say("Opened the standard tiles.", true);
         } else if (kind === "set") await openTileset(+id);
       } catch (err) { say(err.message, false); }
     }
@@ -886,6 +891,7 @@ window.TileStudio = (() => {
       const open = q("st-open"); open.replaceChildren(new Option("Open…", ""));
       const group = (label, items) => { if (!items.length) return; const g = document.createElement("optgroup"); g.label = label; for (const [v, t2] of items) g.append(new Option(t2, v)); open.append(g); };
       if (arena) group("This arena", [["arena:", `${arena}'s current map`]]);
+      group("Standard", [["std:", "Standard tiles (the standard layout's packs)"]]);
       group("Your tilesets", tilesets.map((x) => ["set:" + x.id, x.name]));
       group("Your maps", maps.map((x) => ["map:" + x.id, x.name]));
       group("Ready-made maps", ((s.body && s.body.maps) || []).map((n) => ["shared:" + n, n]));
