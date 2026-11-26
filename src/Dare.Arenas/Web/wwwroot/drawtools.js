@@ -213,24 +213,111 @@
     "<": ["00010", "00100", "01000", "10000", "01000", "00100", "00010"], ">": ["01000", "00100", "00010", "00001", "00010", "00100", "01000"],
     " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
   };
-  // text at (x, y) (top-left); lines split on \n; returns { cells, w, h } in tiles
-  function text(str, x, y, size = 1) {
-    const set = new Set();
-    let w = 0;
+  // a 3x5 font for small labels ("#" is a pixel; rows split on |)
+  const SMALL = {
+    "A": ".#.|#.#|###|#.#|#.#",
+    "B": "##.|#.#|##.|#.#|##.",
+    "C": ".##|#..|#..|#..|.##",
+    "D": "##.|#.#|#.#|#.#|##.",
+    "E": "###|#..|##.|#..|###",
+    "F": "###|#..|##.|#..|#..",
+    "G": ".##|#..|#.#|#.#|.##",
+    "H": "#.#|#.#|###|#.#|#.#",
+    "I": "###|.#.|.#.|.#.|###",
+    "J": "..#|..#|..#|#.#|.#.",
+    "K": "#.#|#.#|##.|#.#|#.#",
+    "L": "#..|#..|#..|#..|###",
+    "M": "#.#|###|###|#.#|#.#",
+    "N": "##.|#.#|#.#|#.#|#.#",
+    "O": ".#.|#.#|#.#|#.#|.#.",
+    "P": "##.|#.#|##.|#..|#..",
+    "Q": ".#.|#.#|#.#|##.|.##",
+    "R": "##.|#.#|##.|#.#|#.#",
+    "S": ".##|#..|.#.|..#|##.",
+    "T": "###|.#.|.#.|.#.|.#.",
+    "U": "#.#|#.#|#.#|#.#|###",
+    "V": "#.#|#.#|#.#|#.#|.#.",
+    "W": "#.#|#.#|###|###|#.#",
+    "X": "#.#|#.#|.#.|#.#|#.#",
+    "Y": "#.#|#.#|.#.|.#.|.#.",
+    "Z": "###|..#|.#.|#..|###",
+    "0": "###|#.#|#.#|#.#|###",
+    "1": ".#.|##.|.#.|.#.|###",
+    "2": "##.|..#|.#.|#..|###",
+    "3": "##.|..#|.#.|..#|##.",
+    "4": "#.#|#.#|###|..#|..#",
+    "5": "###|#..|##.|..#|##.",
+    "6": ".##|#..|###|#.#|###",
+    "7": "###|..#|.#.|.#.|.#.",
+    "8": "###|#.#|###|#.#|###",
+    "9": "###|#.#|###|..#|##.",
+    ".": "...|...|...|...|.#.",
+    ",": "...|...|...|.#.|#..",
+    "!": ".#.|.#.|.#.|...|.#.",
+    "?": "##.|..#|.#.|...|.#.",
+    "-": "...|...|###|...|...",
+    "+": "...|.#.|###|.#.|...",
+    "=": "...|###|...|###|...",
+    ":": "...|.#.|...|.#.|...",
+    "'": ".#.|.#.|...|...|...",
+    "/": "..#|..#|.#.|#..|#..",
+    "(": ".#.|#..|#..|#..|.#.",
+    ")": ".#.|..#|..#|..#|.#.",
+    "#": "#.#|###|#.#|###|#.#",
+    "_": "...|...|...|...|###",
+    "<": "..#|.#.|#..|.#.|..#",
+    ">": "#..|.#.|..#|.#.|#..",
+    "\"": "#.#|#.#|...|...|...",
+    " ": "...|...|...|...|...",
+  };
+
+  // The fonts: glyph bitmaps, the advance from letter to letter and the line height (in font pixels).
+  //   block    the 5x7 font, one pixel strokes
+  //   outline  the 5x7 letters traced round the outside: hollow letters
+  //   bold     the 5x7 letters doubled sideways: wide, heavy strokes
+  //   small    the 3x5 font
+  const FONTS = {
+    block: { name: "Block 5x7", glyph: (ch) => FONT[ch] || FONT["?"], adv: 6, line: 9 },
+    outline: { name: "Outline", glyph: (ch) => FONT[ch] || FONT["?"], adv: 8, line: 11, pad: 1, outline: true },
+    bold: { name: "Bold (wide)", glyph: (ch) => FONT[ch] || FONT["?"], adv: 7, line: 9, bold: true },
+    small: { name: "Small 3x5", glyph: (ch) => (SMALL[ch] || SMALL["?"]).split("|").map((r) => r.replace(/#/g, "1").replace(/\./g, "0")), adv: 4, line: 7 },
+  };
+  /**
+   * Text at (x, y) (its top-left), lines split on \n: each font pixel `size` tiles square, strokes
+   * widened to `t` tiles. Returns { cells, w, h } (w and h in tiles).
+   */
+  function text(str, x, y, size = 1, font = "block", t = 1) {
+    const f = FONTS[font] || FONTS.block, pad = f.pad || 0;
+    const px = new Set(); // font pixels, as "gx,gy" packed into one number
+    const key = (gx, gy) => (gy + 64) * 65536 + gx + 64;
     const lines = String(str).toUpperCase().split("\n");
     lines.forEach((ln, row) => {
-      let cx = 0;
+      let cx = pad;
       for (const ch of ln) {
-        const g = FONT[ch] || FONT["?"];
-        g.forEach((bits, gy) => [...bits].forEach((b, gx) => {
+        f.glyph(ch).forEach((bits, gy) => [...bits].forEach((b, gx) => {
           if (b !== "1") return;
-          for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) add(set, x + (cx + gx) * size + dx, y + (row * 9 + gy) * size + dy);
+          px.add(key(cx + gx, row * f.line + pad + gy));
+          if (f.bold) px.add(key(cx + gx + 1, row * f.line + pad + gy));
         }));
-        cx += 6;
+        cx += f.adv;
       }
-      w = Math.max(w, (cx - 1) * size);
     });
-    return { cells: set, w: Math.max(0, w), h: (lines.length * 9 - 2) * size };
+    let pts = [...px].map((k) => [(k % 65536) - 64, Math.floor(k / 65536) - 64]);
+    if (f.outline) {
+      // the pixels round the letters (not the letters): hollow letters once auto-tiled
+      const ring = new Set();
+      for (const [gx, gy] of pts) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const k = key(gx + dx, gy + dy);
+        if (!px.has(k)) ring.add(k);
+      }
+      pts = [...ring].map((k) => [(k % 65536) - 64, Math.floor(k / 65536) - 64]);
+    }
+    const cells = new Set();
+    for (const [gx, gy] of pts) for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) add(cells, x + gx * size + dx, y + gy * size + dy);
+    const out = t > 1 ? brush([...cells].map((i) => [i % N, (i - (i % N)) / N]), t) : cells;
+    let mx = -1, my = -1;
+    for (const [gx, gy] of pts) { mx = Math.max(mx, gx); my = Math.max(my, gy); }
+    return { cells: out, w: (mx + 1) * size, h: (my + 1) * size };
   }
 
   // ---- clips: copied tiles, flipped and turned -----------------------------------------------------
@@ -283,24 +370,51 @@
   const Shapes = { linePts, path, brush, line, rect, roundRect, ellipse, polygon, curve, spray, flood, mirror, mirrorPoint, text, copy, transform, stamp, apply, fill };
 
   // ---- the tools in the editor ------------------------------------------------------------------------
+  // [id, name, key, what it does, group]; the editor itself handles pan and tidy
   const TOOLS = [
-    ["pencil", "Pencil", "b", "Draw walls freehand; size is the wall thickness"],
-    ["line", "Line", "l", "Drag a straight wall; Shift keeps it level, upright or at 45°"],
-    ["rect", "Rectangle", "r", "Drag a box; Shift makes it square"],
-    ["round", "Rounded", "u", "Drag a box with rounded corners"],
-    ["ellipse", "Ellipse", "o", "Drag an ellipse; Shift makes a circle"],
-    ["polygon", "Polygon", "p", "Click the corners; double-click or Enter to finish, Esc to cancel"],
-    ["curve", "Curve", "c", "Drag from end to end, then move to bend it and click"],
-    ["spray", "Spray", "y", "Scatter tiles around the pointer"],
-    ["fill", "Fill", "g", "Fill the area you click with the current tile"],
-    ["replace", "Replace", "x", "Click a tile: every tile like it (in the selection, or the map) becomes the current tile"],
-    ["pick", "Pick", "i", "Click a tile to draw with it (or Alt-click with any tool)"],
-    ["text", "Text", "a", "Click where the text goes"],
-    ["erase", "Eraser", "e", "Rub out; size is the wall thickness"],
-    ["select", "Select", "s", "Drag a box to select; drag inside it to move it"],
-    ["lasso", "Lasso", "f", "Draw round what to select"],
-    ["wand", "Wand", "w", "Click a wall to select it and the walls joined to it (or an open area)"],
+    ["pencil", "Pencil", "b", "Draw walls freehand", "draw"],
+    ["line", "Line", "l", "Drag a straight wall; Shift keeps it level, upright or at 45°", "draw"],
+    ["curve", "Curve", "c", "Drag from end to end, then move to bend it and click", "draw"],
+    ["spray", "Spray", "y", "Scatter tiles round the pointer", "draw"],
+    ["erase", "Eraser", "e", "Rub out walls", "draw"],
+    ["rect", "Rectangle", "r", "Drag a box; Shift makes it square", "shapes"],
+    ["round", "Rounded box", "u", "Drag a box with rounded corners", "shapes"],
+    ["ellipse", "Ellipse", "o", "Drag an ellipse; Shift makes a circle", "shapes"],
+    ["polygon", "Polygon", "p", "Click the corners; double-click or Enter finishes, Esc cancels", "shapes"],
+    ["fill", "Fill", "g", "Click open space to fill it, or a wall to recolour all of it", "fill"],
+    ["replace", "Replace", "x", "Click a tile: every tile like it (in the selection, or the map) becomes the current tile", "fill"],
+    ["pick", "Pick tile", "i", "Click a tile to draw with it (Alt-click does this with any tool)", "fill"],
+    ["text", "Text", "a", "Type the text, then click where it goes", "text"],
+    ["select", "Select", "s", "Drag a box to select; drag inside it to move it", "select"],
+    ["lasso", "Lasso", "f", "Draw round what to select", "select"],
+    ["wand", "Magic wand", "w", "Click a wall to select it and every wall joined to it (or an open area); Shift adds", "select"],
+    ["pan", "Pan", "space", "Drag the map (or hold Space, or right-drag, with any tool)", "view"],
+    ["tidy", "Tidy walls", "t", "Drag over walls to give each the right end, bar, corner or junction piece", "view"],
   ];
+  const OWN = new Set(TOOLS.map((t) => t[0]).filter((t) => t !== "pan" && t !== "tidy"));
+  const GROUPS = { draw: "Draw", shapes: "Shapes", fill: "Fill and pick", text: "Text", select: "Select", view: "View" };
+  // icons: 24px, drawn with the button's own colour (currentColor), one line weight
+  const ICONS = {
+    pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
+    line: '<path d="M5 19L19 5"/><circle cx="5" cy="19" r="1.6" class="dot"/><circle cx="19" cy="5" r="1.6" class="dot"/>',
+    curve: '<path d="M4 19Q12 -3 20 19"/><circle cx="4" cy="19" r="1.6" class="dot"/><circle cx="20" cy="19" r="1.6" class="dot"/>',
+    spray: '<path d="M6 11h7v9H6z"/><path d="M8 11V8h3v3"/><circle cx="16.5" cy="7" r=".9" class="dot"/><circle cx="19.5" cy="9.5" r=".9" class="dot"/><circle cx="18" cy="4.5" r=".9" class="dot"/><circle cx="20.5" cy="5.5" r=".9" class="dot"/>',
+    erase: '<path d="M4 15l8-8 7 7-6 6H9z"/><path d="M8.5 10.5l7 7"/><path d="M14 20h6"/>',
+    rect: '<rect x="4" y="6" width="16" height="12"/>',
+    round: '<rect x="4" y="6" width="16" height="12" rx="4"/>',
+    ellipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
+    polygon: '<path d="M12 4l8 6-3 9H7l-3-9z"/>',
+    fill: '<path d="M4.5 11.5L11 5l7 7-6.5 6.5z"/><path d="M11 5L9 3"/><path d="M19 14.5c1.2 1.8 1.8 2.8 1.8 3.6a1.8 1.8 0 0 1-3.6 0c0-.8.6-1.8 1.8-3.6z" class="dot"/>',
+    replace: '<path d="M5 10a7 7 0 0 1 12-3.5L19 9"/><path d="M19 4.5V9h-4.5"/><path d="M19 14a7 7 0 0 1-12 3.5L5 15"/><path d="M5 19.5V15h4.5"/>',
+    pick: '<path d="M14.5 4.5l5 5-2 2-5-5z"/><path d="M13.5 8.5l-8 8V19h2.5l8-8"/>',
+    text: '<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>',
+    select: '<rect x="4" y="5" width="16" height="14" stroke-dasharray="3 2.5"/>',
+    lasso: '<ellipse cx="12.5" cy="9.5" rx="7.5" ry="5" stroke-dasharray="3 2.5"/><path d="M7.5 13c-1.5 1.5-1 4 1.5 5.5"/>',
+    wand: '<path d="M4 20L14.5 9.5"/><path d="M14.5 9.5l2-2"/><path d="M18 3v3"/><path d="M21 6.5h-3"/><path d="M20.5 10.5l-2-1"/><path d="M13.5 4l1 2"/>',
+    pan: '<path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+    tidy: '<path d="M4 20V8h11"/><path d="M4 14h6"/><path d="M18 13l1 2.2 2.2 1-2.2 1L18 19.5l-1-2.3-2.2-1 2.2-1z" class="dot"/>',
+  };
+  const icon = (id) => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">${ICONS[id] || ""}</svg>`;
   const SHAPES = new Set(["line", "rect", "round", "ellipse", "polygon", "curve"]);
 
   function mount(ed) {
@@ -313,6 +427,7 @@
       get auto() { return $("dtAuto").checked; },
       get text() { return $("dtText").value; },
       get size() { return Math.max(1, Number($("dtSize").value) || 1); },
+      get font() { return $("dtFont").value || "block"; },
     };
     let drag = null;   // { tool, x0, y0, x, y, pts }
     let preview = null; // Set of cells to show
@@ -477,9 +592,9 @@
         ed.commit(changes);
         ed.say(`Replaced ${changes.length.toLocaleString()} tiles.`, true);
       } else if (tool === "text") {
-        if (!opt.text.trim()) { ed.say("Type the text under Tool options first.", false); $("dtText").focus(); return; }
-        const n = commitCells(text(opt.text, x, y, opt.size).cells);
-        ed.say(n ? "Text placed. Undo takes it back." : "No change.", true);
+        if (!opt.text.trim()) { ed.say("Type the text in the box above the map first.", false); $("dtText").focus(); return; }
+        const n = commitCells(text(opt.text, x, y, opt.size, opt.font, thick()).cells);
+        ed.say(n ? "Text placed. Undo takes it back in one step." : "No change.", true);
       } else if (tool === "select") {
         if (sel && sel.has(idx(x, y))) {
           // move: lift the selection and carry it (one undo step when it's put down)
@@ -502,7 +617,7 @@
       if (floating && !drag) { floating.x = x; floating.y = y; ed.draw(); return true; }
       if (bend) { preview = curve(bend.a, bend.b, [x, y], thick()); ed.draw(); return true; }
       if (poly) { preview = polygon(poly.concat([[x, y]]), thick(), opt.filled); ed.draw(); return true; }
-      if (!drag) return ed.tool() === "text" ? (preview = text(opt.text || "", x, y, opt.size).cells, ed.draw(), true) : false;
+      if (!drag) { if (ed.tool() === "text") { textPreview(); return true; } return false; }
       const px = drag.x, py = drag.y;
       drag.x = x; drag.y = y;
       const tool = drag.tool;
@@ -625,31 +740,54 @@
       }
     }
 
-    // ---- the toolbar and options ----
-    const bar = $("drawtools");
-    for (const [id, label, k, tip] of TOOLS) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "ghost small"; b.dataset.tool = id; b.setAttribute("aria-pressed", "false");
-      b.title = tip;
-      b.append(label + " ", Object.assign(document.createElement("kbd"), { textContent: k.toUpperCase() }));
-      b.addEventListener("click", () => ed.setTool(id));
-      bar.append(b);
+    // ---- the tool rail and the options bar ----
+    // the rail: icon buttons in groups; the bar above the map: the active tool's name, its options
+    // (each control says which tools it serves in data-tools) and what it does
+    const rail = $("drawtools");
+    for (const [g, gname] of Object.entries(GROUPS)) {
+      const box = document.createElement("div");
+      box.className = "railgroup"; box.setAttribute("role", "group"); box.setAttribute("aria-label", gname);
+      for (const [id, name, k] of TOOLS.filter((t) => t[4] === g)) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "railbtn"; b.dataset.tool = id; b.setAttribute("aria-pressed", "false");
+        if (id === "pan") b.id = "tPan";
+        if (id === "tidy") b.id = "tTidy";
+        const keyName = k === "space" ? "Space" : k.toUpperCase();
+        b.title = `${name} (${keyName})`;
+        b.setAttribute("aria-label", `${name}, key ${keyName}`);
+        b.innerHTML = icon(id); // our own markup only
+        b.addEventListener("click", () => ed.setTool(id));
+        box.append(b);
+      }
+      rail.append(box);
     }
-    $("dtThick").addEventListener("input", () => { $("dtThickN").textContent = String(opt.thick); ed.draw(); });
+    $("dtThick").addEventListener("input", () => { $("dtThickN").textContent = String(opt.thick); textPreview(); ed.draw(); });
     $("dtThickN").textContent = String(opt.thick);
     for (const [id, what] of [["dtCopy", "copy"], ["dtCut", "cut"], ["dtPaste", "paste"], ["dtDel", "delete"], ["dtFlipH", "h"], ["dtFlipV", "v"], ["dtRot", "rot"], ["dtFillSel", "fillsel"], ["dtTidySel", "tidysel"], ["dtNone", "none"]])
       $(id).addEventListener("click", () => selAct(what));
     $("dtMirror").addEventListener("change", () => ed.draw());
+    for (const [id, f] of Object.entries(FONTS)) $("dtFont").append(new Option(f.name, id));
+    // the text follows the pointer as you type, change the font or the size
+    function textPreview() {
+      if (ed.tool() !== "text") return;
+      preview = opt.text.trim() ? text(opt.text, hover[0], hover[1], opt.size, opt.font, thick()).cells : null;
+      ed.draw();
+    }
+    for (const id of ["dtText", "dtSize", "dtFont"]) $(id).addEventListener("input", textPreview);
+    $("dtText").addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); e.target.blur(); } });
 
     return {
-      handles: (t) => TOOLS.some((x) => x[0] === t),
+      handles: (t) => OWN.has(t),
       toolOn(t) {
         // switching tools drops a half-made polygon or curve
         if (t !== "polygon") poly = null;
         if (t !== "curve") bend = null;
         preview = null;
-        const hint = TOOLS.find((x) => x[0] === t);
-        $("dtHint").textContent = hint ? hint[3] : "";
+        const info = TOOLS.find((x) => x[0] === t);
+        $("dtName").textContent = info ? info[1] : "";
+        $("dtHint").textContent = info ? info[3] : "";
+        for (const el of document.querySelectorAll("#edopts [data-tools]")) el.hidden = !el.dataset.tools.split(" ").includes(t);
+        if (t === "text") { textPreview(); if (!opt.text) $("dtText").focus(); }
         ed.draw();
       },
       down, move, up, key, overlay, cancel,
@@ -657,5 +795,5 @@
     };
   }
 
-  root.DrawTools = { Shapes, FONT, TOOLS, mount };
+  root.DrawTools = { Shapes, FONT, FONTS, TOOLS, mount };
 })();

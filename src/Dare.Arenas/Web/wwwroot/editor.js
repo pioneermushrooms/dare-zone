@@ -568,10 +568,8 @@ function signedIn() {
     draw: () => draw(), drawTile, say,
   });
   setTool("pencil");
-  $("tPan").addEventListener("click", () => setTool("pan"));
-  $("tTidy").addEventListener("click", () => setTool("tidy"));
   window.addEventListener("keydown", (e) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector("dialog[open]")) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement || document.querySelector("dialog[open]")) return;
     if (e.key === " ") { space = true; e.preventDefault(); }
     if (tools && !(e.metaKey || e.ctrlKey) && e.key === "t") { setTool("tidy"); return; }
     if (tools && !((e.metaKey || e.ctrlKey) && /^[zy]$/i.test(e.key)) && tools.key(e)) { e.preventDefault(); return; }

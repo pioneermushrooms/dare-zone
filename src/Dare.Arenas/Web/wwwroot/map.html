@@ -20,9 +20,6 @@
   <span class="edname" id="edname">Map editor</span>
   <span class="tag draft" id="drafttag" hidden title="Not published: the arena still has its old map">Draft</span>
   <div class="edtools" role="toolbar" aria-label="Tools">
-    <span id="drawtools" class="drawtools"></span>
-    <button type="button" class="ghost small" id="tPan" data-tool="pan" aria-pressed="false">Pan <kbd>Space</kbd></button>
-    <button type="button" class="ghost small" id="tTidy" data-tool="tidy" aria-pressed="false" title="Drag over walls to give each the right end, bar, corner or junction tile">Tidy walls <kbd>T</kbd></button>
     <button type="button" class="ghost small" id="undo">Undo</button>
     <button type="button" class="ghost small" id="redo">Redo</button>
     <button type="button" class="ghost small" id="zoomOut" aria-label="Zoom out">−</button>
@@ -57,30 +54,6 @@
       <input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="How much rock">
       <label class="hint"><input type="checkbox" id="genflags"> flags</label></div>
     <p class="hint" id="genseed"></p>
-    <p class="kicker">Tool options</p>
-    <p class="hint" id="dtHint"></p>
-    <div class="row"><label class="hint" for="dtThick">Wall thickness</label>
-      <input type="range" id="dtThick" min="1" max="16" step="1" value="1" aria-label="Wall thickness in tiles"> <span id="dtThickN">1</span>
-      <span class="hint"><kbd>-</kbd> <kbd>+</kbd></span></div>
-    <div class="row">
-      <label class="hint"><input type="checkbox" id="dtFilled"> Filled shapes</label>
-      <label class="hint"><input type="checkbox" id="dtAuto" checked> Auto-tile walls</label></div>
-    <div class="row"><label class="hint" for="dtRadius">Corner radius</label>
-      <input type="range" id="dtRadius" min="0" max="24" step="1" value="4" aria-label="Rounded rectangle corner radius">
-      <select id="dtMirror" aria-label="Mirror drawing"><option value="none">No mirror</option><option value="h">Mirror ⟷</option><option value="v">Mirror ↕</option><option value="hv">Mirror 4-way</option></select></div>
-    <div class="row"><input type="text" id="dtText" maxlength="80" placeholder="Text to write" aria-label="Text for the Text tool">
-      <label class="hint" for="dtSize">size</label><input type="number" id="dtSize" min="1" max="12" value="2"  aria-label="Text size: tiles per letter pixel"></div>
-    <div class="row seltools" aria-label="Selection">
-      <button type="button" class="ghost small" id="dtCopy" title="Copy (Cmd/Ctrl-C)">Copy</button>
-      <button type="button" class="ghost small" id="dtCut" title="Cut (Cmd/Ctrl-X)">Cut</button>
-      <button type="button" class="ghost small" id="dtPaste" title="Paste (Cmd/Ctrl-V), then click to place">Paste</button>
-      <button type="button" class="ghost small" id="dtDel" title="Delete (Del)">Delete</button>
-      <button type="button" class="ghost small" id="dtFlipH" title="Flip left-right (H)">Flip ⟷</button>
-      <button type="button" class="ghost small" id="dtFlipV" title="Flip top-bottom (V)">Flip ↕</button>
-      <button type="button" class="ghost small" id="dtRot" title="Turn 90° clockwise (])">Turn 90°</button>
-      <button type="button" class="ghost small" id="dtFillSel" title="Fill the selection with the current tile">Fill</button>
-      <button type="button" class="ghost small" id="dtTidySel" title="Tidy the walls in the selection">Tidy</button>
-      <button type="button" class="ghost small" id="dtNone" title="Select nothing (Esc)">Deselect</button></div>
     <p class="kicker">Wall tiles</p>
     <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
       <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
@@ -104,9 +77,39 @@
     <p class="hint">Wheel or +/− zoom · right-drag or Space-drag pans · Cmd/Ctrl-Z undo</p>
   </aside>
   <main class="edmain">
+    <nav class="edrail" id="drawtools" aria-label="Drawing tools"></nav>
+    <div class="edstage">
+    <div class="edopts" id="edopts" role="toolbar" aria-label="Options for the tool in use">
+      <span class="optname" id="dtName"></span>
+      <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text" title="Wall thickness in tiles (- and + keys)">
+        Thickness <input type="range" id="dtThick" min="1" max="16" step="1" value="1"> <output id="dtThickN">1</output></label>
+      <label class="opt" data-tools="rect round ellipse polygon"><input type="checkbox" id="dtFilled"> Filled</label>
+      <label class="opt" data-tools="round">Corners <input type="range" id="dtRadius" min="0" max="24" step="1" value="4" aria-label="Corner radius"></label>
+      <label class="opt" data-tools="text">Text <input type="text" id="dtText" maxlength="80" placeholder="Type here, then click the map" aria-label="Text to write"></label>
+      <label class="opt" data-tools="text">Font <select id="dtFont" aria-label="Font"></select></label>
+      <label class="opt" data-tools="text" title="Tiles per letter pixel">Size <input type="number" id="dtSize" min="1" max="12" value="2"></label>
+      <span class="opt seltools" data-tools="select lasso wand">
+        <button type="button" class="ghost small" id="dtCopy" title="Copy (Cmd/Ctrl-C)">Copy</button>
+        <button type="button" class="ghost small" id="dtCut" title="Cut (Cmd/Ctrl-X)">Cut</button>
+        <button type="button" class="ghost small" id="dtPaste" title="Paste (Cmd/Ctrl-V), then click to place">Paste</button>
+        <button type="button" class="ghost small" id="dtDel" title="Delete (Del)">Delete</button>
+        <button type="button" class="ghost small" id="dtFlipH" title="Flip left-right (H)">Flip ⟷</button>
+        <button type="button" class="ghost small" id="dtFlipV" title="Flip top-bottom (V)">Flip ↕</button>
+        <button type="button" class="ghost small" id="dtRot" title="Turn 90° clockwise (])">Turn</button>
+        <button type="button" class="ghost small" id="dtFillSel" title="Fill the selection with the current tile">Fill</button>
+        <button type="button" class="ghost small" id="dtTidySel" title="Tidy the walls in the selection">Tidy</button>
+        <button type="button" class="ghost small" id="dtNone" title="Select nothing (Esc)">Deselect</button></span>
+      <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text fill">Mirror
+        <select id="dtMirror" aria-label="Mirror drawing"><option value="none">off</option><option value="h">⟷</option><option value="v">↕</option><option value="hv">4-way</option></select></label>
+      <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text fill select lasso wand" title="Give drawn walls the right end, bar, corner and junction pieces"><input type="checkbox" id="dtAuto" checked> Auto-tile</label>
+      <span class="opthint" id="dtHint"></span>
+    </div>
+    <div class="edcanvas">
     <canvas id="view"></canvas>
     <div class="edstatus" id="status" aria-live="polite"></div>
     <div class="edmsg" id="msg" role="status"></div>
+    </div>
+    </div>
   </main>
 </div>
 

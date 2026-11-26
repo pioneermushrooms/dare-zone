@@ -186,3 +186,20 @@ test("calm edges: only where the cell behind the edge is interior; read from the
   assert.equal(Autotile.resolve(c, "calm-s"), 5, "no calm bottom: the plain bottom edge");
   assert.equal(Autotile.resolve(plain, "calm-n"), 20, "a pack without calm edges keeps its edges");
 });
+
+test("fonts: block, outline (hollow), bold (wide), small 3x5; size and thickness", () => {
+  const { text } = S;
+  const fonts = Object.keys(DrawTools.FONTS);
+  assert.deepEqual(fonts, ["block", "outline", "bold", "small"]);
+  const block = text("H", 0, 0, 1, "block"), small = text("H", 0, 0, 1, "small"), bold = text("H", 0, 0, 1, "bold"), outline = text("H", 0, 0, 1, "outline");
+  assert.deepEqual([block.w, block.h], [5, 7]);
+  assert.deepEqual([small.w, small.h], [3, 5]);
+  assert.deepEqual([bold.w, bold.h], [6, 7], "bold is a column wider");
+  assert.ok(bold.cells.size > block.cells.size);
+  assert.deepEqual([outline.w, outline.h], [7, 9], "outline goes round the letter");
+  for (const i of block.cells) assert.ok(!outline.cells.has(at(xy(i)[0] + 1, xy(i)[1] + 1)), "outline never covers the letter itself");
+  assert.equal(text("H", 0, 0, 3, "small").cells.size, small.cells.size * 9, "size scales each pixel");
+  assert.ok(text("I", 50, 50, 1, "block", 3).cells.size > text("I", 50, 50).cells.size, "thickness widens strokes");
+  for (const ch of "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?-+=:'/()") assert.ok(text(ch, 0, 0, 1, "small").cells.size > 0, `small ${ch}`);
+  assert.equal(text("ab", 0, 0, 1, "small").cells.size, text("AB", 0, 0, 1, "small").cells.size, "lower case is upper case");
+});
