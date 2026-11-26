@@ -3,6 +3,9 @@
 //   await Dlg.confirm("Remove it?", { ok: "Remove", danger: true })  -> true / false
 //   await Dlg.alert("Done.")                                          -> undefined
 //   await Dlg.prompt("Why?", { value: "", placeholder: "…" })          -> string, or null when cancelled
+//   await Dlg.choose("Publish first?", { choices: [{ value: "pub", label: "Publish" }, { value: "go", label: "Enter" }] })
+//                                                                      -> the chosen value, or null when cancelled
+//     (the first choice is the main button and what Enter picks; a choice with danger: true is red)
 // Enter confirms (in a prompt too), Escape cancels, focus returns to where it was.
 // Text goes in with textContent only.
 "use strict";
@@ -45,12 +48,21 @@ window.Dlg = (() => {
 
       const row = document.createElement("div");
       row.className = "row dlg-actions";
+      const choices = kind === "choose" ? opts.choices || [] : [];
       const ok = document.createElement("button");
       ok.type = "submit";
       ok.value = "ok";
-      ok.className = opts.danger ? "danger" : "hot";
-      ok.textContent = opts.ok || "OK";
+      ok.className = (choices[0] ? choices[0].danger : opts.danger) ? "danger" : "hot";
+      ok.textContent = choices[0] ? choices[0].label : opts.ok || "OK";
       row.append(ok);
+      for (const c of choices.slice(1)) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = c.danger ? "danger" : "ghost";
+        b.textContent = c.label;
+        b.addEventListener("click", () => finish(c.value));
+        row.append(b);
+      }
       let cancel = null;
       if (kind !== "alert") {
         cancel = document.createElement("button");
@@ -63,11 +75,11 @@ window.Dlg = (() => {
       dlg.append(form);
       document.body.append(dlg);
 
-      let result = kind === "alert" ? undefined : kind === "prompt" ? null : false;
+      let result = kind === "alert" ? undefined : kind === "confirm" ? false : null;
       const finish = (value) => { result = value; dlg.close(); };
       form.addEventListener("submit", (e) => {
         e.preventDefault();
-        finish(kind === "prompt" ? input.value : kind === "alert" ? undefined : true);
+        finish(kind === "prompt" ? input.value : kind === "alert" ? undefined : kind === "choose" ? choices[0]?.value ?? null : true);
       });
       // Enter in a textarea makes a new line only with Shift; plain Enter confirms
       if (input && opts.multiline) input.addEventListener("keydown", (e) => {
@@ -91,5 +103,6 @@ window.Dlg = (() => {
     confirm: (message, opts) => show("confirm", message, opts),
     alert: (message, opts) => show("alert", message, opts),
     prompt: (message, opts) => show("prompt", message, opts),
+    choose: (message, opts) => show("choose", message, opts),
   };
 })();
