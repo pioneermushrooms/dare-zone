@@ -59,7 +59,7 @@ public sealed partial class ArenaOwnership
     private string? _botProgram;
     private string _botServer = "";
 
-    internal static bool IsBot(string name) => name.EndsWith(ArenaStore.BotSuffix, StringComparison.OrdinalIgnoreCase);
+    internal bool IsBot(string name) => _store?.IsBotName(name) ?? false;
 
     internal Result SaveBot(string arena, string owner, string label, string? script)
     {
@@ -99,7 +99,7 @@ public sealed partial class ArenaOwnership
     {
         _mainloopTimer.ClearTimer(TickBots, null);
         foreach (var entry in _bots)
-            FinishBot(entry.Key.Bot.Label + ArenaStore.BotSuffix, entry.Value, force: true);
+            FinishBot(entry.Key.Bot.Label, entry.Value, force: true);
         _bots.Clear();
         _botOccupancy.Clear();
         _botBanter?.Dispose();
@@ -164,7 +164,7 @@ public sealed partial class ArenaOwnership
             ChatProfile(entry.Key.Bot) is not null &&
             entry.Key.Bot.Script.Split('\n').Any(line => line.Trim() == "botchat on") &&
             _botOccupancy.TryGetValue(entry.Key.Arena, out var seen) && now - seen < TimeSpan.FromSeconds(3) &&
-            _playerData.FindPlayer(entry.Key.Bot.Label + ArenaStore.BotSuffix) is { Status: PlayerState.Playing })
+            _playerData.FindPlayer(entry.Key.Bot.Label) is { Status: PlayerState.Playing })
             .GroupBy(entry => entry.Key.Arena, StringComparer.OrdinalIgnoreCase);
         foreach (var arena in ready)
         {
@@ -172,7 +172,7 @@ public sealed partial class ArenaOwnership
             if (pair.Length < 2 || ChatProfile(pair[0].Key.Bot) is not { } first ||
                 ChatProfile(pair[1].Key.Bot) is not { } second) continue;
             _nextBotExchange = now.AddMinutes(20);
-            pair[0].Value.ExchangePartner = pair[1].Key.Bot.Label + ArenaStore.BotSuffix;
+            pair[0].Value.ExchangePartner = pair[1].Key.Bot.Label;
             pair[0].Value.Exchange = _botBanter.Exchange(first, second);
             break;
         }
@@ -285,8 +285,8 @@ public sealed partial class ArenaOwnership
             }
             if (Store.Get(arena) is not { Status: ArenaStatus.Active } owned) continue;
             int slot = 0;
-            foreach (var bot in Store.Bots(owned.Name))
-                if (bot.Deployed && desired.Count < cap)
+            foreach (var bot in Store.LaunchableBots(owned.Name, n => _accounts?.Find(n) is not null))
+                if (desired.Count < cap)
                 {
                     desired.Add((owned.Name, bot, owned.Owner));
                     _botSlots[(owned.Name, bot, owned.Owner)] = slot++;
@@ -295,7 +295,7 @@ public sealed partial class ArenaOwnership
 
         foreach (var (key, run) in _bots.ToArray())
         {
-            var name = key.Bot.Label + ArenaStore.BotSuffix;
+            var name = key.Bot.Label;
             if (desired.Contains(key) && run.StopDeadline == default)
             {
                 if (run.Process?.HasExited == true)
@@ -329,7 +329,7 @@ public sealed partial class ArenaOwnership
         foreach (var key in desired)
         {
             if (!_bots.TryGetValue(key, out var run)) _bots[key] = run = new();
-            var name = key.Bot.Label + ArenaStore.BotSuffix;
+            var name = key.Bot.Label;
             if (run.Process is not null || run.NextStart > now ||
                 _bots.Any(entry => entry.Value.Process is not null && string.Equals(
                     entry.Key.Bot.Label, key.Bot.Label, StringComparison.OrdinalIgnoreCase)) ||
@@ -466,11 +466,11 @@ public sealed partial class ArenaOwnership
                     Reply(player, $"Bots: {taken.Label} already exists. Change it with ?bots set {taken.Label} <behavior> [ship 1-8].");
                     break;
                 }
-                var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship, args.Chat));
+                var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship, args.Chat, args.Team, args.Priority));
                 if (!saved.Ok) { Reply(player, "Bots: " + saved.Message); break; }
                 var deployed = Store.SetBotDeployment(owned.Name, owner, args.Label, true);
                 var bot = Store.Bots(owned.Name).First(b => string.Equals(b.Label, args.Label, StringComparison.OrdinalIgnoreCase));
-                Reply(player, $"Bots: created {bot.Label}{ArenaStore.BotSuffix} ({BotCommand.Describe(bot.Script)}). " +
+                Reply(player, $"Bots: created {bot.Label} ({BotCommand.Describe(bot.Script)}). " +
                     (deployed.Ok ? JoinNote() : deployed.Message));
                 if (!bot.Script.Contains("casual ", StringComparison.Ordinal))
                     Reply(player, $"Bots: it doesn't talk yet. ?bots set {bot.Label} chat on lets it answer when a pilot says its name.");
@@ -492,14 +492,14 @@ public sealed partial class ArenaOwnership
                     Known(args.Label);
                     break;
                 }
-                if (existing is not null && args.Behaviour is null && args.Ship is null && args.Chat is null)
+                if (existing is not null && args.Behaviour is null && args.Ship is null && args.Chat is null && args.Team is null && args.Priority is null)
                 {
                     Reply(player, $"Bots: {existing.Label} is {BotCommand.Describe(existing.Script)}. " +
                         $"Give a behavior (fighter, patrol, sentry, idle), ship 1-8 or chat on/off, e.g. ?bots set {existing.Label} sentry ship 2");
                     break;
                 }
                 var result = SaveBot(owned.Name, owner, existing?.Label ?? args.Label,
-                    BotCommand.Apply(existing?.Script, args.Behaviour, args.Ship, args.Chat));
+                    BotCommand.Apply(existing?.Script, args.Behaviour, args.Ship, args.Chat, args.Team, args.Priority));
                 if (!result.Ok) { Reply(player, "Bots: " + result.Message); break; }
                 var after = Store.Bots(owned.Name).First(b => string.Equals(b.Label, existing?.Label ?? args.Label, StringComparison.OrdinalIgnoreCase));
                 Reply(player, $"Bots: {after.Label} is now {BotCommand.Describe(after.Script)}." +
@@ -559,10 +559,10 @@ public sealed partial class ArenaOwnership
         }
         foreach (var bot in bots)
         {
-            var flying = _playerData.FindPlayer(bot.Label + ArenaStore.BotSuffix) is { Status: PlayerState.Playing } p &&
+            var flying = _playerData.FindPlayer(bot.Label) is { Status: PlayerState.Playing } p &&
                 string.Equals(p.Arena?.Name, arena, StringComparison.OrdinalIgnoreCase);
             var state = !bot.Deployed ? "stopped" : flying ? "deployed, flying" : "deployed, joining";
-            Reply(player, $"Bots: {bot.Label}{ArenaStore.BotSuffix}  {BotCommand.Describe(bot.Script)}  [{state}]");
+            Reply(player, $"Bots: {bot.Label}  {BotCommand.Describe(bot.Script)}  [{state}]");
         }
         if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
     }

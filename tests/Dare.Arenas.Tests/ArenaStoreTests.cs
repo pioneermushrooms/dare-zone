@@ -375,4 +375,101 @@ public sealed class ArenaStoreTests : IDisposable
         Assert.Equal((z.Owner, z.Created, z.LastEntered), (all[1].Owner, all[1].Created, all[1].LastEntered));
         Assert.Equal("b", all[0].Owner);
     }
+
+    private void Raw(string sql)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db};Pooling=False");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public void bot_names_are_plain_and_up_to_20_characters()
+    {
+        var store = Owned();
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "A Twenty Char Name12", "behaviour idle").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "A Twenty Char Name123", "behaviour idle").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "_x", "behaviour idle").Ok);
+    }
+
+    [Fact]
+    public void an_arena_holds_16_bots()
+    {
+        var store = Owned();
+        for (int i = 0; i < 16; i++)
+            Assert.True(store.SaveBot("bigarena", "Big Chris", $"Bot{i}", "behaviour idle").Ok);
+        var seventeenth = store.SaveBot("bigarena", "Big Chris", "Bot16", "behaviour idle");
+        Assert.False(seventeenth.Ok);
+        Assert.Equal("This arena already has 16 bots.", seventeenth.Message);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Bot3", "behaviour patrol").Ok); // editing is still fine
+    }
+
+    [Fact]
+    public void team_and_priority_lines_are_valid()
+    {
+        var store = Owned();
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Sparring", "ship 1\nbehaviour fighter\nteam 9999\npriority 9").Ok);
+        var bot = Assert.Single(store.Bots("bigarena"));
+        Assert.Equal((9999, 9), (bot.Team, bot.Priority));
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle\nteam 10000").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle\npriority 0").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle\npriority 10").Ok);
+        Assert.False(store.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle\nteam 1\nteam 2").Ok);
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Plain", "behaviour idle").Ok);
+        var plain = store.Bots("bigarena").Single(b => b.Label == "Plain");
+        Assert.Equal((0, 5), (plain.Team, plain.Priority));
+    }
+
+    [Fact]
+    public void match_sizes_are_per_arena_and_owner_only()
+    {
+        var store = Owned();
+        Assert.True(store.SetMatchSize("bigarena", "Big Chris", 0, 4).Ok);
+        Assert.Equal(new Dictionary<int, int> { [0] = 4 }, store.MatchSizes("bigarena"));
+        Assert.False(store.SetMatchSize("bigarena", "Other", 1, 2).Ok);
+        Assert.False(store.SetMatchSize("bigarena", "Big Chris", 1, 17).Ok);
+        Assert.False(store.SetMatchSize("bigarena", "Big Chris", 10000, 2).Ok);
+        Assert.Equal(new Dictionary<int, int> { [0] = 4 }, store.MatchSizes("bigarena"));
+        Assert.True(store.SetMatchSize("bigarena", "Big Chris", 0, null).Ok);
+        Assert.Empty(store.MatchSizes("bigarena"));
+    }
+
+    [Fact]
+    public void is_bot_name_reads_the_register()
+    {
+        var store = Owned();
+        Assert.True(store.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle").Ok);
+        Assert.True(store.IsBotName("sparring"));
+        Assert.False(store.IsBotName("Other"));
+        Assert.Contains("SPARRING", store.BotNames());
+    }
+
+    [Fact]
+    public void a_bot_named_like_a_pilot_is_not_launched()
+    {
+        var store = Owned();
+        Raw("INSERT INTO bots(arena,label,script) VALUES('bigarena','Patrol','behaviour idle'), ('bigarena','Sparring','behaviour idle')");
+        Raw("DELETE FROM stopped_bots");
+        bool IsAccount(string n) => n.Equals("Patrol", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(["Sparring"], store.LaunchableBots("bigarena", IsAccount).Select(b => b.Label));
+        Assert.Equal("Not launched: a pilot uses this name.", store.BotProblem("bigarena", "Patrol", IsAccount));
+        Assert.Null(store.BotProblem("bigarena", "Sparring", IsAccount));
+    }
+
+    [Fact]
+    public void existing_bots_get_a_team_0_match_size_once()
+    {
+        var store = Owned();
+        foreach (var name in new[] { "A", "B", "C" })
+            Assert.True(store.SaveBot("bigarena", "Big Chris", name, "behaviour idle").Ok);
+        store.Dispose();
+        Raw("DELETE FROM bot_matches; DELETE FROM store_markers"); // the file as an older zone left it
+        var reopened = Open();
+        Assert.Equal(new Dictionary<int, int> { [0] = 3 }, reopened.MatchSizes("bigarena"));
+        Assert.True(reopened.SetMatchSize("bigarena", "Big Chris", 0, null).Ok);
+        reopened.Dispose();
+        Assert.Empty(Open().MatchSizes("bigarena"));
+    }
 }

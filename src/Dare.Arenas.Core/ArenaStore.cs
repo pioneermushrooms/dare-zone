@@ -113,6 +113,15 @@ public sealed partial class ArenaStore : IDisposable
               updated TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_pilot_maps_owner ON pilot_maps(owner);
+            CREATE TABLE IF NOT EXISTS bot_matches (
+              arena TEXT NOT NULL COLLATE NOCASE,
+              freq INTEGER NOT NULL,
+              size INTEGER NOT NULL,
+              PRIMARY KEY (arena, freq)
+            );
+            CREATE TABLE IF NOT EXISTS store_markers (
+              key TEXT NOT NULL PRIMARY KEY
+            );
             CREATE TABLE IF NOT EXISTS restart_plans (
               arena TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
               at TEXT NOT NULL,
@@ -121,6 +130,15 @@ public sealed partial class ArenaStore : IDisposable
               by TEXT NOT NULL
             );
             """);
+        // once: an arena that had bots before match sizes existed fields them all as team 0
+        if (Scalar("SELECT COUNT(*) FROM store_markers WHERE key = 'bot_matches_migrated'") == 0)
+        {
+            Exec("""
+                INSERT OR IGNORE INTO bot_matches(arena, freq, size)
+                  SELECT arena, 0, MIN(COUNT(*), 16) FROM bots GROUP BY arena;
+                INSERT INTO store_markers(key) VALUES('bot_matches_migrated');
+                """);
+        }
     }
 
     public void Dispose()

@@ -171,4 +171,27 @@ public sealed class NoEmailAccountTests : IDisposable
         SqliteConnection.ClearAllPools();
         foreach (var x in new[] { old, old + "-wal", old + "-shm" }) try { File.Delete(x); } catch { }
     }
+
+    [Fact]
+    public void a_bot_name_cannot_be_claimed()
+    {
+        using (var arenas = new ArenaStore(_db, () => _now))
+        {
+            Assert.True(arenas.Request("Big Chris", "bigarena", "pitch").Ok);
+            Assert.True(arenas.Approve("bigarena", "staff", _ => false).Ok);
+            Assert.True(arenas.SaveBot("bigarena", "Big Chris", "Sparring", "behaviour idle").Ok);
+        }
+        var taken = _s.CreateWithoutEmail("Sparring", Pw, out var none);
+        Assert.False(taken.Ok);
+        Assert.Equal("That name is taken.", taken.Message);
+        Assert.Null(none);
+        Assert.Equal("That name is taken.", _s.StartSignup("sparring", Pw, "s@example.com", out var code).Message);
+        Assert.Equal("", code);
+        var nomad = Claim("Nomad");
+        var added = _s.AddPilot(nomad.Id, "SPARRING", out _);
+        Assert.False(added.Ok);
+        Assert.Equal("That name is taken.", added.Message);
+        Assert.True(_s.BotNameTaken("Sparring"));
+        Assert.False(_s.BotNameTaken("Nomad"));
+    }
 }

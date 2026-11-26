@@ -197,7 +197,7 @@ public sealed class FoundationAuth : IModule, IAuth
         }
 
         // the zone's own bots: a one-time pass from the bot supervisor
-        if (ArenaOwnership.IsBot(name))
+        if (store.BotNameTaken(name))
         {
             result.Authenticated = BotPasses.Redeem(name, password);
             result.Code = result.Authenticated ? AuthCode.OK : AuthCode.BadPassword;
@@ -273,7 +273,7 @@ public sealed class FoundationAuth : IModule, IAuth
     private void LetGuestIn(IAuthRequest request, AccountStore store)
     {
         var result = request.Result;
-        var picked = GuestNames.PickFree(Random.Shared.Next, n => _playerData.FindPlayer(n) is not null || store.Find(n) is not null);
+        var picked = GuestNames.PickFree(Random.Shared.Next, n => _playerData.FindPlayer(n) is not null || store.Find(n) is not null || store.BotNameTaken(n));
         if (picked is null)
         {
             Refuse(request, request.Player?.Type == ClientType.Continuum, null);

@@ -60,4 +60,18 @@ public class BotCommandTests
         Assert.Equal(on, BotCommand.Apply(on, null, null, true));
         Assert.DoesNotContain("casual", BotCommand.Apply(on + "\nbotchat on", null, null, false));
     }
+
+    [Fact]
+    public void team_and_priority_read_and_apply()
+    {
+        var args = BotCommand.Parse("Sparring team 2 priority 7");
+        Assert.Equal(("Sparring", 2, 7), (args.Label, args.Team, args.Priority));
+        var script = BotCommand.Apply(null, null, null, null, 2, 7);
+        Assert.Contains("team 2", script);
+        Assert.Contains("priority 7", script);
+        Assert.Equal("fighter, Warbird, team 2", BotCommand.Describe(script));
+        Assert.Equal(script, BotCommand.Apply(script, null, null));
+        Assert.Contains("team 4", BotCommand.Apply(script, null, null, null, 4, null));
+        Assert.Contains("priority 7", BotCommand.Apply(script, null, null, null, 4, null));
+    }
 }

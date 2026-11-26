@@ -31,6 +31,7 @@ public sealed partial class AccountStore : IDisposable
     public static readonly TimeSpan CodeFailureWindow = TimeSpan.FromHours(24);
 
     private const string LegacyImportMarker = "legacy_import";
+    private const string BotNameMessage = "That name is taken.";
     private const string BadCode = "That code is wrong or has expired. Request a new one.";
 
     private readonly SqliteConnection _conn;
@@ -173,6 +174,8 @@ public sealed partial class AccountStore : IDisposable
         string issued = "";
         var res = Tx(() =>
         {
+            // a bot's name is public (it flies in the arena), so unlike an account's it is refused openly
+            if (BotNameTaken(n)) return Fail(BotNameMessage);
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0
                 || PilotsOn(e) >= MaxAccountsPerEmail)
                 return sent;
@@ -235,6 +238,7 @@ public sealed partial class AccountStore : IDisposable
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0)
                 return Fail($"The name '{n}' is taken.");
+            if (BotNameTaken(n)) return Fail(BotNameMessage);
             Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, email_verified, created, status) "
                 + "VALUES($n,$h,$s,$i,0,$c,'active')",
                 ("$n", n), ("$h", hash), ("$s", salt), ("$i", iter), ("$c", Now()));
@@ -762,6 +766,19 @@ public sealed partial class AccountStore : IDisposable
         c.CommandText = sql;
         foreach (var (k, v) in ps) c.Parameters.AddWithValue(k, v);
         return c;
+    }
+
+    /// <summary>
+    /// True when the arena register (same db file) holds a bot with this name; bots and pilots
+    /// never share a name. The register's table may not exist yet.
+    /// </summary>
+    public bool BotNameTaken(string name)
+    {
+        lock (_gate)
+        {
+            if (Scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'bots'") == 0) return false;
+            return Scalar("SELECT COUNT(*) FROM bots WHERE label = $n", ("$n", name)) > 0;
+        }
     }
 
     private void Run(string sql, params (string, object)[] ps)

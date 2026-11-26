@@ -80,6 +80,7 @@ public sealed partial class AccountStore
                 return Fail("Confirm this account's recovery email first; your names share it.");
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0)
                 return Fail($"The name '{n}' is taken.");
+            if (BotNameTaken(n)) return Fail(BotNameMessage);
             var group = GroupOf(accountId);
             if (withEmail ? PilotsOn(me.Email!) >= MaxAccountsPerEmail : LinkedMoving(accountId).Count >= MaxAccountsPerEmail)
                 return Fail(withEmail ? TooManyPilots : $"You already have {MaxAccountsPerEmail} pilot names.");
