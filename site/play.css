@@ -10,7 +10,7 @@ a:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid
 /* The game's canvas fills the window once Play starts it. */
 body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100vh !important; display: block; outline: none; touch-action: none; }
 
-#entry { --pad: clamp(16px, 3vw, 36px); min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: var(--pad);
+#entry { --pad: clamp(16px, 3vw, 36px); --dock-default-w: clamp(580px, 58vw, 800px); min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: var(--pad);
   background: linear-gradient(90deg, #060b14f5 0%, #060b14c8 42%, #060b1420 80%), linear-gradient(0deg, #060b14 0%, transparent 40%),
     url(/jump.webp) 62% 45% / cover no-repeat, var(--bg); }
 #entry[hidden] { display: none; }
@@ -22,9 +22,9 @@ body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100v
 .brand h1 { display: flex; align-items: baseline; gap: .28em; margin: 0; font-size: clamp(1.7rem, 2.6vw, 2.4rem); line-height: 1; white-space: nowrap; }
 .brand h1 span { font-size: .74em; color: var(--ink); }
 .brand:hover h1 span { color: var(--cyan-hi); }
-/* the buttons span the arena list + chat below them, edge to edge (chat.js sets --dock-w and --dock-right) */
+/* the buttons span the chat panel's default place, edge to edge, and stay pinned there when it's resized or moved */
 .topright { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-left: auto;
-  width: var(--dock-w, auto); margin-right: calc(var(--dock-right, var(--pad)) - var(--pad)); }
+  width: var(--dock-default-w); }
 /* the links' buttons (.toplinks): header.css, the same on every page */
 .pilotbox { position: relative; }
 .pilot { display: inline-flex; align-items: center; gap: 10px; font: 600 .95rem Inter, system-ui, sans-serif; color: var(--ink); cursor: pointer;
@@ -129,11 +129,24 @@ dialog .guest[hidden] { display: none; }
 
 /* the chat panel: chat.css styles it (one file with the arena editor's); here only how the home page lays it out:
    floating over the right side, the arena list attached on its left */
-.chat { position: fixed; z-index: 3; right: clamp(16px, 3vw, 36px); top: 88px; bottom: 36px; width: min(800px, 58vw);
-  display: grid; grid-template-columns: minmax(170px, 210px) minmax(0, 1fr); }
+.chat { position: fixed; z-index: 3; right: var(--pad); top: 88px; bottom: 36px; width: var(--dock-default-w);
+  display: grid; grid-template-columns: 200px minmax(0, 1fr); }
+/* the arena and player columns keep their width; resizing the panel grows or shrinks only the chat itself */
+.chat .chatbody { grid-template-columns: 140px minmax(0, 1fr); }
+.chat .players button.player, .chat .players .ship { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* nothing slides out when it's narrow: the head's name gives way first, buttons keep their size */
+.chat .chathead > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat .chathead .ghostbtn, .chat .sayrow button, .chat .join button, .chat .say .leave { flex: none; }
+.chat .join { flex-wrap: wrap; }
+/* the input gives way, never Send: a grid column that can shrink, and an input with no intrinsic width */
+.chat .say { grid-template-columns: minmax(0, 1fr); }
+.chat .sayrow input { width: 0; }
+.sortby button { white-space: nowrap; }
+.arenashead { padding-left: 12px; }
+.chat .join .dim { min-width: 0; }
 .chatcol { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 /* folded: the chat goes to a slim tab on the right; the arena list stays */
-.chat.folded { width: auto !important; grid-template-columns: 210px 44px; }
+.chat.folded { width: auto !important; grid-template-columns: 200px 44px; }
 .chat.folded .chatbody { display: none; }
 .chat.folded .chathead { flex: 1 1 auto; flex-direction: column-reverse; justify-content: flex-end; padding: 10px 6px; border-bottom: 0; }
 .chat.folded .chathead > span { writing-mode: vertical-rl; }
@@ -172,7 +185,7 @@ dialog .guest[hidden] { display: none; }
   .chat.folded { grid-template-columns: minmax(0, 1fr); }
   .chat.folded .chathead { flex-direction: row; justify-content: space-between; padding: 10px 14px; }
   .chat.folded .chathead > span { writing-mode: horizontal-tb; }
-  .chatbody { grid-template-columns: minmax(100px, 32%) minmax(0, 1fr); }
+  .chat .chatbody { grid-template-columns: 120px minmax(0, 1fr); }
   .chat .lines { max-height: 40vh; }
   .chat .grip { display: none; }
 }

@@ -188,7 +188,7 @@ if (!docked) $("chatfold").addEventListener("click", () => {
 // Resizing: drag any side or corner. The first drag pins the panel by left/top/width/height; the size is
 // remembered (per browser) and kept inside the window. Double-click a handle for the original size.
 const SIZE_KEY = "foundation.chatSize";
-const MIN_W = 520, MIN_H = 260, EDGE = 8; // the arena list and the chat side by side
+const MIN_W = 580, MIN_H = 260, EDGE = 8; // arena list 200 + players 140 + room for the chat and Send
 const wide = matchMedia("(min-width: 861px)");
 
 function clampBox(b) {
@@ -212,7 +212,7 @@ function applySaved() {
   if (b) placePanel(clampBox(b)); else unplacePanel();
   dockEdges();
 }
-// The header's buttons line up with the panel: its left and right edges, wherever it's been sized to.
+// Where the panel is, for the page to keep the Next stop card clear of it (the header's buttons stay put).
 function dockEdges() {
   const r = panel.getBoundingClientRect(), root = document.documentElement.style;
   if (!wide.matches) { root.removeProperty("--dock-w"); root.removeProperty("--dock-right"); return; }
