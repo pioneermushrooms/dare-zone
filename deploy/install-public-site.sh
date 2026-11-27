@@ -10,7 +10,7 @@ if [ "${DEPLOY_LOCK_CHECK:-1}" = 1 ] && flock -n "$DEPLOY_LOCK_FILE" true; then
 fi
 host=subspacefoundation.com
 files=(
-  style.css home.css play.css chat.js graphics.js graphics-other.js graphics-armory.js loading.js jump.webp sector.png
+  style.css home.css play.css chat.js arena-list.js graphics.js graphics-other.js graphics-armory.js loading.js jump.webp sector.png
   arena-owner-reference.html arena-owners.html pilot.html
   arenas.html index.html build.html foundry.html foundry.css foundry.js
 )
