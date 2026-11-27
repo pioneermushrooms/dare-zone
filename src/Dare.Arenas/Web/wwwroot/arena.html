@@ -5,15 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arena editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
+<link rel="stylesheet" href="/arena/header.css">
 <link rel="stylesheet" href="/arena/tiles.css">
+<link rel="stylesheet" href="/arena/chat.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
 <script src="/arena/tiles.js" defer></script>
 <script src="/arena/tile-studio.js" defer></script>
 <script src="/arena/app.js" defer></script>
+<script type="module" src="/arena/chat.js"></script>
 </head>
 <body data-page="me">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace Foundation</span></a>
+  <nav class="toplinks" aria-label="Site"><a class="play" href="/" title="Fly in the Foundation zone">Play</a><a href="/foundry.html" title="Ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" aria-current="page" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a><a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a></nav></header>
 <div class="page-head"><h1>Arena editor</h1></div>
 
 <main class="panel narrow" id="signin" hidden>
@@ -297,5 +301,29 @@
     <p class="msg" id="restartdlgmsg" role="status"></p>
   </form>
 </dialog>
+<!-- the arena chat (chat.js and chat.css, shared with the home page): docked on the right, opened with Chat.
+     It follows the arena being edited; the pilot can pick another. -->
+<button type="button" class="chatopen ghost" id="chatopen" aria-controls="chat" aria-expanded="false" title="Arena chat: read along or talk while you build">Chat</button>
+<aside class="chat docked" id="chat" aria-label="Arena chat" data-dock="right" data-picker="chatpick" data-arenas="fill" hidden>
+  <header class="chathead">
+    <span class="chatwhere"><b id="chatarena" hidden>public</b><label class="chatpick"><span>Chat in</span>
+      <select id="chatpick" title="Which arena's chat"><option value="">public</option></select></label>
+      <span class="dim" id="chatcount"></span></span>
+    <button type="button" class="ghostbtn" id="chatfold" aria-expanded="true" aria-controls="chat">Hide</button>
+  </header>
+  <div class="chatbody" id="chatbody">
+    <section class="players" aria-label="Players"><h3>Players</h3><ul id="chatplayers"></ul></section>
+    <div class="chatmain">
+    <ol class="lines" id="chatlines" aria-live="polite"></ol>
+    <form class="say" id="chatform" hidden>
+      <p class="to" id="chatto" hidden><span>To <b id="chattoname"></b></span><button type="button" class="ghostbtn" id="chattoclear" aria-label="Back to public chat">✕</button></p>
+      <div class="sayrow"><input id="chatinput" maxlength="240" autocomplete="off" placeholder="Say something (// team, ? commands)" aria-label="Message">
+        <button type="submit">Send</button></div>
+      <button type="button" class="ghostbtn leave" id="chatleave">Leave chat</button>
+    </form>
+    <div class="join" id="chatjoin"><button type="button" id="chatgo">Chat</button><span class="dim" id="chatnote">Read along, or join to talk.</span></div>
+    </div>
+  </div>
+</aside>
 </body>
 </html>

@@ -233,7 +233,6 @@ async function load() {
   renderShips();
   if (first) {
     await loadContribs(false);
-    if (body.mine) $("acctlink").textContent = "Your account";
   }
 }
 

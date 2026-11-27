@@ -9,18 +9,12 @@ body { min-height:100vh; padding-bottom:48px; }
 a { color:var(--accent); text-underline-offset:3px; }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
 
-/* site header (same as the static pages) */
-header.site { border-bottom:1px solid var(--line); background:#080e18; margin-bottom:36px; }
-header.site nav { width:min(1200px, calc(100% - 72px)); margin:auto; min-height:76px; display:flex; align-items:center;
-        justify-content:space-between; gap:24px; }
-header.site a { text-decoration:none; color:inherit; }
-.brand { font-size:1.02rem; letter-spacing:.18em; font-weight:700; display:inline-flex; align-items:center; gap:10px; }
-.logo { font-size:1.8rem; color:var(--accent); line-height:1; }
-.navlinks { display:flex; gap:32px; font-size:.92rem; color:var(--dim); }
-header.site a:hover { color:var(--accent); }
+/* the site header's layout and buttons: header.css (site/header.css, embedded); here only its band */
+body > header.bar { border-bottom:1px solid var(--line); background:#080e18; margin-bottom:36px; }
+.edbar .brand { font-size:1.02rem; letter-spacing:.18em; font-weight:700; display:inline-flex; align-items:center; gap:10px; }
+.edbar .logo { font-size:1.8rem; color:var(--accent); line-height:1; }
 .outline { display:inline-flex; align-items:center; justify-content:center; padding:10px 17px; border:1px solid #4a6179;
         font-size:.9rem; font-weight:700; min-height:45px; border-radius:3px; background:#091221b0; }
-header.site .outline:hover { border-color:var(--accent); color:var(--text); }
 
 .page-head { width:min(980px, calc(100% - 32px)); margin:0 auto 24px; }
 .eyebrow { color:var(--accent); font-size:.85rem; font-weight:700; letter-spacing:.16em; margin:0 0 12px; }
@@ -100,9 +94,7 @@ dl.facts dt { color:var(--dim); }
 dl.facts dd { margin:0; color:#fff; overflow-wrap:anywhere; }
 @media (max-width:400px) { dl.facts { grid-template-columns:1fr; gap:2px; } dl.facts dd { margin-bottom:6px; } }
 @media (max-width:760px) {
-  header.site nav { width:calc(100% - 32px); min-height:65px; gap:10px; flex-wrap:wrap; padding-block:10px; }
-  .navlinks { order:3; width:100%; justify-content:space-between; gap:8px; }
-  header.site { margin-bottom:24px; }
+  body > header.bar { margin-bottom:24px; }
 }
 /* staff desk */
 .staff .req { display:grid; gap:8px; padding:14px 0; border-bottom:1px solid #18243a; }
@@ -379,27 +371,6 @@ dialog.gfxdlg.busy .gfxpreview canvas { opacity:.35; }
 @keyframes gfxspin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .gfxspin { animation:none; } }
 
-/* ---- site header: Play and Arena editor as real buttons, grouped on the right with Pilot account ---------- */
-header.site nav { gap:10px; }
-header.site .brand { margin-right:auto; }
-header.site .navlinks { gap:10px; font-size:.9rem; color:var(--text); }
-header.site .navlinks a { display:inline-flex; align-items:center; gap:9px; min-height:45px; padding:10px 16px; font-weight:700;
-  border:1px solid #344762; border-radius:3px; background:#0c1625; transition:border-color .15s, background .15s, color .15s; }
-header.site .navlinks a:hover { border-color:var(--accent); background:#122238; color:var(--white); }
-header.site .navlinks a::before { content:""; flex:none; }
-/* Play: the main action, cyan with a play triangle */
-header.site .navlinks a[href="/"] { background:var(--accent); border-color:var(--accent); color:#07131e; }
-header.site .navlinks a[href="/"]:hover { background:var(--accent2); border-color:var(--accent2); color:#07131e; }
-header.site .navlinks a[href="/"]::before { border-left:9px solid currentColor; border-top:6px solid transparent; border-bottom:6px solid transparent; }
-/* Arena editor: a small grid icon */
-header.site .navlinks a[href="/arena/me"]::before { width:14px; height:14px; border:2px solid var(--accent); border-radius:2px;
-  background:linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat, linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat; }
-body[data-page="me"] header.site .navlinks a[href="/arena/me"] { border-color:var(--accent); background:#10273a; box-shadow:inset 0 -2px 0 var(--accent); }
-@media (max-width:760px) {
-  header.site .navlinks { gap:8px; }
-  header.site .navlinks a { flex:1 1 0; justify-content:center; }
-}
-@media (prefers-reduced-motion:reduce) { header.site .navlinks a { transition:none; } }
 
 /* ---- arena editor (/arena/me): the side menu detached from the content panel, and a calmer, clearer content area */
 body[data-page="me"] .page-head { width:min(1180px, calc(100% - 32px)); }
@@ -463,12 +434,11 @@ body { background:
   background-attachment:fixed; }
 
 /* header bars */
-header.site, .edbar { background:linear-gradient(180deg, #0f1a2b, #0a121f); border-bottom:1px solid #000;
+body > header.bar, .edbar { background:linear-gradient(180deg, #0f1a2b, #0a121f); border-bottom:1px solid #000;
   box-shadow:inset 0 -1px 0 #ffffff0a, 0 1px 0 #1d2c42, 0 10px 30px -10px #000c; }
 .edbar { position:relative; z-index:2; }
-header.site .brand, .edbar .brand { font:700 1.15rem/1 var(--label); letter-spacing:.22em; }
-.edbar .brand { font-size:1rem; }
-.logo { text-shadow:0 0 8px #71e4fa40; }
+.edbar .brand { font:700 1rem/1 var(--label); letter-spacing:.22em; }
+.edbar .logo { text-shadow:0 0 8px #71e4fa40; }
 
 /* type */
 h1 { font-weight:800; background:linear-gradient(180deg, #fff 30%, #a9bdd4); -webkit-background-clip:text; background-clip:text;
@@ -517,16 +487,16 @@ dialog { border-radius:10px; }
 .tag.draft { background:var(--hot); }
 
 /* ---- buttons: bevelled metal. Every kind shares the shape; colour comes from the kind. ---- */
-button, .btn, .outline, header.site .navlinks a, .fold > summary::after, .staff .req .row a {
+button, .btn, .outline, .fold > summary::after, .staff .req .row a {
   font:700 1.02rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; border-radius:5px;
   transition:transform .08s, box-shadow .15s, background .15s, border-color .15s, color .15s; }
 button, .btn { min-height:44px; padding:10px 18px; }
 /* main action (cyan) */
-button, .btn, header.site .navlinks a[href="/"] {
+button, .btn {
   color:#03222c; text-shadow:0 1px 0 #ffffff60; border:1px solid #9cf0ff; border-bottom-color:#1f8aa3;
   background:linear-gradient(180deg, #93e8f8, #5fd3ec 55%, #48c1dd);
   box-shadow:inset 0 1px 0 #ffffff80, inset 0 -2px 0 #2ea6c4, 0 2px 0 #0b4a5c, 0 8px 16px -8px #000; }
-button:hover:not(:disabled), .btn:hover, header.site .navlinks a[href="/"]:hover {
+button:hover:not(:disabled), .btn:hover {
   color:#03222c; background:linear-gradient(180deg, #adf2fa, #72dbf1 55%, #55c9e4); border-color:#adf2fa; border-bottom-color:#1f8aa3; }
 /* amber */
 button.hot, .btn.hot {
@@ -536,15 +506,15 @@ button.hot, .btn.hot {
 button.hot:hover:not(:disabled), .btn.hot:hover { color:#2b1800; background:linear-gradient(180deg, #ffe0a8, #ffc76c 55%, #f8b244);
   border-color:#ffe0a0; border-bottom-color:#a8690f; }
 /* dark metal: secondary (ghost), small, the header's other links, staff links, the fold's Open/Close */
-button.ghost, .btn.ghost, button.small, .outline, header.site .navlinks a:not([href="/"]), .fold > summary::after,
+button.ghost, .btn.ghost, button.small, .outline, .fold > summary::after,
 .staff .req .row a, button.chip {
   color:var(--text); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320;
   background:linear-gradient(180deg, #22344f, #172539);
   box-shadow:inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000; }
 button.ghost:hover:not(:disabled), .btn.ghost:hover, button.small:hover:not(:disabled), .outline:hover,
-header.site .navlinks a:not([href="/"]):hover, .fold > summary:hover::after, .staff .req .row a:hover, button.chip:hover:not(:disabled) {
+
+.fold > summary:hover::after, .staff .req .row a:hover, button.chip:hover:not(:disabled) {
   color:#fff; border-color:#4f7298; border-bottom-color:#0a1320; background:linear-gradient(180deg, #2a4062, #1b2c44); }
-header.site .outline:hover { color:#fff; border-color:#4f7298; }
 /* the amber small buttons stay amber */
 button.hot.small, .btn.hot.small { color:#2b1800; text-shadow:0 1px 0 #ffffff60; border-color:#ffe0a0; border-bottom-color:#a8690f;
   background:linear-gradient(180deg, #ffd690, #fbbd58 55%, #f0a835);
@@ -557,21 +527,17 @@ button.danger, button.small.danger {
 button.danger:hover:not(:disabled), button.small.danger:hover:not(:disabled) { color:#fff; background:linear-gradient(180deg, #74252f, #4f1720);
   border-color:#a63a46; border-bottom-color:#2a0a0e; }
 /* pressed */
-button:active:not(:disabled), .btn:active, .outline:active, header.site .navlinks a:active, .staff .req .row a:active {
+button:active:not(:disabled), .btn:active, .outline:active, .staff .req .row a:active {
   transform:translateY(2px); box-shadow:inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
 /* off */
 button:disabled, button.ghost:disabled, button.small:disabled, button.hot:disabled, button.danger:disabled {
   opacity:1; color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
 /* sizes */
 button.small, .btn.small, button.ghost.small { min-height:32px; padding:4px 11px; font-size:.88rem; letter-spacing:.08em; }
-header.site .outline, header.site .navlinks a { min-height:45px; padding:10px 16px; }
 .ctx-actions .btn.small { min-height:34px; }
 .fold > summary::after { font-size:.85rem; padding:7px 12px; }
 .fold[open] > summary::after { color:#fff; }
 .staff .req .row a { font-size:.9rem; padding:9px 14px; }
-/* the header: where you are */
-body[data-page="me"] header.site .navlinks a[href="/arena/me"] { border-color:#3f6a8c; border-bottom-color:#0a1320;
-  background:linear-gradient(180deg, #1d3a54, #142a40); box-shadow:inset 0 1px 0 #ffffff1f, inset 0 -2px 0 var(--accent), 0 2px 0 #04080e; }
 /* buttons whose text is a name or a key: normal case, the body font */
 button.chip, .libmaps li button.open, .specials button, button.bot-name {
   font-family:var(--sans); font-size:.82rem; font-weight:600; letter-spacing:.01em; text-transform:none; }
@@ -705,3 +671,20 @@ a.pilotlink:hover { color:var(--accent); }
   .pilothead .headbtns { flex-basis:100%; }
   .pilothead h1 { font-size:1.4rem; }
 }
+
+/* ---- the arena chat (chat.js and chat.css, shared with the home page) on the arena editor ----------------------
+   Docked on the right, full height; while it is open the page makes room for it, so it never covers the editor.
+   chat.js sets --chat-dock-w (the dragged width) and html.chat-docked-open. Narrow windows: a sheet along the bottom. */
+.chat.docked { position:fixed; z-index:30; top:0; right:0; bottom:0; width:var(--chat-dock-w, 400px); border-width:0 0 0 1px;
+  border-radius:0; background:linear-gradient(180deg, #13203af5, #0b1422f2 160px); }
+.chat.docked .chatbody { grid-template-columns:minmax(110px, 32%) minmax(0, 1fr); }
+html.chat-docked-open body { padding-right:var(--chat-dock-w, 400px); }
+.chatopen { position:fixed; z-index:29; right:16px; bottom:16px; display:inline-flex; align-items:center; gap:10px; }
+.chatopen::before { content:""; width:16px; height:12px; border:2px solid currentColor; border-radius:3px 3px 3px 0; flex:none; }
+.chatopen[hidden] { display:none; }
+@media (max-width:860px) {
+  .chat.docked { top:auto; left:0; width:auto; height:min(70vh, 520px); border-width:1px 0 0; border-radius:8px 8px 0 0; }
+  .chat.docked .grip { display:none; }
+  html.chat-docked-open body { padding-right:0; padding-bottom:calc(min(70vh, 520px) + 16px); }
+}
+

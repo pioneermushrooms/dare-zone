@@ -1,0 +1,42 @@
+/* The site's top bar and its buttons, the same on every page: the home page, The Foundry, the static pages and
+   the plugin's pages (Dare.Arenas embeds this file and serves it as /arena/header.css and /account/header.css).
+   Markup: <header class="bar"><a class="brand">…</a><nav class="toplinks"><a class="play">Play</a><a>…</a></nav></header>.
+   The home page puts the links in .topright beside its pilot button; its header sits in #entry's padding.
+   Mark the page you are on with aria-current="page". HANGAR look: bevelled metal, condensed uppercase labels. */
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+body > header.bar { padding: clamp(12px, 2.4vw, 22px) clamp(16px, 3vw, 36px); }
+.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: #f1f6ff; text-decoration: none;
+  font: 800 1.05rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.bar .brand:hover { color: #f1f6ff; }
+.bar .brand .logo { color: #71e4fa; font-size: 2rem; line-height: 1; text-shadow: 0 0 8px #71e4fa40; }
+.topright { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.toplinks { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; padding: 0; width: auto; min-height: 0; }
+
+.toplinks a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; box-sizing: border-box;
+  font: 700 1rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+  color: #f1f6ff; text-decoration: none; text-shadow: 0 1px 0 #000a; cursor: pointer;
+  border: 1px solid #34496a; border-bottom-color: #0a1320; border-radius: 5px; background: linear-gradient(180deg, #22344f, #172539);
+  box-shadow: inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000; backdrop-filter: none;
+  transition: transform .08s, box-shadow .15s, background .15s, border-color .15s, color .15s; }
+.toplinks a:hover { color: #fff; border-color: #4f7298; border-bottom-color: #0a1320; background: linear-gradient(180deg, #2a4062, #1b2c44); }
+.toplinks a:active { transform: translateY(2px); box-shadow: inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
+.toplinks a:focus-visible { outline: 2px solid #71e4fa; outline-offset: 3px; }
+/* Play: the cyan bevel */
+.toplinks a.play { color: #03222c; text-shadow: 0 1px 0 #ffffff60; border-color: #9cf0ff; border-bottom-color: #1f8aa3;
+  background: linear-gradient(180deg, #93e8f8, #5fd3ec 55%, #48c1dd); box-shadow: inset 0 1px 0 #ffffff80, inset 0 -2px 0 #2ea6c4, 0 2px 0 #0b4a5c, 0 8px 16px -8px #000; }
+.toplinks a.play:hover { color: #03222c; border-color: #adf2fa; border-bottom-color: #1f8aa3; background: linear-gradient(180deg, #adf2fa, #72dbf1 55%, #55c9e4); }
+/* the page you are on: pressed in, lit cyan */
+.toplinks a[aria-current="page"] { color: #71e4fa; border-color: #3f6a8c; border-top-color: #05090f; background: linear-gradient(180deg, #0c1a2a, #12243a);
+  box-shadow: inset 0 2px 6px #000c, inset 0 -2px 0 #71e4fa; }
+
+@media (max-width: 760px) {
+  body > header.bar { padding: 12px 16px; }
+  .bar .brand .word { display: none; }
+  .toplinks { gap: 6px; }
+  .toplinks a { min-height: 40px; padding: 8px 10px; font-size: .9rem; letter-spacing: .08em; }
+}
+/* phones: the links two by two under the logo */
+@media (max-width: 480px) {
+  body > header.bar .toplinks { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .toplinks a { transition: none; } }

@@ -197,6 +197,16 @@ function renderArena(body) {
   $("openeditor").href = editor; $("viewmap").href = editor;
   drawThumb(body.arena);
   renderRestart(body);
+  editingForChat(body.arena);
+}
+
+// The docked chat (chat.js) follows the arena being edited: "" is the public arenas (arena 0); a draft has no
+// public chat, so the chat stays where it is.
+function editingForChat(arena) {
+  const name = arena === PUBLIC ? "" : arena.startsWith("#") ? null : arena;
+  if (name == null) delete document.documentElement.dataset.editingArena;
+  else document.documentElement.dataset.editingArena = name;
+  dispatchEvent(new CustomEvent("foundation:editing", { detail: { arena: name } }));
 }
 
 // ---- restart and enter: the top bar's buttons, the "not live yet" notes, the two dialogs ----------
