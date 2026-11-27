@@ -104,7 +104,8 @@ async function load() {
   $("arenas").replaceChildren(...(arenas.length
     ? arenas.map((a) => el("tr", {},
         el("td", {}, el("b", { className: "name", textContent: a.name })),
-        el("td", { textContent: a.owner.startsWith("~deleted:") ? "(name deleted)" : a.owner }),
+        a.owner.startsWith("~deleted:") ? el("td", { textContent: "(name deleted)" })
+          : el("td", {}, el("a", { className: "pilotlink", href: "/pilot/" + encodeURIComponent(a.owner), textContent: a.owner })),
         el("td", {}, el("span", { className: "tag " + a.status, textContent: a.status })),
         el("td", { className: "dim", textContent: a.status === "Active" ? (a.private ? "private" : "public") : "" }),
         el("td", { textContent: String(a.players) }),

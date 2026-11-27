@@ -35,6 +35,15 @@ internal sealed partial class WebServer
         return Get(req.HttpMethod, () => Static("profile.html"));
     }
 
+    /// <summary>/account/profile: the signed-in pilot's own profile, or sign in first and come back.</summary>
+    private Reply MyProfileRedirect(HttpListenerRequest req)
+    {
+        var to = CurrentAccount(req)?.Account is { } me
+            ? PilotPrefix + "/" + Uri.EscapeDataString(me.Name)
+            : AccountPrefix + "/login?next=" + Uri.EscapeDataString(AccountPrefix + "/profile");
+        return new Reply(302, "text/plain; charset=utf-8", [], [("Location", to)]);
+    }
+
     private async Task<Reply> ProfileRouteAsync(HttpListenerRequest req, string api)
     {
         var method = req.HttpMethod;

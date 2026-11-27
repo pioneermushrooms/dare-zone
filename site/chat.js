@@ -70,8 +70,12 @@ function renderPlayers(players) {
       b.title = `${SHIPS[p.ship] ?? ""} · click to message privately`;
       b.append(el("span", "ship", p.ship ? SHIPS[p.ship] : ""));
       b.addEventListener("click", () => pickTarget(p.name));
+      const prof = el("a", "prof", "↗");
+      prof.href = "/pilot/" + encodeURIComponent(p.name);
+      prof.title = `${p.name}'s profile`;
+      prof.setAttribute("aria-label", `${p.name}'s profile`);
       const li = el("li");
-      li.append(b);
+      li.append(b, prof);
       items.push(li);
     }
   }

@@ -133,6 +133,9 @@ dialog .guest[hidden] { display: none; }
 .players button.player:hover, .players button.player.picked { background: #16243a; }
 .players button.player.picked { outline: 1px solid var(--cyan); }
 .players .ship { color: var(--muted); font-size: .75rem; }
+.players li:has(> a.prof) { display: flex; align-items: center; gap: 2px; }
+.players a.prof { flex: 0 0 auto; color: var(--muted); text-decoration: none; font-size: .8rem; padding: 4px 6px; border-radius: 3px; }
+.players a.prof:hover, .players a.prof:focus-visible { color: var(--cyan); background: #16243a; }
 .lines { list-style: none; margin: 0; padding: 8px 12px; flex: 1 1 auto; min-height: 80px; overflow-y: auto; font-size: .88rem; line-height: 1.4; }
 .lines .line { padding: 2px 0; overflow-wrap: anywhere; }
 .lines time { color: #6f819a; font-size: .72rem; margin-right: 6px; font-variant-numeric: tabular-nums; }

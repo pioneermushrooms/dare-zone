@@ -131,10 +131,19 @@ async function loadContribs(more) {
   const list = $("contriblist");
   for (const it of body.items) {
     const li = el("li", "tile");
-    const img = el("img");
-    img.src = it.image;
-    img.alt = it.name || it.kindLabel || "design";
-    img.loading = "lazy";
+    let img;
+    if (it.kind === "ship") { // a ship design is a whole rotation sheet: show it nose-up
+      img = el("canvas");
+      img.width = img.height = 72;
+      img.setAttribute("role", "img");
+      img.setAttribute("aria-label", it.name || "ship");
+      drawShip(img, it.image);
+    } else {
+      img = el("img");
+      img.src = it.image;
+      img.alt = it.name || it.kindLabel || "design";
+      img.loading = "lazy";
+    }
     const cap = el("span", "cap", it.name || it.kindLabel || "");
     if (GALLERY_PAGE) {
       const a = el("a");

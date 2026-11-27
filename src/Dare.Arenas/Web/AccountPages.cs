@@ -122,6 +122,8 @@ internal sealed partial class WebServer
         var method = req.HttpMethod;
         if (AccountPages.TryGetValue(path, out var file))
             return Get(method, () => Static(file));
+        if (path == AccountPrefix + "/profile")
+            return Get(method, () => MyProfileRedirect(req));
 
         if (!path.StartsWith(AccountPrefix + "/api/", StringComparison.Ordinal))
             return Text(404, "Not found.");
