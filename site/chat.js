@@ -341,6 +341,110 @@ function followEditing(name) {
   if (picker.value !== name) { picker.value = name; reset(); void poll(); }
 }
 
+// The arena picker in the head (data-picker inside the panel: the arena editor's): a dropdown that looks like the home
+// page's arena list (pilot counts, busiest first or A–Z, the same remembered sort) over the hidden <select>, which
+// stays the source of truth: choosing sets it and fires "change", as before.
+const PICK_SORT_KEY = "foundation.arenaSort";
+function arenaPick() {
+  const wrap = picker.closest(".chatpick");
+  if (!wrap || !panel.contains(wrap)) return;
+  let sort = store.get(PICK_SORT_KEY) === "name" ? "name" : "players";
+  picker.hidden = true;
+  picker.tabIndex = -1;
+  const btn = el("button", "apick");
+  btn.type = "button";
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  btn.title = "Which arena's chat";
+  const bName = el("span", "apick-name"), bCount = el("span", "acount"), bChev = el("span", "apick-chev");
+  bChev.setAttribute("aria-hidden", "true");
+  btn.append(bName, bCount, bChev);
+  const menu = el("div", "apick-menu");
+  menu.hidden = true;
+  const head = el("div", "apick-head");
+  head.append(el("span", null, "Arenas"));
+  const sorts = el("div", "apick-sort");
+  sorts.setAttribute("role", "group");
+  sorts.setAttribute("aria-label", "Sort arenas");
+  for (const [key, label, title] of [["players", "Players", "Busiest first"], ["name", "A–Z", "Alphabetical"]]) {
+    const b = el("button", null, label);
+    b.type = "button";
+    b.dataset.sort = key;
+    b.title = title;
+    b.addEventListener("click", () => { sort = key; store.set(PICK_SORT_KEY, key); render(); });
+    sorts.append(b);
+  }
+  head.append(sorts);
+  const list = el("ul", "apick-list");
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "Arena");
+  list.tabIndex = -1;
+  menu.append(head, list);
+  wrap.append(btn, menu);
+
+  const read = () => [...picker.options].map((o) => {
+    const [name, count] = o.textContent.split(" · ");
+    return { value: o.value, name: (name || "public").trim(), players: Number.parseInt(count, 10) || 0 };
+  });
+  const byName = (a, b) => a.value === "" ? -1 : b.value === "" ? 1 : a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+  function render() {
+    const all = read();
+    const cur = all.find((a) => a.value === picker.value) ?? { name: "public", players: 0 };
+    bName.textContent = cur.name;
+    bCount.textContent = String(cur.players);
+    bCount.className = "acount" + (cur.players ? " live" : "");
+    bCount.title = cur.players === 1 ? "1 pilot here" : `${cur.players} pilots here`;
+    all.sort(sort === "name" ? byName : (a, b) => b.players - a.players || byName(a, b));
+    list.replaceChildren(...all.map((a) => {
+      const li = el("li");
+      li.setAttribute("role", "option");
+      li.dataset.value = a.value;
+      const sel = a.value === picker.value;
+      li.setAttribute("aria-selected", String(sel));
+      if (sel) li.className = "current";
+      li.append(el("span", "aname", a.name));
+      if (editing != null && a.value === editing) li.append(el("span", "atag", "editing"));
+      const c = el("span", "acount" + (a.players ? " live" : ""), String(a.players));
+      li.append(c);
+      return li;
+    }));
+    for (const b of sorts.children) b.setAttribute("aria-pressed", String(b.dataset.sort === sort));
+  }
+  function open(show) {
+    menu.hidden = !show;
+    btn.setAttribute("aria-expanded", String(show));
+    if (show) { render(); list.querySelector("li.current")?.scrollIntoView({ block: "nearest" }); list.focus(); }
+  }
+  function choose(value) {
+    open(false);
+    btn.focus();
+    if (picker.value === value) return;
+    picker.value = value;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  btn.addEventListener("click", () => open(menu.hidden));
+  btn.addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); open(true); } });
+  list.addEventListener("click", (e) => { const li = e.target.closest("li[role=option]"); if (li) choose(li.dataset.value); });
+  list.addEventListener("keydown", (e) => {
+    const opts = [...list.children];
+    let i = opts.findIndex((li) => li.classList.contains("active"));
+    if (i < 0) i = opts.findIndex((li) => li.classList.contains("current"));
+    if (e.key === "Escape") { e.preventDefault(); open(false); btn.focus(); return; }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (opts[i]) choose(opts[i].dataset.value); return; }
+    const next = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? opts.length - 1 : null;
+    if (next == null) return;
+    e.preventDefault();
+    const n = Math.max(0, Math.min(opts.length - 1, next));
+    for (const li of opts) li.classList.toggle("active", li === opts[n]);
+    opts[n]?.scrollIntoView({ block: "nearest" });
+  });
+  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !wrap.contains(e.target)) open(false); });
+  new MutationObserver(render).observe(picker, { childList: true, subtree: true, characterData: true });
+  picker.addEventListener("change", render);
+  addEventListener("foundation:editing", () => queueMicrotask(render));
+  render();
+}
+
 if (docked) {
   dockWidth(Number(store.get(DOCK_W_KEY)) || DOCK_DEFAULT);
   addEventListener("resize", () => dockWidth(Number(store.get(DOCK_W_KEY)) || DOCK_DEFAULT));
@@ -350,6 +454,7 @@ if (docked) {
   picker.addEventListener("change", () => { following = picker.value === editing; });
   addEventListener("foundation:editing", (e) => followEditing(e.detail?.arena ?? null));
   if (document.documentElement.dataset.editingArena !== undefined) followEditing(document.documentElement.dataset.editingArena || "");
+  arenaPick();
 
   const grip = el("div", "grip grip-w");
   grip.setAttribute("aria-hidden", "true");
