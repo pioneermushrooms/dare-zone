@@ -1,4 +1,4 @@
-// The home page's chat panel (beside the arena list, arenas.js): the chosen arena's live chat and who is in it, for anyone; a
+// The home page's chat panel (beside the arena list, arena-list.js): the chosen arena's live chat and who is in it, for anyone; a
 // signed-in pilot presses Chat to join the arena as a chat client and talk (public, private to
 // a selected player, // team, ? commands). Everything is inserted with textContent.
 const API = "/arena/api";
