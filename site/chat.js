@@ -100,7 +100,24 @@ function pickTarget(name) {
   if (joined) input.focus();
 }
 
-async function poll() {
+// One poll at a time. A poll asks for the lines after `after`, and `after` only moves when its answer
+// comes back; two polls in flight at once (the 2-second timer and the one right after Send, with a
+// poll taking a second or more) both got the same new lines and showed them twice. A poll asked for
+// while one is running runs once more when it ends, so nothing waits a whole interval.
+let inflight = null, again = false;
+function poll() {
+  if (inflight) { again = true; return inflight; }
+  inflight = (async () => {
+    try {
+      do { again = false; await pollOnce(); } while (again);
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
+}
+
+async function pollOnce() {
   if ($("entry")?.hidden) return; // in the game: the panel rests
   if (docked && panel.hidden) return; // closed: nothing to show
   if (arena !== wanted()) reset();
@@ -117,7 +134,7 @@ async function poll() {
     const chat = data.chat;
     joined = !!chat && chat.state !== "closed" && data.mine;
     if (data.mine && data.last < after) after = 0; // a new chat session
-    for (const m of data.messages) addLine(m);
+    for (const m of data.messages) if (!(m.id <= after)) addLine(m); // never a line already shown
     after = Math.max(after, data.last);
     renderPlayers(data.players);
     form.hidden = !joined;
