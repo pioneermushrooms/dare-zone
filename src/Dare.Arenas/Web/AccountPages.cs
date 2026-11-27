@@ -132,6 +132,8 @@ internal sealed partial class WebServer
             return await ArmoryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/graphics" || api.StartsWith("/graphics/", StringComparison.Ordinal))
             return await PilotGraphicsRouteAsync(req, api).ConfigureAwait(false);
+        if (api == "/gallery" || api.StartsWith("/gallery/", StringComparison.Ordinal))
+            return await GalleryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/me")
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
         if (api == "/pilots" && method == "GET")

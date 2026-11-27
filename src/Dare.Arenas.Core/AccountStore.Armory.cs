@@ -1,7 +1,7 @@
 namespace Dare.Arenas.Core;
 
 /// <summary>One weapon sheet in a pilot's armory (its image is fetched separately).</summary>
-public sealed record ArmoryItem(long Id, string Kind, string Name, string Source, string Created);
+public sealed record ArmoryItem(long Id, string Kind, string Name, string Source, string Created, string Prompt = "");
 
 /// <summary>
 /// A weapon graphic the armory holds: the game's sheet of that name, its exact size (the game
@@ -40,9 +40,9 @@ public sealed partial class AccountStore
         lock (_gate)
         {
             var items = new List<ArmoryItem>();
-            using (var c = Cmd("SELECT id, kind, name, source, created FROM armory_items WHERE account_id = $a ORDER BY id", ("$a", accountId)))
+            using (var c = Cmd("SELECT id, kind, name, source, created, prompt FROM armory_items WHERE account_id = $a ORDER BY id", ("$a", accountId)))
             using (var r = c.ExecuteReader())
-                while (r.Read()) items.Add(new ArmoryItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4)));
+                while (r.Read()) items.Add(new ArmoryItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5)));
             var slots = ArmoryKinds.ToDictionary(k => k.Name, _ => new long[ShipSlots + 1]);
             using (var c = Cmd("SELECT kind, ship, item_id FROM armory_slots WHERE account_id = $a", ("$a", accountId)))
             using (var r = c.ExecuteReader())
@@ -65,8 +65,8 @@ public sealed partial class AccountStore
         }
     }
 
-    /// <summary>Adds a weapon sheet to the armory; <paramref name="itemId"/> is its id.</summary>
-    public Result AddArmoryItem(long accountId, string? kind, string? name, string source, byte[] image, out long itemId)
+    /// <summary>Adds a weapon sheet to the armory; <paramref name="itemId"/> is its id. <paramref name="prompt"/> is what it was drawn from, if anything.</summary>
+    public Result AddArmoryItem(long accountId, string? kind, string? name, string source, byte[] image, out long itemId, string? prompt = null)
     {
         itemId = 0;
         if (FindArmoryKind(kind) is not { } k) return Fail("That isn't one of the weapons.");
@@ -80,8 +80,8 @@ public sealed partial class AccountStore
                 return Fail("Sign in again first.");
             if (Scalar("SELECT COUNT(*) FROM armory_items WHERE account_id = $a", ("$a", accountId)) >= MaxArmoryItems)
                 return Fail($"Your armory is full ({MaxArmoryItems}). Remove one first.");
-            Run("INSERT INTO armory_items(account_id, kind, name, source, png, created) VALUES($a, $k, $n, $s, $p, $c)",
-                ("$a", accountId), ("$k", k.Name), ("$n", clean), ("$s", source), ("$p", image), ("$c", Now()));
+            Run("INSERT INTO armory_items(account_id, kind, name, source, png, created, prompt) VALUES($a, $k, $n, $s, $p, $c, $pr)",
+                ("$a", accountId), ("$k", k.Name), ("$n", clean), ("$s", source), ("$p", image), ("$c", Now()), ("$pr", CleanPrompt(prompt)));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok("Added to your armory.");
         });

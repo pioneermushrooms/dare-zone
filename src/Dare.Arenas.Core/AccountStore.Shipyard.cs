@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace Dare.Arenas.Core;
 
 /// <summary>One ship in a pilot's shipyard (its sheet is fetched separately).</summary>
-public sealed record ShipyardShip(long Id, string Name, string Source, string Created);
+public sealed record ShipyardShip(long Id, string Name, string Source, string Created, string Prompt = "");
 
 /// <summary>
 /// Each pilot name's shipyard: ship rotation sheets they generated or uploaded, and which of the
@@ -26,9 +26,9 @@ public sealed partial class AccountStore
         lock (_gate)
         {
             var ships = new List<ShipyardShip>();
-            using (var c = Cmd("SELECT id, name, source, created FROM shipyard_ships WHERE account_id = $a ORDER BY id", ("$a", accountId)))
+            using (var c = Cmd("SELECT id, name, source, created, prompt FROM shipyard_ships WHERE account_id = $a ORDER BY id", ("$a", accountId)))
             using (var r = c.ExecuteReader())
-                while (r.Read()) ships.Add(new ShipyardShip(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3)));
+                while (r.Read()) ships.Add(new ShipyardShip(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4)));
             var slots = new long[ShipSlots];
             using (var c = Cmd("SELECT slot, ship_id FROM shipyard_slots WHERE account_id = $a", ("$a", accountId)))
             using (var r = c.ExecuteReader())
@@ -51,8 +51,8 @@ public sealed partial class AccountStore
         }
     }
 
-    /// <summary>Adds a sheet to the shipyard; <paramref name="shipId"/> is its id.</summary>
-    public Result AddShipyardShip(long accountId, string? name, string source, byte[] png, out long shipId)
+    /// <summary>Adds a sheet to the shipyard; <paramref name="shipId"/> is its id. <paramref name="prompt"/> is what it was drawn from, if anything.</summary>
+    public Result AddShipyardShip(long accountId, string? name, string source, byte[] png, out long shipId, string? prompt = null)
     {
         shipId = 0;
         if (!ShipSources.Contains(source)) return Fail("Unknown ship source.");
@@ -65,8 +65,8 @@ public sealed partial class AccountStore
                 return Fail("Sign in again first.");
             if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE account_id = $a", ("$a", accountId)) >= MaxShipyardShips)
                 return Fail($"Your shipyard is full ({MaxShipyardShips} ships). Remove one first.");
-            Run("INSERT INTO shipyard_ships(account_id, name, source, png, created) VALUES($a, $n, $s, $p, $c)",
-                ("$a", accountId), ("$n", clean), ("$s", source), ("$p", png), ("$c", Now()));
+            Run("INSERT INTO shipyard_ships(account_id, name, source, png, created, prompt) VALUES($a, $n, $s, $p, $c, $pr)",
+                ("$a", accountId), ("$n", clean), ("$s", source), ("$p", png), ("$c", Now()), ("$pr", CleanPrompt(prompt)));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok("Added to your shipyard.");
         });
@@ -101,6 +101,13 @@ public sealed partial class AccountStore
                 ("$a", accountId), ("$s", slot), ("$id", shipId));
             return Ok($"Applied to ship {slot}.");
         });
+    }
+
+    /// <summary>A generation prompt as kept: printable, trimmed, at most 500 characters.</summary>
+    public static string CleanPrompt(string? prompt)
+    {
+        var kept = new string((prompt ?? "").Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+        return kept.Length > 500 ? kept[..500] : kept;
     }
 
     /// <summary>Printable, trimmed, at most <see cref="MaxShipNameLength"/> characters; "Ship" when nothing is left.</summary>

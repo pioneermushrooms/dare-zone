@@ -54,7 +54,7 @@ internal sealed partial class WebServer
                 perShip = k.PerShip,
                 generate = k.Prompt ? new[] { "random", "prompt" } : ["random"],
             }),
-            items = items.Select(i => new { id = i.Id, kind = i.Kind, name = i.Name, source = i.Source, created = i.Created }),
+            items = items.Select(i => new { id = i.Id, kind = i.Kind, name = i.Name, source = i.Source, created = i.Created, prompt = i.Prompt }),
             slots,
             max = AccountStore.MaxArmoryItems,
         });
@@ -75,7 +75,7 @@ internal sealed partial class WebServer
         byte[] image;
         try { image = Convert.FromBase64String(Str(body, "sheet") ?? ""); }
         catch (FormatException) { return Bad("That isn't a weapon sheet."); }
-        var r = _m.Accounts.AddArmoryItem(accountId, Str(body, "kind"), Str(body, "name"), Str(body, "source") ?? "", image, out var itemId);
+        var r = _m.Accounts.AddArmoryItem(accountId, Str(body, "kind"), Str(body, "name"), Str(body, "source") ?? "", image, out var itemId, Str(body, "prompt"));
         return r.Ok ? JsonReply(200, new { ok = true, message = r.Message, id = itemId }) : Bad(r.Message);
     }
 
