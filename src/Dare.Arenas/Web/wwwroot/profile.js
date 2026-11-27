@@ -2,8 +2,8 @@
 "use strict";
 
 const API = "/account/api";
-// The shared gallery's page; "" until it has a fixed address (then contributions link into it).
-const GALLERY_PAGE = "";
+// The shared gallery's page (The Foundry): ?pilot=<name> filters it, #d<id> opens one design.
+const GALLERY_PAGE = "/foundry.html";
 const PAGE_SIZE = 12;
 
 const $ = (id) => document.getElementById(id);
