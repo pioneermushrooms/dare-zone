@@ -6,7 +6,6 @@
 
 const API = "/account/api";
 const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
-const SHIPS = ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 const PAGE = 24;
 const $ = (id) => document.getElementById(id);
 
@@ -131,15 +130,14 @@ let kinds = [];
 let viewer = null; // { name, staff } when signed in
 let next = 0;
 let loading = 0;
-const filter = { q: "", kind: "", ship: 0, pilot: "" };
+const filter = { q: "", kind: "", pilot: "" };
 const kindOf = (name) => kinds.find((k) => k.name === name);
-const kindText = (item) => item.kind === "ship" ? (item.ship ? `Ship · ${SHIPS[item.ship - 1]}` : "Ship · any") : item.kindLabel;
+const kindText = (item) => item.kindLabel;
 
 function readAddress() {
   const q = new URLSearchParams(location.search);
   filter.q = q.get("q") ?? "";
   filter.kind = q.get("kind") ?? "";
-  filter.ship = Math.max(0, Math.min(8, Number(q.get("ship")) || 0));
   filter.pilot = (q.get("pilot") ?? "").slice(0, 40);
 }
 
@@ -147,22 +145,20 @@ function writeAddress() {
   const q = new URLSearchParams();
   if (filter.q) q.set("q", filter.q);
   if (filter.kind) q.set("kind", filter.kind);
-  if (filter.kind === "ship" && filter.ship) q.set("ship", String(filter.ship));
   if (filter.pilot) q.set("pilot", filter.pilot);
   const s = q.toString();
-  history.replaceState(null, "", location.pathname + (s ? "?" + s : "") + location.hash);
+  // A new filter leaves any linked design (#d<id>) behind, so it isn't put back on top of results it doesn't match.
+  history.replaceState(null, "", location.pathname + (s ? "?" + s : ""));
 }
 
 function fillKinds() {
   const sel = $("kind");
   if (sel.options.length > 1) return;
-  const ships = el("optgroup", { label: "Ships" }, el("option", { value: "ship", text: "Ships (all)" }),
-    ...SHIPS.map((n, i) => el("option", { value: `ship:${i + 1}`, text: `${i + 1} · ${n}` })));
-  sel.append(ships);
+  sel.append(el("option", { value: "ship", text: "Ships" }));
   const groups = new Map();
   for (const k of kinds) if (k.name !== "ship") (groups.get(k.group) ?? groups.set(k.group, []).get(k.group)).push(k);
   for (const [g, list] of groups) sel.append(el("optgroup", { label: g }, ...list.map((k) => el("option", { value: k.name, text: k.label }))));
-  sel.value = filter.kind === "ship" && filter.ship ? `ship:${filter.ship}` : filter.kind;
+  sel.value = filter.kind;
 }
 
 function showActive() {
@@ -191,7 +187,6 @@ async function load(more = false) {
   const q = new URLSearchParams({ limit: String(PAGE) });
   if (filter.q) q.set("q", filter.q);
   if (filter.kind) q.set("kind", filter.kind);
-  if (filter.kind === "ship" && filter.ship) q.set("ship", String(filter.ship));
   if (filter.pilot) q.set("pilot", filter.pilot);
   if (more && next) q.set("before", String(next));
   if (!more) say("Loading…");
@@ -247,8 +242,8 @@ function card(it) {
   const k = kindOf(it.kind);
   const art = iconFrom(iconCanvas(104, `${it.name}, ${kindText(it)}`), it.image, it.kind);
   const by = el("span", { class: "by" }, "by ", el("a", { href: `/pilot/${encodeURIComponent(it.by)}`, text: it.by, title: `${it.by}'s profile` }));
-  const pilotFilter = chip(`all by ${it.by}`, () => { filter.pilot = it.by; refresh(); }, `Everything ${it.by} shared`);
-  pilotFilter.classList.add("small");
+  const pilotFilter = el("button", { type: "button", class: "seeall", text: `See all by ${it.by}`, title: `Everything ${it.by} shared` });
+  pilotFilter.addEventListener("click", () => { filter.pilot = it.by; refresh(); });
   const tags = el("div", { class: "tags" }, ...it.keywords.slice(0, 8).map((w) => chip(w, () => { filter.q = w; $("q").value = w; refresh(); }, `Find designs about “${w}”`)));
   const body = el("div", { class: "body" },
     el("h3", { text: it.name }),
@@ -266,7 +261,7 @@ function card(it) {
     acts.append(rm);
   }
   const li = el("li", { class: "card", id: "d" + it.id }, el("div", { class: "art" }, art), body, acts);
-  if (!filter.pilot) body.querySelector(".meta").append(" ", pilotFilter);
+  if (!filter.pilot) body.querySelector(".meta").after(el("p", { class: "seeallrow" }, pilotFilter));
   return li;
 }
 
@@ -345,9 +340,9 @@ async function loadSaved() {
     const labels = Object.fromEntries(a.kinds.map((k) => [k.name, k.label]));
     const items = [
       ...y.ships.map((s) => ({ from: "shipyard", id: s.id, kind: "ship", name: s.name, prompt: s.prompt ?? "", url: `${API}/shipyard/sheet?id=${s.id}`,
-        ship: (y.slots.indexOf(s.id) + 1) || 0, label: "Ship" })),
+        label: "Ship" })),
       ...a.items.map((i) => ({ from: "armory", id: i.id, kind: i.kind, name: i.name, prompt: i.prompt ?? "", url: `${API}/armory/sheet?id=${i.id}`,
-        ship: 0, label: labels[i.kind] ?? i.kind })),
+        label: labels[i.kind] ?? i.kind })),
     ];
     if (!items.length) { list.replaceChildren(el("li", { class: "empty", text: "Your Shipyard and Armory are empty. Make some in the game's Graphics overlay (Esc → G)." })); return; }
     list.replaceChildren(...items.map((it) => {
@@ -367,7 +362,7 @@ async function loadSaved() {
 async function pickSaved(it) {
   picked = { from: it.from, id: it.id, kind: it.kind, prompt: it.prompt };
   choices = [kindOf(it.kind)].filter(Boolean);
-  showChosen(it.url, it.kind, it.name, it.ship);
+  showChosen(it.url, it.kind, it.name);
   $("detect").replaceChildren("From your ", it.from === "shipyard" ? "Shipyard" : "Armory", ": ", el("b", { text: kindOf(it.kind)?.label ?? it.kind }), ".");
   $("prompthint").hidden = !it.prompt;
   $("prompthint").textContent = it.prompt ? `Drawn from “${it.prompt}”: those words come along, so pilots can find it by them.` : "";
@@ -410,7 +405,7 @@ async function pickFile(file) {
     picked = { from: "file", bytes };
     choices = d.matches;
     const stem = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 40);
-    showChosen(new Blob([bytes]), choices[0].name, stem || choices[0].label, 0);
+    showChosen(new Blob([bytes]), choices[0].name, stem || choices[0].label);
     $("prompthint").hidden = true;
     if (choices.length === 1) $("detect").replaceChildren(`${d.width}×${d.height}: `, el("b", { text: choices[0].label }), ".");
     else $("detect").replaceChildren(`${d.width}×${d.height} is the size of ${choices.length} kinds.`);
@@ -420,7 +415,7 @@ async function pickFile(file) {
   }
 }
 
-function showChosen(src, kind, name, ship) {
+function showChosen(src, kind, name) {
   $("chosen").hidden = false;
   const canvas = iconCanvas(128, `Preview of ${name}`, $("chosen-icon"));
   icons.delete(canvas);
@@ -430,18 +425,10 @@ function showChosen(src, kind, name, ship) {
   $("kinds").hidden = choices.length < 2;
   box.replaceChildren(...(choices.length < 2 ? [] : choices.map((k) => {
     const input = el("input", { type: "radio", name: "kindpick", value: k.name });
-    input.addEventListener("change", () => { iconFrom(canvas, src, k.name); shipField(k.name, 0); $("share-go").disabled = false; });
+    input.addEventListener("change", () => { iconFrom(canvas, src, k.name); $("share-go").disabled = false; });
     return el("label", null, input, `${k.label} `, el("small", { text: `(${k.group})` }));
   })));
-  shipField(choices.length === 1 ? choices[0].name : "", ship);
   $("share-go").disabled = choices.length !== 1;
-}
-
-function shipField(kind, ship) {
-  $("shipfield").hidden = kind !== "ship";
-  const sel = $("ship");
-  if (sel.options.length === 1) sel.append(...SHIPS.map((n, i) => el("option", { value: String(i + 1), text: `${i + 1} · ${n}` })));
-  sel.value = String(ship || 0);
 }
 
 async function share(event) {
@@ -449,7 +436,7 @@ async function share(event) {
   if (!picked) return;
   const kind = choices.length === 1 ? choices[0].name : document.querySelector('input[name="kindpick"]:checked')?.value;
   if (!kind) { say("Choose which kind it is.", "bad", "share-status"); return; }
-  const body = { kind, ship: kind === "ship" ? Number($("ship").value) || 0 : 0, name: $("name").value.trim(), keywords: $("keywords").value.trim() };
+  const body = { kind, name: $("name").value.trim(), keywords: $("keywords").value.trim() };
   if (picked.from === "file") body.sheet = base64(picked.bytes); else { body.from = picked.from; body.id = picked.id; }
   $("share-go").disabled = true;
   say("Sharing…", "", "share-status");
@@ -462,7 +449,7 @@ async function share(event) {
     await load();
     say(r.message + " Thanks, pilot.", "good");
   } catch (e) {
-    if (e.status === 409 && e.data?.choices?.length) { choices = e.data.choices; showChosen(new Blob([picked.bytes ?? []]), choices[0].name, body.name, 0); }
+    if (e.status === 409 && e.data?.choices?.length) { choices = e.data.choices; showChosen(new Blob([picked.bytes ?? []]), choices[0].name, body.name); }
     say(e.message, "bad", "share-status");
     $("share-go").disabled = false;
   }
@@ -475,9 +462,7 @@ let typing = 0;
 $("q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { filter.q = $("q").value.trim(); refresh(); }, 250); });
 $("filters").addEventListener("submit", (e) => { e.preventDefault(); clearTimeout(typing); filter.q = $("q").value.trim(); refresh(); });
 $("kind").addEventListener("change", () => {
-  const [k, s] = $("kind").value.split(":");
-  filter.kind = k;
-  filter.ship = Number(s) || 0;
+  filter.kind = $("kind").value;
   refresh();
 });
 $("more").addEventListener("click", () => void load(true));

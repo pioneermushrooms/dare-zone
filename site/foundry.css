@@ -66,6 +66,11 @@ canvas.icon { image-rendering: pixelated; display: block; }
 .card .meta { margin: 4px 0 0; font-size: .82rem; color: var(--muted); }
 .card .meta .kind { color: var(--cyan); font-weight: 600; }
 .card .by a { color: var(--ink); font-weight: 600; }
+.card .seeallrow { margin: 2px 0 0; }
+.seeall { padding: 0; min-height: 0; font: 600 .8rem Inter, system-ui, sans-serif; color: var(--cyan); background: none; border: 0; cursor: pointer;
+  text-decoration: underline; text-decoration-color: #71e4fa55; text-underline-offset: 3px; }
+.seeall:hover { text-decoration-color: var(--cyan); }
+.seeall::after { content: " →"; }
 .card .prompt { margin: 6px 0 0; font-size: .8rem; color: var(--muted); font-style: italic; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .tags { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0 0; }
