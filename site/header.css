@@ -1,15 +1,16 @@
 /* The site's top bar and its buttons, the same on every page: the home page, The Foundry, the static pages and
    the plugin's pages (Dare.Arenas embeds this file and serves it as /arena/header.css and /account/header.css).
    Markup: <header class="bar"><a class="brand">…</a><nav class="toplinks"><a class="play">Play</a><a>…</a></nav></header>.
-   The home page puts the links in .topright beside its pilot button; its header sits in #entry's padding.
+   The home page has its own title and puts the links in .topright beside its pilot button (play.css lays that out);
+   the buttons themselves are these.
    Mark the page you are on with aria-current="page". HANGAR look: bevelled metal, condensed uppercase labels. */
-.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-body > header.bar { padding: clamp(12px, 2.4vw, 22px) clamp(16px, 3vw, 36px); }
-.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: #f1f6ff; text-decoration: none;
+/* the bar itself on every page but the home page (its title, links and pilot button are laid out in play.css) */
+body > header.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: clamp(12px, 2.4vw, 22px) clamp(16px, 3vw, 36px); }
+body > header.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: #f1f6ff; text-decoration: none;
   font: 800 1.05rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
-.bar .brand:hover { color: #f1f6ff; }
-.bar .brand .logo { color: #71e4fa; font-size: 2rem; line-height: 1; text-shadow: 0 0 8px #71e4fa40; }
-.topright { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+body > header.bar .brand:hover { color: #f1f6ff; }
+body > header.bar .brand .logo { color: #71e4fa; font-size: 2rem; line-height: 1; text-shadow: 0 0 8px #71e4fa40; }
 .toplinks { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; padding: 0; width: auto; min-height: 0; }
 
 .toplinks a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; box-sizing: border-box;
@@ -31,9 +32,9 @@ body > header.bar { padding: clamp(12px, 2.4vw, 22px) clamp(16px, 3vw, 36px); }
 
 @media (max-width: 760px) {
   body > header.bar { padding: 12px 16px; }
-  .bar .brand .word { display: none; }
+  body > header.bar .brand .word { display: none; }
   .toplinks { gap: 6px; }
-  .toplinks a { min-height: 40px; padding: 8px 10px; font-size: .9rem; letter-spacing: .08em; }
+  .toplinks a { padding: 8px 10px; font-size: .9rem; letter-spacing: .08em; }
 }
 /* phones: the links two by two under the logo */
 @media (max-width: 480px) {

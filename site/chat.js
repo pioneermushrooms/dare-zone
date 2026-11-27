@@ -2,7 +2,8 @@
 // presses Chat to join the arena as a chat client and talk (public, private to a selected player,
 // // team, ? commands). Everything is inserted with textContent.
 //
-// One file for every page that shows it: the home page (site/, as /chat.js) and the arena editor
+// One file for every page that shows it: the home page (site/, as /chat.js; beside the arena list,
+// arena-list.js) and the arena editor
 // (Dare.Arenas embeds this file and serves it as /arena/chat.js). Both are on the same origin, so the
 // API below and the dare_session cookie are the same from either. The panel's data attributes say how
 // the page uses it:
@@ -172,16 +173,22 @@ $("chatgo").addEventListener("click", join);
 $("chatleave").addEventListener("click", leave);
 $("chattoclear").addEventListener("click", () => pickTarget(target));
 picker.addEventListener("change", () => { if (joined) void leave(); else { reset(); void poll(); } });
+// Hide folds the chat away to a slim tab; the arena list stays, so you can still pick where to fly.
+// (Docked, Hide closes the panel instead: below.)
 if (!docked) $("chatfold").addEventListener("click", () => {
+  const before = panel.getBoundingClientRect();
   const open = panel.classList.toggle("folded") === false;
   $("chatfold").textContent = open ? "Hide" : "Chat";
   $("chatfold").setAttribute("aria-expanded", String(open));
+  if (open) applySaved();
+  else if (panel.style.left) panel.style.left = before.right - panel.getBoundingClientRect().width + "px"; // keep the right edge
+  dockEdges();
 });
 
 // Resizing: drag any side or corner. The first drag pins the panel by left/top/width/height; the size is
 // remembered (per browser) and kept inside the window. Double-click a handle for the original size.
 const SIZE_KEY = "foundation.chatSize";
-const MIN_W = 320, MIN_H = 220, EDGE = 8;
+const MIN_W = 520, MIN_H = 260, EDGE = 8; // the arena list and the chat side by side
 const wide = matchMedia("(min-width: 861px)");
 
 function clampBox(b) {
@@ -203,6 +210,15 @@ function savedBox() {
 function applySaved() {
   const b = wide.matches ? savedBox() : null;
   if (b) placePanel(clampBox(b)); else unplacePanel();
+  dockEdges();
+}
+// The header's buttons line up with the panel: its left and right edges, wherever it's been sized to.
+function dockEdges() {
+  const r = panel.getBoundingClientRect(), root = document.documentElement.style;
+  if (!wide.matches) { root.removeProperty("--dock-w"); root.removeProperty("--dock-right"); return; }
+  if (panel.classList.contains("folded")) root.removeProperty("--dock-w"); // too narrow to hold them: just share the right edge
+  else root.setProperty("--dock-w", Math.round(r.width) + "px");
+  root.setProperty("--dock-right", Math.round(innerWidth - r.right) + "px");
 }
 
 if (!docked) for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
@@ -222,6 +238,7 @@ if (!docked) for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
       if (dir.includes("w")) { b.w = Math.max(MIN_W, start.w - dx); b.x = start.x + start.w - b.w; }
       if (dir.includes("n")) { b.h = Math.max(MIN_H, start.h - dy); b.y = start.y + start.h - b.h; }
       placePanel(clampBox(b));
+      dockEdges();
     };
     const end = () => {
       grip.removeEventListener("pointermove", move);
@@ -236,6 +253,7 @@ if (!docked) for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
   grip.addEventListener("dblclick", () => {
     try { localStorage.removeItem(SIZE_KEY); } catch {}
     unplacePanel();
+    dockEdges();
   });
   panel.append(grip);
 }
