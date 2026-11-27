@@ -390,6 +390,7 @@ async function generate(request, name) {
       sheet,
       name,
       source: request.mode === "prompt" ? "generated" : "random",
+      prompt: fresh.mode === "prompt" ? fresh.prompt || "" : "",
       again: () => generate(data.batch ? { ...fresh, batch: data.batch, fresh } : { ...fresh, variation: true }, name),
     });
   } catch (error) {
@@ -416,7 +417,7 @@ async function approve() {
   setBusy(true, "Adding it to your shipyard…");
   try {
     const bytes = await pngBytes(pending.sheet);
-    const added = await call("/add", { name: pending.name, source: pending.source, sheet: base64(bytes) });
+    const added = await call("/add", { name: pending.name, source: pending.source, prompt: pending.prompt || undefined, sheet: base64(bytes) });
     await call("/slot", { slot, id: added.id });
     globalThis.dareShips?.set(slot, bytes);
     selected = slot;

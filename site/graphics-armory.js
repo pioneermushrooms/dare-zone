@@ -472,6 +472,7 @@ async function generate(request, name) {
       sheet,
       name,
       source: request.mode === "prompt" ? "generated" : "random",
+      prompt: fresh.mode === "prompt" ? fresh.prompt || "" : "",
       again: () => generate(data.batch ? { kind: fresh.kind, mode: fresh.mode, batch: data.batch, fresh } : fresh, name),
     });
   } catch (error) {
@@ -499,7 +500,7 @@ async function approve() {
   setBusy(true, "Adding it to your armory…");
   try {
     const bytes = await pngBytes(pending.sheet);
-    const added = await call("/add", { kind, name: pending.name, source: pending.source, sheet: base64(bytes) });
+    const added = await call("/add", { kind, name: pending.name, source: pending.source, prompt: pending.prompt || undefined, sheet: base64(bytes) });
     await call("/slot", { kind, ship: s, id: added.id });
     globalThis.dareGraphics?.set(gameName(kind, s), bytes);
     ship = s;

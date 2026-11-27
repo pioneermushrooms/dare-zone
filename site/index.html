@@ -12,10 +12,10 @@
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
 <script type="module" src="/play/start.mjs?v=17"></script>
 <script type="module" src="/chat.js?v=17"></script>
-<script type="module" src="/graphics.js?v=17"></script>
+<script type="module" src="/graphics.js?v=18"></script>
 <script type="module" src="/loading.js?v=16"></script>
 <script type="module" src="/graphics-other.js?v=18"></script>
-<script type="module" src="/graphics-armory.js?v=19"></script>
+<script type="module" src="/graphics-armory.js?v=20"></script>
 <script>
 // zone staff see an Admin link (the server says who is staff; the page itself checks again)
 fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
@@ -54,6 +54,7 @@ setTimeout(function () {
     <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span></a>
     <div class="topright">
     <nav class="toplinks" aria-label="Site">
+      <a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a>
       <a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a>
       <a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a>
       <a href="/arena/staff" id="adminlink" title="Zone staff: arenas, server commands, how-tos" style="display:none">Admin</a>

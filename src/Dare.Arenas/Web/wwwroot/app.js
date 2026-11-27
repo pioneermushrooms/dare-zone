@@ -564,11 +564,12 @@ function toBase64(bytes) {
 }
 
 /** Adds a picture to the pilot's armory (weapons) or shipyard (ships); returns a note for the message. */
-async function keepOnAccount(slot, bytes, name, source) {
+async function keepOnAccount(slot, bytes, name, source, prompt = "") {
   if (!keepsOnAccount(slot)) return "";
   const ship = isShipSlot(slot.name);
   const where = ship ? "shipyard" : "armory";
   const payload = { name: (name || slot.label).slice(0, 40), source, sheet: toBase64(bytes) };
+  if (prompt) payload.prompt = prompt; // kept, so shared ones can be found by it
   if (!ship) payload.kind = slot.name;
   try {
     const { status, body } = await post(`${ACCT}/${where}/add`, JSON.stringify(payload), "application/json");
@@ -815,7 +816,7 @@ function paintSheet(canvas, img, sx = 0, sy = 0, sw = img.width, sh = img.height
 async function setGraphic(arena, slot, blob, keep = null) {
   msg($("gfxmsg"), `Saving ${slot.label}…`, true);
   const { body } = await post(`${API}/graphics/set?arena=${encodeURIComponent(arena)}&name=${slot.name}`, blob, "application/octet-stream");
-  const note = body?.ok && keep ? await keepOnAccount(slot, new Uint8Array(await blob.arrayBuffer()), keep.name, keep.source) : "";
+  const note = body?.ok && keep ? await keepOnAccount(slot, new Uint8Array(await blob.arrayBuffer()), keep.name, keep.source, keep.prompt) : "";
   msg($("gfxmsg"), webMessage(body?.message) + note, body?.ok);
   if (body?.ok) { loadGraphics(); refreshRestart(); }
   return !!body?.ok;
@@ -894,7 +895,7 @@ function wireGraphics() {
   $("gfxuse").addEventListener("click", async () => {
     if (!gen?.png) return;
     $("gfxuse").disabled = true;
-    const keep = { name: gen.prompt ? gen.prompt.slice(0, 40) : `${GEN_LABELS[gen.mode].replace("…", "")} ${gen.slot.label.toLowerCase()}`, source: PROMPTED.has(gen.mode) ? "generated" : "random" };
+    const keep = { name: gen.prompt ? gen.prompt.slice(0, 40) : `${GEN_LABELS[gen.mode].replace("…", "")} ${gen.slot.label.toLowerCase()}`, source: PROMPTED.has(gen.mode) ? "generated" : "random", prompt: PROMPTED.has(gen.mode) ? gen.prompt : "" };
     if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }), keep)) $("gfxdlg").close();
     else { msg($("gfxdlgmsg"), $("gfxmsg").textContent, false); $("gfxuse").disabled = false; }
   });
