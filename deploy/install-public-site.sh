@@ -47,7 +47,7 @@ for name in "${files[@]}"; do
   mv -fT -- "$work/$name" "$site/$name"
   installed+=("$name")
 done
-for route in / /foundry.html /build.html /arenas.html /jump.webp /arena-owners.html /pilot.html /play/ /arena/ /account/signup /arena/api/public; do
+for route in / /header.css /chat.css /chat.js /arena-list.js /foundry.html /build.html /arenas.html /jump.webp /arena-owners.html /pilot.html /play/ /arena/ /account/signup /arena/api/public; do
   curl -fsS --max-time 10 --resolve "$host:443:127.0.0.1" "https://$host$route" -o /dev/null
 done
 echo "Published https://$host/ and https://$host/arenas.html"
