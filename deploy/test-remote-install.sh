@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test harness for deploy/remote-install.sh (runs on macOS/Linux, no root, no server): fake zone + stubbed systemctl/journalctl/caddy/ss/curl.
 #   deploy/test-remote-install.sh <scenario>
-# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only public-8088 rollback-fails caddy-fail err-trap players players-bots sysop-bad sysop-ok store-backup store-backup-nocli oss-bot-host
+# scenarios: redeploy-fail first-fail auth-rollback auth-install caddy-account-only caddy-pilot-only public-8088 rollback-fails caddy-fail err-trap players players-bots sysop-bad sysop-ok store-backup store-backup-nocli oss-bot-host
 # Needs a Release build in out/modules/Dare.Arenas (deploy.sh or dotnet build -c Release).
 set -uo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -80,7 +80,7 @@ case $SC in
     echo "### FoundationAuth line before AuthBan: $([ "$(grep -n 'Dare.Arenas.FoundationAuth' $M | head -1 | cut -d: -f1)" -lt "$(grep -n 'SS.Core.Modules.AuthBan' $M | head -1 | cut -d: -f1)" ] && echo yes || echo NO)"
     echo "### cmd_passwd in default: $(grep -cx cmd_passwd $H/zone/conf/groupdef.dir/default)"
     echo "### passwd.conf backed up: $(ls $H/root/backup-arena-ownership-*/conf/passwd.conf 2>/dev/null | wc -l | tr -d ' ')"
-    echo "### Caddyfile: arena $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account $(grep -c 'handle /account/\*' $H/Caddyfile), account redir $(grep -c 'redir /account ' $H/Caddyfile)"
+    echo "### Caddyfile: arena $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account $(grep -c 'handle /account/\*' $H/Caddyfile), account redir $(grep -c 'redir /account ' $H/Caddyfile), pilot $(grep -c 'handle /pilot/\*' $H/Caddyfile)"
     echo "### re-run is idempotent:"; cp $H/Caddyfile $H/Caddyfile.1; cp $M $H/Modules.1
     bash "$RI" "$S" >/dev/null 2>&1; echo "exit $?"
     cmp $H/Caddyfile $H/Caddyfile.1 && cmp $M $H/Modules.1 && echo "unchanged" ;;
@@ -99,6 +99,12 @@ case $SC in
     printf 'subspacefoundation.com {\n\troot * /var/www/foundation\n\thandle_path /arena/* {\n\t\treverse_proxy 127.0.0.1:8088\n\t}\n\tfile_server\n}\n' > "$H/Caddyfile"
     bash "$RI" "$S" --no-restart 2>&1 | grep -E 'Caddyfile|snippet|ERROR'
     echo "### arena blocks: $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account blocks: $(grep -c 'handle /account/\*' $H/Caddyfile)" ;;
+  caddy-pilot-only)
+    # a server from before profiles: arena and account routes already there, only /pilot/* is added
+    printf 'subspacefoundation.com {\n\troot * /var/www/foundation\n\thandle_path /arena/* {\n\t\treverse_proxy 127.0.0.1:8088\n\t}\n\thandle /account/* {\n\t\treverse_proxy 127.0.0.1:8088\n\t}\n\tfile_server\n}\n' > "$H/Caddyfile"
+    bash "$RI" "$S" --no-restart 2>&1 | grep -E 'Caddyfile|snippet|ERROR'
+    echo "### arena: $(grep -c 'handle_path /arena/\*' $H/Caddyfile), account: $(grep -c 'handle /account/\*' $H/Caddyfile), account redir: $(grep -c 'redir /account ' $H/Caddyfile), pilot: $(grep -c 'handle /pilot/\*' $H/Caddyfile)"
+    bash "$RI" "$S" --no-restart >/dev/null 2>&1; echo "### pilot after re-run: $(grep -c 'handle /pilot/\*' $H/Caddyfile)" ;;
   public-8088)
     bash "$RI" "$S" >/dev/null 2>&1; echo "good build" > "$H/zone/bin/modules/Dare.Arenas/MARK-previous"; touch "$H/public"
     bash "$RI" "$S" 2>&1 | grep -vE '^  /' | sed -n '/restart subspace/,$p'; echo "exit ${PIPESTATUS[0]}"

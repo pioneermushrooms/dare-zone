@@ -184,6 +184,8 @@ async function pilots(me) {
     const current = p.name === data.current;
     const owned = p.arenas.length + p.drafts.length;
     const actions = el("span", { className: "row" });
+    // each name has its own public profile (the others on this email are never shown there)
+    actions.append(el("a", { className: "small profilelink", href: "/pilot/" + encodeURIComponent(p.name), textContent: "Profile" }));
     if (current) actions.append(el("span", { className: "tag Active", textContent: "signed in" }));
     else {
       const fly = el("button", { type: "button", className: "small", textContent: "Switch to" });
