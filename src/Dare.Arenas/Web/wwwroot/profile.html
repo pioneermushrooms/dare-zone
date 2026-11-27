@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pilot — SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<script src="/account/profile.js" defer></script>
+</head>
+<body data-page="pilot">
+<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/" id="acctlink">Pilot account</a></nav></header>
+
+<main class="panel narrow" id="loading"><p class="dim">Loading…</p></main>
+<main class="panel narrow" id="missing" hidden><h2>No pilot by that name</h2><p class="dim">Check the spelling, or the name may have been released.</p><p class="links"><a href="/">Back to the zone</a></p></main>
+
+<main class="pilotpage" id="page" hidden>
+<section class="panel pilothead">
+  <canvas class="avatar" id="avatar" width="72" height="72" aria-hidden="true"></canvas>
+  <div class="who">
+    <h1 id="pname"></h1>
+    <p class="dim" id="since"></p>
+    <p class="bio" id="bio"></p>
+    <p class="msg bad" id="hiddennote" hidden>Staff have hidden this profile. Only you and zone staff can see it.</p>
+  </div>
+  <div class="headbtns">
+    <button type="button" class="ghost small" id="editbtn" hidden>Edit profile</button>
+  </div>
+</section>
+
+<form class="panel stack" id="edit" hidden>
+  <h2>Edit your profile</h2>
+  <label>Bio <span class="hint" id="biocount"></span>
+    <textarea name="bio" id="biofield" rows="3" maxlength="280" placeholder="A line or two about how you fly."></textarea></label>
+  <label>Avatar
+    <select name="avatar" id="avatarfield"><option value="0">None</option></select>
+    <span class="hint">One of your Shipyard ships. Make ships in the game's Graphics menu.</span></label>
+  <fieldset class="choice"><legend>Show on your profile</legend>
+    <label class="check"><input type="checkbox" name="showContribs" id="showContribs"> Gallery contributions</label>
+    <label class="check"><input type="checkbox" name="showArenas" id="showArenas"> Arenas you own (public ones only)</label>
+    <label class="check"><input type="checkbox" name="showShips" id="showShips"> Ships you fly</label>
+  </fieldset>
+  <p class="hint">Your name and the month you joined are always shown. Your email, sign-ins and other pilot names never are.</p>
+  <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="editcancel">Cancel</button></div>
+  <p class="msg" id="editmsg" role="status"></p>
+</form>
+
+<section class="panel" id="modbox" hidden>
+  <h2>Staff</h2>
+  <p class="dim">Moderate this profile. Hiding is undone with Show.</p>
+  <div class="actions"><button type="button" class="ghost small" id="modclear">Clear bio</button><button type="button" class="hot small" id="modhide">Hide profile</button></div>
+  <p class="msg" id="modmsg" role="status"></p>
+</section>
+
+<section class="panel" id="contribs" hidden>
+  <div class="sechead"><h2>Contributions <span class="dim" id="contribcount"></span></h2><a id="contriball" hidden>See all in the gallery →</a></div>
+  <ul class="tiles" id="contriblist"></ul>
+  <p class="dim" id="contribnone" hidden>No contributions yet.</p>
+  <button type="button" class="ghost small" id="contribmore" hidden>Show more</button>
+</section>
+
+<section class="panel" id="arenas" hidden>
+  <h2>Arenas</h2>
+  <ul class="chips" id="arenalist"></ul>
+  <p class="dim" id="arenanone" hidden>No public arenas.</p>
+</section>
+
+<section class="panel" id="ships" hidden>
+  <h2>Ships</h2>
+  <ul class="tiles" id="shiplist"></ul>
+</section>
+</main>
+</body>
+</html>

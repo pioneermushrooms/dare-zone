@@ -409,6 +409,8 @@ internal sealed partial class WebServer : IDisposable
 
         if (IsAccountPath(path))
             return await AccountRouteAsync(req, path).ConfigureAwait(false);
+        if (IsPilotPath(path))
+            return PilotRoute(req, path);
 
         switch (path)
         {

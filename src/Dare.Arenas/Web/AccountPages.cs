@@ -108,11 +108,12 @@ internal sealed partial class WebServer
         ["/account/forgot"] = "account-forgot.html",
         ["/account/reset"] = "account-reset.html",
         ["/account/account.js"] = "account.js",
+        ["/account/profile.js"] = "profile.js",
         ["/account/style.css"] = "style.css",
     };
 
     internal static readonly string[] AccountStaticFiles =
-        ["account.html", "account-signup.html", "account-verify.html", "account-login.html", "account-forgot.html", "account-reset.html", "account.js"];
+        ["account.html", "account-signup.html", "account-verify.html", "account-login.html", "account-forgot.html", "account-reset.html", "account.js", "profile.html", "profile.js"];
 
     private static bool IsAccountPath(string path) => path == AccountPrefix || path.StartsWith(AccountPrefix + "/", StringComparison.Ordinal);
 
@@ -132,6 +133,8 @@ internal sealed partial class WebServer
             return await ArmoryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/graphics" || api.StartsWith("/graphics/", StringComparison.Ordinal))
             return await PilotGraphicsRouteAsync(req, api).ConfigureAwait(false);
+        if (api == "/profile" || api.StartsWith("/profile/", StringComparison.Ordinal))
+            return await ProfileRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/me")
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
         if (api == "/pilots" && method == "GET")

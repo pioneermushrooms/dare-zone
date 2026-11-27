@@ -22,3 +22,11 @@ handle /account/* {
 		header_up Host {upstream_hostport}
 	}
 }
+
+# Public pilot profiles (same listener): /pilot/<name>. The /pilot prefix is KEPT (handle, not
+# handle_path). The page and its data come from the plugin; there is no page at /pilot itself.
+handle /pilot/* {
+	reverse_proxy 127.0.0.1:8088 {
+		header_up Host {upstream_hostport}
+	}
+}

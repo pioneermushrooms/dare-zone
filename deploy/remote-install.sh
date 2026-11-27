@@ -16,7 +16,7 @@
 #     (incl. the current bin/modules/Dare.Arenas, if any) and a consistent copy of the module's
 #     store data/dare-arenas.db (sqlite3 .backup, or Python's sqlite3 backup API without sqlite3)
 #  2. copies static site files to /var/www/foundation
-#  3. adds deploy/Caddyfile.snippet (/arena/* and /account/*) to the subspacefoundation.com block of
+#  3. adds deploy/Caddyfile.snippet (/arena/*, /account/* and /pilot/*) to the subspacefoundation.com block of
 #     /etc/caddy/Caddyfile (each part once), validates and reloads Caddy; a config that does not validate is not installed
 #     (steps 2-3 come first so a failure there leaves the zone untouched)
 #  4. runs deploy/apply-local.sh on the zone: module line, AuthFile commented out and the
@@ -282,14 +282,16 @@ done
 
 # ---- 3. caddy -----------------------------------------------------------------------------
 step "caddy ($CADDYFILE)"
-want_arena=1; want_account=1
+want_arena=1; want_account=1; want_pilot=1
 if grep -qF 'handle_path /arena/*' "$CADDYFILE"; then want_arena=0; echo "Caddyfile already proxies /arena/*"; fi
 if grep -qF 'handle /account/*' "$CADDYFILE"; then want_account=0; echo "Caddyfile already proxies /account/*"; fi
-if [ "$want_arena" = 1 ] || [ "$want_account" = 1 ]; then
+if grep -qF 'handle /pilot/*' "$CADDYFILE"; then want_pilot=0; echo "Caddyfile already proxies /pilot/*"; fi
+if [ "$want_arena" = 1 ] || [ "$want_account" = 1 ] || [ "$want_pilot" = 1 ]; then
   tmp=$(mktemp)
   # insert the wanted parts of the snippet (comments dropped) right after the "<SITE_HOST> {" line;
-  # the snippet's arena part is everything before its "redir /account" line, the account part the rest
-  awk -v snip="$STAGE/deploy/Caddyfile.snippet" -v host="$SITE_HOST" -v wa="$want_arena" -v wc="$want_account" '
+  # the snippet's arena part is everything before its "redir /account" line, the account part up to
+  # its "handle /pilot/*" line, the pilot part the rest
+  awk -v snip="$STAGE/deploy/Caddyfile.snippet" -v host="$SITE_HOST" -v wa="$want_arena" -v wc="$want_account" -v wp="$want_pilot" '
     { print }
     !done && NF == 2 && $1 == host && $2 == "{" {
       print "\t# Dare.Arenas web pages (dare-zone deploy/Caddyfile.snippet); header_up Host is required"
@@ -297,7 +299,8 @@ if [ "$want_arena" = 1 ] || [ "$want_account" = 1 ]; then
       while ((getline l < snip) > 0) {
         if (l ~ /^[ \t]*#/ || l ~ /^[ \t]*$/) continue
         if (l ~ /^redir \/account /) part = "account"
-        if ((part == "arena" && wa == 1) || (part == "account" && wc == 1)) print "\t" l
+        if (l ~ /^handle \/pilot\//) part = "pilot"
+        if ((part == "arena" && wa == 1) || (part == "account" && wc == 1) || (part == "pilot" && wp == 1)) print "\t" l
       }
       print ""
       done = 1
@@ -307,7 +310,7 @@ if [ "$want_arena" = 1 ] || [ "$want_account" = 1 ]; then
   caddy validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1 \
     || { caddy validate --config "$tmp" --adapter caddyfile || true; rm -f "$tmp"; die "new Caddyfile does not validate; not installed"; }
   cat "$tmp" > "$CADDYFILE"; rm -f "$tmp"
-  echo "snippet added inside '$SITE_HOST {' (arena: $want_arena, account: $want_account)"
+  echo "snippet added inside '$SITE_HOST {' (arena: $want_arena, account: $want_account, pilot: $want_pilot)"
 fi
 caddy validate --config "$CADDYFILE" --adapter caddyfile 2>&1 | tail -1
 systemctl reload caddy

@@ -674,3 +674,32 @@ dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }
   .railgroup:last-child { border-right:0; }
   .edopts .opthint { display:none; }
 }
+
+/* ---- public pilot profile (/pilot/<name>) ---- */
+.pilotpage { padding-bottom:24px; }
+.pilothead { display:flex; gap:20px; align-items:flex-start; padding:24px; }
+.pilothead .avatar { flex:0 0 72px; width:72px; height:72px; border:1px solid var(--line); border-radius:4px; background:var(--panel2); image-rendering:pixelated; }
+.pilothead .who { flex:1; min-width:0; }
+.pilothead h1 { margin:0; font-size:1.8rem; overflow-wrap:anywhere; }
+.pilothead #since { margin:4px 0 0; font-size:.9rem; }
+.pilothead .bio { margin:12px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.pilothead .headbtns { flex:0 0 auto; }
+form.stack label.check { display:flex; align-items:center; gap:8px; color:var(--text); font-size:.95rem; }
+form.stack label.check input { width:auto; }
+.sechead { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.sechead a { font-size:.9rem; }
+ul.tiles { list-style:none; margin:12px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:12px; }
+ul.tiles .tile { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px; background:var(--panel2); border:1px solid var(--line); border-radius:4px; }
+ul.tiles .tile a { display:contents; color:inherit; text-decoration:none; }
+ul.tiles .tile img, ul.tiles .tile canvas { width:72px; height:72px; object-fit:contain; image-rendering:pixelated; }
+ul.tiles .cap { font-size:.8rem; text-align:center; overflow-wrap:anywhere; }
+ul.tiles .kind { font-size:.7rem; color:var(--dim); }
+ul.chips { list-style:none; margin:12px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:8px; }
+ul.chips .chip { padding:4px 10px; border:1px solid var(--line); border-radius:3px; background:var(--panel2); font-weight:600; }
+a.pilotlink { color:inherit; text-decoration:underline dotted; text-underline-offset:3px; }
+a.pilotlink:hover { color:var(--accent); }
+@media (max-width: 560px) {
+  .pilothead { flex-wrap:wrap; padding:18px; }
+  .pilothead .headbtns { flex-basis:100%; }
+  .pilothead h1 { font-size:1.4rem; }
+}
