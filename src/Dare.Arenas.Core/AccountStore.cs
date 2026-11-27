@@ -167,6 +167,7 @@ public sealed partial class AccountStore : IDisposable
             Exec("ALTER TABLE accounts ADD COLUMN link_id INTEGER NULL;");
         Exec("CREATE INDEX IF NOT EXISTS ix_accounts_link ON accounts(link_id);");
         CreateWebSessionTable();
+        CreateProfileTable();
         MoveWeaponGraphicsToArmory();
     }
 
