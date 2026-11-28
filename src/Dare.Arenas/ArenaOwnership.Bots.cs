@@ -339,6 +339,7 @@ public sealed partial class ArenaOwnership
         var flying = census.Flying;
         var botsInZone = census.BotsInZone;
 
+        // zone-wide cap on arena owners' bots; the tutorial's bots are separate (below)
         int cap = Math.Clamp(_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30), 0, 100);
         int total = 0;
         var desired = new Dictionary<string, (string Owner, IReadOnlyList<ArenaBot> Bots, IReadOnlyList<BotPlacement>? Fixed)>(StringComparer.OrdinalIgnoreCase);
@@ -359,7 +360,8 @@ public sealed partial class ArenaOwnership
             total += bots.Count;
             desired[owned.Name] = (owned.Owner, bots, null);
         }
-        // the tutorial's casts: placed by the run's current step, and not counted against MaxBots
+        // the tutorial's casts: placed by the run's current step, and not counted against MaxBots (MaxBots caps arena
+        // owners' bots only; the tutorial has its own [Tutorial] FullCasts/MaxTutorials, deploy/README.md)
         foreach (var (arena, bots, placements) in TutorialLineups())
             desired[arena] = (TutorialOwner, bots, placements);
 
