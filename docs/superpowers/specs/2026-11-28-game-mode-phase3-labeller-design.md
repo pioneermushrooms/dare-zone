@@ -120,3 +120,6 @@ their places, game modes carry their rules. **Approve or change this.**
   labels-layer.js catches the keys it uses (Esc to cancel placing, Delete/Backspace to remove the
   selected label) in a capture-phase listener and stops them there, as lvz-layer.js does with the
   space bar. It leaves every other key alone.
+- Found in review: regions must sit on a tileset BMP. A .lvl that starts with a bare `elvl` block is read
+  by SubspaceServer as a new-format file with no tiles after it. So a map with no tileset of its own
+  gets Continuum's classic `tiles.bm2` when the first label is saved. It looks the same in game.
