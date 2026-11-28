@@ -156,11 +156,11 @@
   // Only one panel owns map clicks at a time. Placement says so ("map:pointer" { owner: "lvz" }, and a
   // change event on #lzp-edit, which the Game labels panel listens for); it hands over when another panel
   // takes the pointer: a map:pointer with another owner, a click in the Game labels panel, a tool or tile.
-  let announcing = false;
+  let announcing = false, placingNow = false; // placingNow: the state before this call (the box may already show the new one)
   function setPlacing(on, note, keepPalette) {
-    const was = q("lzp-edit").checked;
+    const was = placingNow;
     on = !!on && q("lzp-show").checked;
-    q("lzp-edit").checked = on;
+    q("lzp-edit").checked = on; placingNow = on;
     if (on) q("lzp-show").checked = true;
     badge.hidden = !on;
     document.body.classList.toggle("lvzplacing", on);
