@@ -72,7 +72,7 @@ grabbed. An expert can skip straight to any panel and fine-tune everything.
 | Warp, ship reset, prizes | server interfaces (`IGame`) | called by the new rules module |
 | Turn LVZ objects on/off, move them, change image or display time | `LvzObjects` (`ILvzObjects.Toggle/SetImage/SetTimer/SetPosition`), `?objon/?objoff` | none |
 | Ship values | ~90 per-ship settings (`InitialGuns`, `MaxBombs`, `BulletSpeed`, `CloakEnergy`, `AttachBounty`, `TurretLimit`, `Upgrade*`, ...), `PrizeWeight:*`, `Prize:*` | none |
-| Named settings sets | `editor-polish` session's 972214b (not on main yet): `pilot_setting_sets`, `/api/settingsets/*`, `/api/settings/preview` + `/apply` | reuse |
+| Named settings sets | `editor-polish` session's 972214b (not on main yet): `pilot_setting_sets`, `/api/settingsets/*`, `/api/settings/preview` + `/apply` | reuse apply/preview and the value checks; store the game mode's own settings (not as a set) |
 | LVZ read/write | `tile-editor` session: `lvz.js` (CLV1/CLV2, byte-exact round trip), LVZ library store `/api/lvzlib` (not on main yet) | reuse |
 | Browser client shows LVZ | dare-client `lvz.rs`: map and screen objects, all display modes, animation, server toggle `0x35` and change `0x36` | none expected; check screen anchors match Continuum |
 | Map areas | eLVL regions are read by the server; our map editor keeps eLVL bytes but can't edit regions | labels stored in the game mode instead (below) |
@@ -86,14 +86,19 @@ trigger/action need one new plugin module.
 A game mode is a pilot's named record (`pilot_game_modes`, alongside settings sets) holding:
 
 - `answers`: what the wizard asked and the pilot chose (so the wizard can reopen on it).
-- `settings`: a settings set (reuses `pilot_setting_sets`; the game mode points at it).
+- `settings`: its own `Section:Key → value` map, checked on save with the settings sets' rules
+  (`ArenaStore.TryCheckSettingSet`). It is not stored as a settings set: those are capped at 25
+  per pilot and can be deleted on the Settings page, which would leave the game mode pointing at
+  nothing. A pilot can still save a game mode's settings as a set on purpose ("Save as settings set").
 - `ships`: role and tweaks per ship (the values themselves land in `settings`).
 - `labels`: named map spots and areas in tile coordinates: `{ kind: base|flag|ball|goal|spawn|area, name, team?, x, y, w?, h? }`.
 - `objects`: timers, boards and images placed on the map (`x,y` pixels) or screen (anchor + offset).
 - `rules`: `{ when: trigger, do: [actions] }` lists, from fixed menus.
 
 **Apply to an arena** writes three things into the arena's draft folder (drafts → Publish as today):
-1. the settings, through `/api/settings/apply` (allow-list, rate limit, diff preview);
+1. the settings, sent inline as `settings:{...}` to `/api/settings/preview` then `/apply`. These
+   check the allow-list and rate limit (one apply counts as one change; at most 3 applies a minute
+   per arena). The page shows the diff and any skipped rows first;
 2. `gamemode.lvz`, generated with `lvz.js` (images + objects, ids in a reserved range), listed in the arena's LVZ files;
 3. `gamemode.json` (labels, objects' ids, rules), which the new server module reads.
 
@@ -215,3 +220,10 @@ drawing UI; the rule menu layout; timer art. Each comes with a mockup for approv
   `lvz.objects`, then `await Lvz.write(lvz)`. `time` is in 1/10 s. Screen offsets are signed
   12-bit values from `Lvz.REFS` (twelve HUD points). It runs in node 18+ too (see `docs/lvz.md`).
   The file is published through `/api/upload?kind=lvz`.
+- Settings sets (`editor-polish`): the API in 972214b is settled. Changes will only add fields,
+  never rename. Catches the wizard must handle:
+  - Booleans are stored as "1"/"0".
+  - Ship values go in one entry per ship (no `[All]` outside file parsing).
+  - Values: max 64 characters, no `;`, `\`, or control characters.
+  - Apply needs owner or co-mod and may mark a pending restart.
+  - Skipped rows have `old = null`.
