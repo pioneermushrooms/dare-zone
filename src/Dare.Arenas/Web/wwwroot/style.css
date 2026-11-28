@@ -410,24 +410,42 @@ canvas.icon { display:block; flex:none; max-width:100%; max-height:100%; image-r
 .gfxcard .hint { font-size:.75rem; color:var(--dim); }
 .gfxcard .acts { display:flex; flex-wrap:wrap; gap:6px; }
 /* the pilot's armory / shipyard on the card: as the game's Graphics overlay lists them */
-.gfxcard .saved { display:grid; gap:6px; min-width:0; padding:8px; background:#0a121f; border:1px solid #1d2c42; border-radius:5px; box-shadow:inset 0 1px 0 #ffffff08; }
-.gfxcard .savedhead { display:flex; align-items:baseline; gap:8px; }
-.gfxcard .savedhead .title { font:700 .8rem/1 var(--label); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
-.gfxcard .savedhead .count { font:500 .72rem/1 var(--sans); color:var(--dim); }
-.gfxcard .savedlist { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(58px, 1fr)); gap:6px; max-height:168px; overflow-y:auto; overscroll-behavior:contain; }
-.gfxcard .savedlist li { min-width:0; }
-.gfxcard .savedlist li.empty { grid-column:1 / -1; padding:10px 6px; text-align:center; font-size:.78rem; color:var(--dim); border:1px dashed #344762; border-radius:4px; }
-.gfxcard .savedthumb { width:100%; min-height:0; min-width:0; padding:5px 3px 4px; display:grid; justify-items:center; gap:3px; overflow:hidden; cursor:pointer;
+.gfxgroups .saved { display:grid; gap:6px; min-width:0; padding:8px; background:#0a121f; border:1px solid #1d2c42; border-radius:5px; box-shadow:inset 0 1px 0 #ffffff08; }
+.gfxgroups .savedhead { display:flex; align-items:baseline; gap:8px; }
+.gfxgroups .savedhead .title { font:700 .8rem/1 var(--label); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+.gfxgroups .savedhead .count { font:500 .72rem/1 var(--sans); color:var(--dim); }
+.gfxgroups .savedlist { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(58px, 1fr)); gap:6px; max-height:168px; overflow-y:auto; overscroll-behavior:contain; }
+.gfxgroups .savedlist li { min-width:0; }
+.gfxgroups .savedlist li.empty { grid-column:1 / -1; padding:10px 6px; text-align:center; font-size:.78rem; color:var(--dim); border:1px dashed #344762; border-radius:4px; }
+.gfxgroups .savedthumb { width:100%; min-height:0; min-width:0; padding:5px 3px 4px; display:grid; justify-items:center; gap:3px; overflow:hidden; cursor:pointer;
   color:var(--text); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320; border-radius:5px;
   background:linear-gradient(180deg, #1b2a40, #111d2e); box-shadow:inset 0 1px 0 #ffffff14, 0 2px 0 #04080e; }
-.gfxcard .savedthumb:hover:not(:disabled), .gfxcard .savedthumb:focus-visible { color:#fff; border-color:var(--accent); border-bottom-color:#0a1320;
+.gfxgroups .savedthumb:hover:not(:disabled), .gfxgroups .savedthumb:focus-visible { color:#fff; border-color:var(--accent); border-bottom-color:#0a1320;
   background:linear-gradient(180deg, #22385a, #172a42); }
-.gfxcard .savedthumb:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.gfxcard .savedthumb canvas.icon { background:#000; border-radius:3px; }
-.gfxcard .savedthumb .name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+.gfxgroups .savedthumb:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.gfxgroups .savedthumb canvas.icon { background:#000; border-radius:3px; }
+.gfxgroups .savedthumb .name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   font:500 .68rem/1.2 var(--sans); letter-spacing:0; text-transform:none; color:var(--dim); }
-.gfxcard .savedthumb:hover .name { color:var(--text); }
+.gfxgroups .savedthumb:hover .name { color:var(--text); }
 .gfxcard .acts select { font-size:.8rem; padding:2px 6px; max-width:100%; }
+/* a section: its bar (which picture, Upload, Generate) once, the pilot's own shelf once, then the cards */
+.gfxsection { display:grid; gap:10px; margin-top:18px; }
+.gfxsechead { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 14px; }
+.gfxgroups .gfxsechead h3 { margin:0; }
+.gfxbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.gfxbar label.for { display:flex; align-items:center; gap:6px; font-size:.8rem; color:var(--dim); }
+.gfxbar select { font-size:.8rem; max-width:100%; }
+.gfxgroups .savedhead { flex-wrap:wrap; }
+.gfxgroups .savedhead .how { font:500 .72rem/1.2 var(--sans); color:var(--dim); }
+.gfxgroups .savedlist { grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); max-height:200px; }
+.gfxgroups .savedlist li { display:grid; gap:3px; }
+.gfxgroups .savedget { min-height:0; padding:2px 4px; font-size:.66rem; letter-spacing:0; text-transform:none; background:none; border:1px solid #2a3b55; color:var(--dim); border-radius:4px; cursor:pointer; }
+.gfxgroups .savedget:hover, .gfxgroups .savedget:focus-visible { color:var(--text); border-color:var(--accent); }
+.gfxgroups .saved.tilesets .savedlist { grid-template-columns:repeat(auto-fill, minmax(132px, 1fr)); }
+.gfxgroups a.savedthumb { text-decoration:none; }
+.gfxgroups img.tilethumb { display:block; width:100%; aspect-ratio:304 / 160; object-fit:contain; background:#000; border-radius:3px; image-rendering:pixelated; }
+.gfxcard.picked { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.gfxsection .gfxcard { cursor:default; }
 dialog.gfxdlg { width:min(720px, calc(100vw - 32px)); }
 .gfxpreview { background:#000; border-radius:6px; padding:8px; display:flex; justify-content:center; min-height:80px; }
 .gfxpreview canvas { max-width:100%; image-rendering:pixelated; }
