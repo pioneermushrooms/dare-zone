@@ -110,3 +110,13 @@ their places, game modes carry their rules. **Approve or change this.**
     and saves unchanged when nothing is edited, labels → settings for spawns.
   - Browser on the local zone: place each kind, publish, check the arena settings and the server's
     region count, and fly into a no-weapons area with a bot.
+
+## Notes from other sessions
+
+- auto-tiler (owns the tool rail and drawtools.js) is fine with a sidebar panel that has its own
+  pointer mode. editor.js hands every keydown outside inputs to drawtools first. drawtools takes
+  these single keys: `b l c y e r u o p g x i a s f w t`, plus `h v ] - +`, Esc and Delete/Backspace
+  (`h`, `v`, `]` and Delete only while there's a selection). While label edit mode is on,
+  labels-layer.js catches the keys it uses (Esc to cancel placing, Delete/Backspace to remove the
+  selected label) in a capture-phase listener and stops them there, as lvz-layer.js does with the
+  space bar. It leaves every other key alone.
