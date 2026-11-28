@@ -10,7 +10,8 @@
 //   blankPlan / restylePlan / sheetPlan   which slot gets which style and piece
 //   paint(base, plan)  a new 304x160 tileset canvas
 //   withTileset(prefix, canvas)  the map's new .lvl prefix (24-bit BMP, eLVL data kept)
-//   mount(el, editor)  the "Tile art" panel in the map editor
+//   mount(el, editor)  the "Tile art" panel in the map editor: one dropdown of whole tilesets the
+//                      editor offers (the pilot's own, the standard tiles) and the generated styles
 // Pure parts (no DOM) are exported for node tests through module.exports.
 "use strict";
 
@@ -198,11 +199,16 @@
   }
   const rgbaOf = (c) => c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
 
-  // The panel. editor: { get() -> { grid, prefix, tileset, blank: Map }, set(prefix, tileset, note) }
+  // The panel. editor: { get() -> { grid, prefix, tileset, blank: Map }, set(prefix, tileset, note),
+  //   optional: use(value, label) -> Promise<bool> puts one of the offered whole tilesets in the map,
+  //   ask(text, opts) -> Promise<bool> instead of Dlg.confirm }.
+  // Returns { refresh, forget, setSources([{ group, label, value }]) }: the offered tilesets go
+  // above the styles; the pilot's own one ("Your tilesets") is picked first when there is one.
   function mount(el, editor) {
     if (!el || !data) return;
     const h = (tag, props, ...kids) => { const e = Object.assign(document.createElement(tag), props || {}); e.append(...kids); return e; };
-    const pick = h("select", { id: "tileartstyle", title: "Style for the new tile art" });
+    const ask = editor.ask || ((t, o) => (window.Dlg ? Dlg.confirm(t, o) : Promise.resolve(confirm(t))));
+    const pick = h("select", { id: "tileartstyle", title: "A whole tileset to use, or a style to draw new wall art in", "aria-label": "Tile art" });
     const og1 = h("optgroup", { label: "Mixed (a style per structure)" });
     for (const id of Object.keys(data.themes)) og1.append(h("option", { value: id, textContent: id[0].toUpperCase() + id.slice(1) }));
     const og2 = h("optgroup", { label: "One style" });
@@ -211,13 +217,38 @@
     const preview = h("canvas", { className: "px", width: 4 * TS, height: TS, title: "A few pieces in this style" });
     const bBlank = h("button", { type: "button", className: "ghost small", textContent: "Paint blank slots", title: "Draw art into the tileset slots this map fills with one flat colour, each as the piece its walls need" });
     const bAll = h("button", { type: "button", className: "ghost small", textContent: "Restyle all walls", title: "Redraw every wall slot this map uses (and the rest of the standard layout) in the chosen style" });
+    const bUse = h("button", { type: "button", className: "ghost small", textContent: "Use in this map", hidden: true, title: "Put this tileset in the map you're editing (published with it)" });
     const bBack = h("button", { type: "button", className: "ghost small", textContent: "Put old tiles back", hidden: true });
     const note = h("p", { className: "hint" });
-    el.replaceChildren(h("p", { className: "kicker", textContent: "Tile art" }),
-      h("div", { className: "row" }, pick, preview), h("div", { className: "row" }, bBlank, bAll, bBack), note);
+    el.replaceChildren(h("div", { className: "row" }, pick, preview), h("div", { className: "row" }, bUse, bBlank, bAll, bBack), note);
+    const STYLE_NOTE = "Generated wall art that joins up. Pieces are chosen from how the map uses each slot.";
+    let sources = new Map(), touched = false;
+    const isSource = () => sources.has(pick.value);
+    const showMode = () => {
+      const src = isSource();
+      bUse.hidden = !src || !editor.use; bBlank.hidden = src; bAll.hidden = src; preview.hidden = src;
+      note.textContent = src ? (sources.get(pick.value).note || "A whole tileset: Use in this map puts it in, and Publish takes it to the arena.") : STYLE_NOTE;
+    };
+    function setSources(list) {
+      const was = pick.value;
+      for (const g of [...pick.querySelectorAll("optgroup.src")]) g.remove();
+      sources = new Map();
+      const groups = new Map();
+      for (const it of list || []) {
+        if (!groups.has(it.group)) groups.set(it.group, h("optgroup", { label: it.group, className: "src" }));
+        groups.get(it.group).append(h("option", { value: it.value, textContent: it.label }));
+        sources.set(it.value, it);
+      }
+      pick.prepend(...groups.values());
+      const own = (list || []).find((it) => it.own);
+      if (touched && [...pick.options].some((o) => o.value === was)) pick.value = was;
+      else pick.value = own ? own.value : og1.firstElementChild ? og1.firstElementChild.value : was;
+      showMode(); showPreview().catch(() => {});
+    }
 
     let before = null; // { prefix, tileset } to put back
     const showPreview = async () => {
+      if (sources.has(pick.value)) return;
       await ready();
       const ctx = preview.getContext("2d");
       const st = stylesFor(pick.value, data);
@@ -248,20 +279,27 @@
     }
     bBlank.addEventListener("click", () => apply("blank"));
     bAll.addEventListener("click", async () => {
-      const ask = "Redraw every wall slot this map uses in the new style? Decorations drawn in the old tileset (lettering, pictures) are replaced too. You can put the old tiles back.";
-      const ok = window.Dlg ? await Dlg.confirm(ask, { title: "Restyle all walls", ok: "Restyle" }) : confirm(ask);
-      if (ok) apply("all");
+      const text = "Redraw every wall slot this map uses in the new style? Decorations drawn in the old tileset (lettering, pictures) are replaced too. You can put the old tiles back.";
+      if (await ask(text, { title: "Restyle all walls", ok: "Restyle" })) apply("all");
+    });
+    bUse.addEventListener("click", async () => {
+      const s = editor.get(), prev = { prefix: s.prefix, tileset: s.tileset };
+      bUse.disabled = true;
+      try {
+        if (await editor.use(pick.value, pick.selectedOptions[0].textContent)) { if (!before) before = prev; bBack.hidden = false; }
+      } finally { bUse.disabled = false; }
+      refresh();
     });
     bBack.addEventListener("click", () => {
       if (!before) return;
       editor.set(before.prefix, before.tileset, "Old tiles put back.");
       before = null; bBack.hidden = true; refresh();
     });
-    pick.addEventListener("change", showPreview);
-    note.textContent = "Generated wall art that joins up. Pieces are chosen from how the map uses each slot.";
+    pick.addEventListener("change", () => { touched = true; showMode(); showPreview().catch(() => {}); });
+    showMode();
     showPreview().catch(() => {});
     refresh();
-    return { refresh, forget: () => { before = null; bBack.hidden = true; refresh(); } };
+    return { refresh, setSources, forget: () => { before = null; bBack.hidden = true; refresh(); } };
   }
 
   window.TileArt = Object.assign(api, { data, ready, layout, paint, mount });

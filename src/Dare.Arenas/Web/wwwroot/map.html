@@ -10,6 +10,7 @@
 <script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
+<script src="/arena/dropdown.js" defer></script>
 <script src="/arena/tileart-styles.js" defer></script>
 <script src="/arena/tileart.js" defer></script>
 <script src="/arena/drawtools.js" defer></script>
@@ -38,6 +39,7 @@
 </header>
 <div class="edbody">
   <aside class="edside">
+    <div class="row sidetop"><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Make the sidebar and its tiles bigger">Bigger</button></div>
     <section class="libpanel" id="libpanel" aria-labelledby="libtitle">
       <p class="kicker" id="libtitle">Your maps <span class="dim" id="libcount"></span></p>
       <ul class="libmaps" id="libmaps"></ul>
@@ -57,23 +59,24 @@
       <input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="How much rock">
       <label class="hint"><input type="checkbox" id="genflags"> flags</label></div>
     <p class="hint" id="genseed"></p>
-    <p class="kicker">Wall tiles</p>
-    <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
-      <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
-    <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
-    <div class="row"><button type="button" class="ghost small" id="stdtiles" title="Put the standard tileset (the packs' art, with plain wall interiors) into this map, so the packs look right here and in game">Use the standard tiles</button></div>
-    <div class="row"><select id="mytilesets" aria-label="Put one of your saved tilesets into this map" title="Your tilesets: drawn in the Tile Editor or kept from the Foundry"><option value="">Use one of your tilesets…</option></select></div>
-    <p class="hint" id="stdnote">The packs are drawn from the standard tileset: use it in this map to see (and publish) them as they're meant to look.</p>
-    <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
+    <section class="tilegroup" id="tilegroup" aria-labelledby="tilegrouptitle">
+      <p class="kicker" id="tilegrouptitle">Tile art</p>
+      <div id="tileart"></div>
+      <label class="hint ownts">Try a tileset file (.bm2/.bmp; only in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
+      <p class="kicker sub">Wall tiles</p>
+      <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
+        <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
+      <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
+      <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
+      <p class="hint" id="stdnote">The wall packs are drawn in the standard tiles: pick Standard tiles above to see (and publish) them as they're meant to look.</p>
+    </section>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
-    <div class="row palhead"><p class="kicker">Tiles</p><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Show the tiles bigger">Bigger</button></div>
+    <p class="kicker">Tiles</p>
     <canvas id="palette" class="px" width="608" height="320" tabindex="0" aria-label="Tile palette: click a tile, or use the arrow keys, to draw with it"></canvas>
     <p class="hint" id="tilesetnote"></p>
     <p class="hint warnnote" id="blanknote" hidden></p>
     <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
-    <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
-    <div id="tileart"></div>
     <section id="lvzpanel" aria-label="LVZ objects"></section>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>

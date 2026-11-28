@@ -215,8 +215,16 @@ kbd { font:inherit; font-size:.7rem; opacity:.7; }
 .edside #palette { width:100%; aspect-ratio:19 / 10; cursor:pointer; border:1px solid var(--line); border-radius:4px; background:#04070e; }
 .edside #palette:focus-visible { outline:2px solid var(--hot); outline-offset:2px; }
 .edside.bigpal { flex-basis:640px; }
-.edside .palhead { justify-content:space-between; align-items:flex-end; }
-.edside .palhead .kicker { margin-bottom:0; }
+.edside .sidetop { justify-content:flex-end; margin:-4px 0 -6px; }
+/* Tile art + Wall tiles: one group, set into the sidebar like a well */
+.tilegroup { display:flex; flex-direction:column; gap:8px; margin-top:10px; padding:10px 10px 12px; border-radius:6px;
+  background:var(--well, #070d18); border:1px solid var(--well-line, #1a2840); box-shadow:inset 0 2px 6px #0008; }
+.tilegroup > * { flex-shrink:0; }
+.tilegroup .kicker { margin:0; }
+.tilegroup .kicker.sub { margin-top:8px; padding-top:10px; border-top:1px solid #ffffff10; }
+.tilegroup #tileart { display:flex; flex-direction:column; gap:8px; }
+.tilegroup #tileart .hint { margin:0; }
+.tilegroup .ownts { font-size:.75rem; }
 dialog.askdlg { width:min(440px, calc(100vw - 32px)); }
 dialog.askdlg .askmsg { margin:0 0 14px; line-height:1.45; white-space:pre-line; }
 dialog.askdlg .askinput { width:100%; box-sizing:border-box; margin-bottom:4px; }
@@ -224,8 +232,12 @@ dialog.askdlg .dlg-actions { margin-bottom:0; justify-content:flex-end; }
 .edside #mini { width:256px; height:256px; cursor:pointer; border:1px solid var(--line); }
 .edside #current { width:32px; height:32px; border:1px solid var(--line); }
 .edside input[type=file] { padding:4px; font-size:.75rem; width:100%; }
-.specials { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; }
-.specials button { justify-content:flex-start; font-size:.75rem; text-align:left; }
+.specials { display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:6px; }
+.specials button.special { display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:4px; min-height:0; padding:6px 4px 5px;
+  font-size:.72rem; line-height:1.15; text-align:center; white-space:normal; }
+.specials button.special canvas { width:32px; height:32px; image-rendering:pixelated; border-radius:3px; box-shadow:0 0 0 1px #000, 0 0 0 2px #ffffff14; }
+.specials button.special.on, .specials button.special.on:hover:not(:disabled) { color:var(--accent); border-color:var(--accent); }
+.specials button.special.on canvas { box-shadow:0 0 0 1px #000, 0 0 0 2px #ff8a1f; }
 .edmain { position:relative; flex:1 1 auto; min-width:0; background:var(--bg); }
 .edmain #view { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair; touch-action:none; }
 .edmain #view.panning { cursor:grab; }
@@ -920,3 +932,35 @@ ul.notelist { list-style:none; margin:0; padding:0; }
 .gmok { color:var(--ok); margin:10px 0; }
 .gmbig { font-size:1.05rem; line-height:1.6; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:12px; }
 @media (max-width:760px) { .gmrow2 { grid-template-columns:1fr; } }
+
+/* ---- site dropdowns (dropdown.js): a sunk well that opens a list like the home page's arena list ---- */
+select.dd-native { display:none !important; }
+button.dd-btn, button.dd-btn:hover:not(:disabled) {
+  display:inline-flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; max-width:100%; min-height:34px; margin:0;
+  padding:5px 10px 5px 12px; cursor:pointer; color:#fff; text-shadow:none; text-align:left;
+  font:600 .9rem/1.2 var(--sans); letter-spacing:0; text-transform:none;
+  background:#070d18; border:1px solid #1a2840; border-top-color:#05090f; border-radius:5px; box-shadow:inset 0 2px 6px #000a, 0 1px 0 #ffffff0a;
+  transition:border-color .15s, box-shadow .15s; transform:none; }
+button.dd-btn:hover:not(:disabled), button.dd-btn[aria-expanded="true"] { background:#0a1322; border-color:#3f6a8c; border-top-color:#05090f; box-shadow:inset 0 2px 6px #000a, 0 0 0 3px #71e4fa22; }
+button.dd-btn:focus-visible { outline:0; border-color:var(--accent); box-shadow:inset 0 2px 6px #000a, 0 0 0 3px #71e4fa44; }
+button.dd-btn:active { transform:none; }
+button.dd-btn:disabled { color:#5d6e86; background:#070d18; border-color:#141f30; box-shadow:inset 0 2px 6px #0008; cursor:default; }
+button.dd-btn[hidden] { display:none; }
+.dd-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dd-chev { flex:none; width:12px; height:8px; transition:transform .15s;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2371e4fa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 8px no-repeat; }
+button.dd-btn:disabled .dd-chev { opacity:.35; }
+button.dd-btn[aria-expanded="true"] .dd-chev { transform:rotate(180deg); }
+.dd-menu { position:fixed; z-index:1000; display:flex; flex-direction:column; overflow:hidden;
+  background:linear-gradient(180deg, #13203a, #0b1422); border:1px solid #22324a; border-top-color:#3a5576; border-radius:8px;
+  box-shadow:inset 0 1px 0 #ffffff12, 0 24px 50px -12px #000e; }
+.dd-list { list-style:none; margin:0; padding:6px 0; flex:1 1 auto; min-height:0; overflow-y:auto; background:#070d18; }
+.dd-list li { margin:0; padding:7px 14px 7px 11px; cursor:pointer; user-select:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  color:var(--text); font:600 .9rem/1.3 var(--sans); border-left:3px solid transparent; }
+.dd-list li.active { background:#111d30; }
+.dd-list li.current { background:linear-gradient(90deg, #12243a, #0c1a2a); border-left-color:var(--accent); color:var(--accent); font-weight:700; box-shadow:inset 0 2px 6px #0009; }
+.dd-list li.off { color:#5d6e86; cursor:default; }
+.dd-list li.dd-group { cursor:default; padding:10px 12px 4px; color:var(--accent); font:700 .8rem/1 var(--label); letter-spacing:.18em; text-transform:uppercase;
+  border-left:0; background:none; box-shadow:none; }
+.dd-list li.dd-group:first-child { padding-top:4px; }
+@media (prefers-reduced-motion: reduce) { button.dd-btn, .dd-chev { transition:none; } }

@@ -34,6 +34,9 @@ function signedIn() {
   let liveName = null; // set when editing the draft of a live arena: Publish also publishes it
   const cam = { x: 512 * TS, y: 512 * TS, z: 0.5 };
   const undoStack = [], redoStack = [];
+  const specialImg = new Map(), specialBtns = []; // Special tiles: graphic name -> loaded <img>; the buttons
+  // special tiles the game draws from its graphics, not the tileset: [graphic, frame size]
+  const SPECIAL_GFX = { 170: ["flag", 16], 172: ["goal", 16], 216: ["over1", 16], 217: ["over2", 32], 218: ["over3", 16], 219: ["over4", 96], 220: ["over5", 80] };
   let flatView = false; // "Plain colours": ignore the map's tileset
   let libId = null, libName = null; // the map from "Your maps" being edited, if any
   let roleView = null; // "Show wall roles": a drawn tileset showing each tile's auto-tiling role
@@ -41,6 +44,10 @@ function signedIn() {
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
   const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
+  // "Are you sure?" only when something could be lost: unpublished changes, or a draft opened from
+  // Your maps (both set dirty, which is also what shows the Draft tag). Otherwise the action just happens.
+  const needsAsk = () => dirty;
+  const ask = (text, opts) => (needsAsk() ? Dlg.confirm(text, opts) : Promise.resolve(true));
 
   // Walls placed in flat-coloured (unused) tileset slots show as solid colour, here and in game,
   // unless the arena's .lvz draws over them. Say so, so it isn't mistaken for the editor's doing.
@@ -68,22 +75,28 @@ function signedIn() {
   }
   // Generated wall art (tileart.js): paint blank slots or restyle every wall; changes the map's
   // own tileset, so it is published with the map.
+  // The Tile art dropdown lists whole tilesets first (the pilot's own from Your tilesets, then the
+  // standard tiles), then the generated styles; "Use in this map" calls use() below.
   const tileArt = window.TileArt && TileArt.mount($("tileart"), {
     get: () => ({ grid, prefix, tileset: mapTileset, blank: Lvl.blankSlots(mapTileset) }),
     set: (p, ts, note) => {
       prefix = p; mapTileset = ts; ownTileset = null; flatView = false; $("flatview").checked = false;
       noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw(); say(note, true);
     },
+    use: (value) => (value === "std" ? useStandardTiles() : value.startsWith("ts:") ? applyMyTileset(Number(value.slice(3))) : Promise.resolve(false)),
+    ask,
   });
+  const STANDARD = { group: "Ready-made", label: "Standard tiles", value: "std",
+    note: "The standard tiles: the wall packs' art, with plain wall interiors. Use in this map so the packs look here and in game as they're meant to." };
 
-  // "Use the standard tiles": the standard tileset (the packs' art, with plain interiors for thick
-  // walls) into this map, so the packs look here and in game as they're meant to
-  $("stdtiles").addEventListener("click", async () => {
+  // the standard tileset (the packs' art, with plain interiors for thick walls) into this map
+  async function useStandardTiles() {
     const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
-    if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return; }
+    if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return false; }
     useTileset(Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())),
       "This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.");
-  });
+    return true;
+  }
   // A tileset into this map's own prefix (eLVL data kept), so it is published with the map.
   function useTileset(ts, note) {
     const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
@@ -93,32 +106,26 @@ function signedIn() {
     say(note, true);
   }
 
-  // "Use one of your tilesets": one from Your tilesets (the tile editor's library, or kept from the Foundry) into this map.
+  // Your tilesets (the tile editor's library, or kept from the Foundry), offered in the Tile art dropdown
   async function loadMyTilesets() {
-    const sel = $("mytilesets");
-    if (!sel) return;
     const r = await fetch(API + "/tilesets", { credentials: "same-origin" }).catch(() => null);
     const j = r && r.ok ? await r.json().catch(() => null) : null;
     const list = (j && j.tilesets) || [];
-    sel.replaceChildren(new Option(list.length ? "Use one of your tilesets…" : "No saved tilesets yet", ""),
-      ...list.map((t) => new Option(t.name, String(t.id))));
-    sel.disabled = !list.length;
+    if (tileArt) tileArt.setSources([...list.map((t) => ({ group: "Your tilesets", label: t.name, value: "ts:" + t.id, own: true,
+      note: "One of your tilesets (drawn in the Tile Editor or kept from the Foundry). Use in this map puts it in; Publish takes it to the arena." })), STANDARD]);
   }
   async function applyMyTileset(id) {
-    if (!window.TileArt) return;
+    if (!window.TileArt) return false;
     const r = await fetch(API + "/tilesets/file?id=" + encodeURIComponent(id), { credentials: "same-origin" }).catch(() => null);
-    if (!r || !r.ok) { say("Couldn't open that tileset from your tilesets.", false); return; }
+    if (!r || !r.ok) { say("Couldn't open that tileset from your tilesets.", false); return false; }
     const name = decodeURIComponent(r.headers.get("X-Tileset-Name") || "your tileset");
     let ts;
-    try { ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())); } catch (err) { say(`That tileset could not be read: ${err.message}`, false); return; }
-    if (!await Dlg.confirm(`Use ${name} as this map's tileset? It goes into the map you're editing; the arena keeps its current map until you Publish.`, { title: "Use this tileset?", ok: "Use it" })) return;
+    try { ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())); } catch (err) { say(`That tileset could not be read: ${err.message}`, false); return false; }
+    if (!await ask(`Use ${name} as this map's tileset? It goes into the map you're editing; the arena keeps its current map until you Publish.`, { title: "Use this tileset?", ok: "Use it" })) return false;
     useTileset(ts, `This map now uses ${name} (published with it). Publish to put it in the arena.`);
+    return true;
   }
-  $("mytilesets")?.addEventListener("change", async (e) => {
-    const id = e.target.value;
-    e.target.value = "";
-    if (id) await applyMyTileset(Number(id));
-  });
+  if (tileArt) tileArt.setSources([STANDARD]);
 
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
@@ -133,6 +140,7 @@ function signedIn() {
     $("edname").textContent = `${arena} · ${body.map || "no map"}`;
     document.title = `${arena} map · SubSpace Foundation`;
     if (role !== "owner") say("You can look and download; only the owner can publish.", false);
+    loadSpecialGraphics();
 
     const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
     if (r.status === 404) { say("No map file yet: draw one from scratch.", true); }
@@ -152,7 +160,7 @@ function signedIn() {
 
   // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
   async function replaceMap(next, nextPrefix, nextTileset, note) {
-    if (dirty && !await Dlg.confirm("Replace the map you're editing? Undo brings it back.", { title: "Replace the map?", ok: "Replace" })) return false;
+    if (needsAsk() && !await Dlg.confirm("Replace the map you're editing? Undo brings it back.", { title: "Replace the map?", ok: "Replace" })) return false;
     const change = [];
     for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
     for (const [i, , t] of change) grid[i] = t;
@@ -466,6 +474,7 @@ function signedIn() {
     c.fillStyle = "#04070e"; c.fillRect(0, 0, 16, 16); drawTile(c, cur, 0, 0, 16);
     const name = Lvl.tileName(cur);
     $("curName").textContent = `Tile ${cur}` + (name ? ` · ${name}` : "");
+    drawSpecials();
   }
   pal.addEventListener("pointermove", (e) => {
     const t = palTileAt(e);
@@ -579,13 +588,44 @@ function signedIn() {
     const r = mini.getBoundingClientRect();
     cam.x = (e.clientX - r.left) / r.width * N * TS; cam.y = (e.clientY - r.top) / r.height * N * TS; draw();
   });
+  // Special tiles: a thumbnail of each as it looks. Doors, safe zones and fly-over/under come from
+  // the map's tileset; the flag, goal, asteroids, station and wormhole are drawn in game from the
+  // arena's graphics (its own, or the stock ones), first frame.
   for (const [t, name, col] of SPECIAL) {
-    const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = col;
-    const b = document.createElement("button"); b.type = "button"; b.className = "ghost small";
-    b.append(sw, document.createTextNode(name));
-    b.title = `Tile ${t}`;
+    const c = document.createElement("canvas"); c.className = "px"; c.width = c.height = 32; c.setAttribute("aria-hidden", "true");
+    const b = document.createElement("button"); b.type = "button"; b.className = "ghost small special";
+    const label = document.createElement("span"); label.textContent = name;
+    b.append(c, label);
+    b.title = `Tile ${t} · ${name}`;
     b.addEventListener("click", () => pickTile(t));
     $("specials").append(b);
+    specialBtns.push({ t, col, c, b });
+  }
+  function loadSpecialGraphics() {
+    for (const [gfx] of Object.values(SPECIAL_GFX)) {
+      if (specialImg.has(gfx)) continue;
+      const im = new Image();
+      im.onload = () => drawSpecials();
+      im.src = `${API}/graphics/image?name=${gfx}` + (arena ? "&arena=" + encodeURIComponent(arena) : "&stock=1");
+      specialImg.set(gfx, im);
+    }
+  }
+  function drawSpecials() {
+    for (const { t, col, c, b } of specialBtns) {
+      const x = c.getContext("2d");
+      x.imageSmoothingEnabled = false;
+      x.fillStyle = "#04070e"; x.fillRect(0, 0, 32, 32);
+      const g = SPECIAL_GFX[t], im = g && specialImg.get(g[0]);
+      if (im && im.complete && im.naturalWidth) {
+        x.drawImage(im, 0, 0, g[1], g[1], 0, 0, 32, 32);
+      } else if (!g && tileset()) {
+        drawTile(x, t, 0, 0, 32);
+      } else {
+        x.fillStyle = col; x.fillRect(6, 6, 20, 20);
+      }
+      b.classList.toggle("on", t === cur);
+      b.setAttribute("aria-pressed", String(t === cur));
+    }
   }
   function setTool(t) {
     tool = t;
