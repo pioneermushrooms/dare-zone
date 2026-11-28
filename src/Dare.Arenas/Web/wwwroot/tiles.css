@@ -54,3 +54,6 @@ body.tilepage { padding-bottom:0; }
 body.tilepage main { padding:12px 14px; }
 /* the arena editor gives the Tile Editor tab more room */
 .hub:has(> .content > section.tilesview:not([hidden])) { width:min(1680px, calc(100% - 32px)); }
+.studio .st-defaults { display:flex; flex-wrap:wrap; gap:3px; }
+.studio .st-defaults button { font-size:.72rem; }
+.studio .st-defaults button.on { border-color:var(--accent); color:var(--accent); }

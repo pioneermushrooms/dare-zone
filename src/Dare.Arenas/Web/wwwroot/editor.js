@@ -56,8 +56,10 @@ function signedIn() {
   const markSaved = () => { savedSeq = changeSeq; noteChanges(); };
   window.MapEditor = Object.assign(window.MapEditor || {}, { hasChanges });
   noteChanges();
+  // a hook with pending() true (lvz-layer.js: an .lvz saved with the map) keeps the map publishable
+  const hookPending = () => (window.mapPublishHooks || []).some((h) => h.pending && h.pending());
   const setDirty = (d) => {
-    dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d;
+    dirty = d || hookPending(); $("publish").disabled = !dirty || role !== "owner"; $("drafttag").hidden = !dirty;
     if (d) { changeSeq++; noteChanges(); } else markSaved(); // not dirty = loaded or published: nothing unsaved
   };
   // "Are you sure?" only when something could be lost: unsaved changes, or a draft (the Draft tag: the map
@@ -424,7 +426,8 @@ function signedIn() {
   }
   // Other scripts draw on the map through these (lvz-layer.js: the arena's LVZ map objects).
   const overlays = window.mapOverlays = window.mapOverlays || [];
-  window.mapView = { view, get cam() { return cam; }, get arena() { return arena; }, redraw: () => draw() };
+  // changed(): another panel (the LVZ layer) has a change the map's Publish will carry
+  window.mapView = { view, get cam() { return cam; }, get arena() { return arena; }, redraw: () => draw(), changed: () => setDirty(true) };
   // Game labels (labels-layer.js): team spawns, bases, flag spots, areas, kept as eLVL regions in this
   // map's own prefix, so they're published, downloaded and kept in Your maps with it.
   if (window.GameLabels) GameLabels.mount($("labelspanel"), {
@@ -755,7 +758,11 @@ function signedIn() {
     if (!j.ok) { say(j.message, false); setDirty(true); return false; }
     if (j.library) { libId = j.library; libName = libName || arena.replace(/^#/, ""); loadLibrary(); } // the server kept a copy in Your maps
     // spawn labels become arena settings, before the restart so the arena starts with them
-    const spawnNote = window.GameLabels ? await GameLabels.publishSettings(arena) : "";
+    let spawnNote = window.GameLabels ? await GameLabels.publishSettings(arena) : "";
+    // other panels' files that go with the map (lvz-layer.js: the LVZ saved with it), before the restart
+    for (const hook of window.mapPublishHooks || []) {
+      try { const n = await hook(arena); if (n) spawnNote = (spawnNote ? spawnNote + " " : "") + n; } catch (err) { spawnNote += " " + err.message; }
+    }
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
     if (!liveName && !choice.restart) {
