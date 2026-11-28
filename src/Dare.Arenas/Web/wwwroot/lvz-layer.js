@@ -162,6 +162,8 @@
     if (note) say(note, true);
     redraw();
   }
+  window.addEventListener("map:tool", () => { if (q("lzp-edit").checked) setPlacing(false, "Placement off: drawing walls again."); });
+
   // ---- panel ------------------------------------------------------------------------------------------
   const nextId = () => Lvz.nextId(lvz);
   function count() {
