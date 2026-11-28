@@ -194,7 +194,25 @@
     <section data-view="settings" hidden>
       <p class="kicker">Settings</p>
       <h2>Rules</h2>
-      <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>.</p>
+      <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>. Point at a setting's name, or tap it, for what it does.</p>
+      <div class="setsbar">
+        <label class="drop setdrop" id="setdrop" tabindex="0" role="button" aria-describedby="setdrophint">
+          <b>Drop a settings file</b> or click to choose one
+          <span class="dim" id="setdrophint">An arena.conf, .cfg, .ini or Continuum .set. You see what would change before anything is applied.</span>
+          <input type="file" id="setfile" accept=".conf,.cfg,.ini,.set,.txt" hidden>
+        </label>
+        <div class="setsets">
+          <label for="setlist" class="setslabel">Your settings sets</label>
+          <div class="row">
+            <select id="setlist"><option value="">No sets yet</option></select>
+            <button type="button" class="small" id="setapply" disabled>Apply…</button>
+            <button type="button" class="small ghost" id="setrename" disabled>Rename</button>
+            <button type="button" class="small ghost" id="setdelete" disabled>Delete</button>
+          </div>
+          <button type="button" class="small" id="setsave">Save these settings as a set…</button>
+        </div>
+      </div>
+      <p class="msg" id="setsmsg" role="status"></p>
       <div class="settabs" id="settabs" role="tablist" aria-label="Setting groups"></div>
       <input type="search" class="filter" id="filter" placeholder="Filter, e.g. warbird bulletspeed" aria-label="Filter settings">
       <p class="msg" id="setmsg"></p>
@@ -254,6 +272,50 @@
     <button type="button" class="ghost" id="gfxagain" disabled>Again</button>
     <button type="button" class="ghost" data-close>Cancel</button>
   </div>
+</dialog>
+
+<dialog id="diffdlg" class="diffdlg" aria-labelledby="difftitle">
+  <form method="dialog" id="diffform">
+    <h3 id="difftitle">Apply settings</h3>
+    <p class="dim" id="diffsub"></p>
+    <label class="dlg-field difftarget">Apply to <select id="difftarget"></select></label>
+    <div class="diffwrap">
+      <table class="diff">
+        <thead><tr><th><input type="checkbox" id="diffall" aria-label="Apply every change"></th><th>Setting</th><th>Now</th><th>New</th></tr></thead>
+        <tbody id="diffrows"></tbody>
+      </table>
+    </div>
+    <details id="diffsame" hidden><summary id="diffsamesum"></summary><ul class="difflist" id="diffsamelist"></ul></details>
+    <details id="diffskipped" hidden><summary id="diffskipsum"></summary>
+      <p class="dim">Only settings arena owners may change are applied; these aren't, or their values aren't allowed.</p>
+      <ul class="difflist" id="diffskiplist"></ul></details>
+    <p class="msg" id="diffmsg" role="status"></p>
+    <div class="row dlg-actions">
+      <button type="submit" class="hot" id="diffapply">Apply</button>
+      <button type="button" class="ghost" id="diffsaveset">Save as a set…</button>
+      <button type="button" class="ghost" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="savesetdlg" class="savesetdlg" aria-labelledby="savesettitle">
+  <form method="dialog" id="savesetform">
+    <h3 id="savesettitle">Save as a settings set</h3>
+    <p class="dim" id="savesetsub"></p>
+    <label class="dlg-field">Name <input id="savesetname" maxlength="40" required autocomplete="off"></label>
+    <fieldset class="dlg-field choice" id="savesetwhich">
+      <legend>Which settings</legend>
+      <label class="radio"><input type="radio" name="savesetwhich" value="changed" checked> <span>Changed from the default (<span id="savesetcount-changed"></span>)</span></label>
+      <label class="radio"><input type="radio" name="savesetwhich" value="shown"> <span>Shown by the tab and filter (<span id="savesetcount-shown"></span>)</span></label>
+      <label class="radio"><input type="radio" name="savesetwhich" value="all"> <span>Every setting with a value (<span id="savesetcount-all"></span>)</span></label>
+    </fieldset>
+    <label class="dlg-field">Save as <select id="savesetreplace"></select></label>
+    <p class="msg" id="savesetmsg" role="status"></p>
+    <div class="row dlg-actions">
+      <button type="submit" class="hot">Save</button>
+      <button type="button" class="ghost" data-close>Cancel</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="enterdlg" aria-labelledby="entertitle">

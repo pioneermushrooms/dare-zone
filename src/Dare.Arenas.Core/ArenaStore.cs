@@ -102,6 +102,7 @@ public sealed partial class ArenaStore : IDisposable
         AllowSeveralArenasPerOwner();
         Exec("CREATE INDEX IF NOT EXISTS ix_arenas_owner ON arenas(owner);");
         EnsureTilesetTable();
+        EnsureSettingSetTable();
         // after the rebuild above, which keeps only the columns it knows
         if (Scalar("SELECT COUNT(*) FROM pragma_table_info('arenas') WHERE name = 'private'") == 0)
             Exec("ALTER TABLE arenas ADD COLUMN private INTEGER NOT NULL DEFAULT 0;");
