@@ -44,6 +44,8 @@
     "fill": "inside of a block",
     "inner-ne": "inside corner (open to the top-right)", "inner-se": "inside corner (open to the bottom-right)",
     "inner-sw": "inside corner (open to the bottom-left)", "inner-nw": "inside corner (open to the top-left)",
+    "calmin-ne": "inside corner, solid wall behind it (top-right open)", "calmin-se": "inside corner, solid wall behind it (bottom-right open)",
+    "calmin-sw": "inside corner, solid wall behind it (bottom-left open)", "calmin-nw": "inside corner, solid wall behind it (top-left open)",
   };
 
   // the sides a role's tile connects to (open edges), for drawing previews and checking layouts
@@ -51,7 +53,7 @@
     if (role === "lone") return "";
     if (role === "bar-v") return "ns";
     if (role === "bar-h") return "ew";
-    if (role === "cross" || role === "fill" || role.startsWith("inner-")) return "nesw";
+    if (role === "cross" || role === "fill" || role.startsWith("inner-") || role.startsWith("calmin-")) return "nesw";
     if (role.startsWith("edge-") || role.startsWith("calm-")) return "nesw".replace(role.slice(5), "");
     return role.split("-")[1];
   }
@@ -89,7 +91,8 @@
 
   function fallbacks(role) {
     const out = [role];
-    if (role.startsWith("calm-")) out.push("edge-" + role.slice(5), "tee-" + "nesw".replace(role.slice(5), ""), "cross");
+    if (role.startsWith("calmin-")) out.push("inner-" + role.slice(7), "fill", "cross");
+    else if (role.startsWith("calm-")) out.push("edge-" + role.slice(5), "tee-" + "nesw".replace(role.slice(5), ""), "cross");
     else if (role.startsWith("inner-")) out.push("fill", "cross");
     else if (role === "fill") out.push("cross");
     else if (role.startsWith("edge-")) {
@@ -144,6 +147,11 @@
    */
   function roleAt(grid, x, y) {
     const role = roleOf(maskAt(grid, x, y));
+    if (role.startsWith("inner-")) {
+      // an inside corner with solid wall behind it (the cell diagonally away from its open corner)
+      const d = role.slice(6), dx = d.includes("e") ? -1 : 1, dy = d.includes("n") ? 1 : -1;
+      return maskAt(grid, x + dx, y + dy) === 255 ? "calmin-" + d : role;
+    }
     if (!role.startsWith("edge-")) return role;
     const side = role.slice(5), [dx, dy] = INWARD[side];
     return maskAt(grid, x + dx, y + dy) === 255 ? "calm-" + side : role;
@@ -265,7 +273,7 @@
       };
       const roles = {};
       for (const role of Object.keys(ROLES)) {
-        if (role.startsWith("calm-")) continue; // only from the pack's own calm pieces (below)
+        if (role.startsWith("calm-") || role.startsWith("calmin-")) continue; // only from the pack's own pieces (below)
         const t = pick(norm(roleSides(role)));
         if (t) roles[role] = t;
       }
@@ -273,8 +281,15 @@
       // one solid wall rather than a grid of the pack's decorated fill pieces
       if (ok(p.interior) || (Array.isArray(p.interior) && p.interior.length && p.interior.every(ok))) {
         // inside corners keep the pack's decorated fill: they sit among the edge pieces
-        for (const d of ["ne", "se", "sw", "nw"]) roles["inner-" + d] = roles.fill;
+        for (const d of ["ne", "se", "sw", "nw"]) { roles["inner-" + d] = roles.fill; roles["calmin-" + d] = p.interior; }
         roles.fill = p.interior;
+      }
+      // inside corners (optional): keyed by the open diagonal (NE, SE, SW, NW). The piece carries the
+      // two edges' rims round the corner, so it serves with solid wall behind it or without
+      if (p.inner && typeof p.inner === "object") for (const [k, t] of Object.entries(p.inner)) {
+        const d = String(k).toLowerCase();
+        if (!["ne", "se", "sw", "nw"].includes(d) || !(ok(t) || (Array.isArray(t) && t.length && t.every(ok)))) continue;
+        roles["inner-" + d] = t; roles["calmin-" + d] = t;
       }
       // calm edges (optional): keyed by open edges like the roles; an edge open to one side only
       if (p.calm && typeof p.calm === "object") for (const [o, t] of Object.entries(p.calm)) {
@@ -323,7 +338,7 @@
     return c;
   }
   function drawRole(ctx, role, x, y) {
-    const shape = role === "fill" || /^(block|edge|calm|inner)-/.test(role);
+    const shape = role === "fill" || /^(block|edge|calm|calmin|inner)-/.test(role);
     if (shape) {
       // a panel: solid where the block is, a bright rim on the open sides
       ctx.fillStyle = "#1f4d63"; ctx.fillRect(x, y, 16, 16);

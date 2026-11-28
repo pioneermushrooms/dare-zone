@@ -28,7 +28,10 @@
     };
   }
 
-  const SIZES = { small: 56, medium: 80, large: 104, huge: 136 }; // cells across (x3 tiles)
+  const TILE_BUDGET = 440000; // tiles (4 bytes each): keeps a map with its tileset under 2 MB
+  const SIZES = { small: 100, medium: 140, large: 200, huge: 300 }; // cells across (x3 tiles: 300 to 900 of 1024)
+  // layouts drawn with smooth edges (rounded, diagonal); the others keep crisp right angles
+  const SMOOTH = new Set(["caves", "rings", "spokes", "asteroids", "teams"]);
   const LAYOUTS = {
     caves: "Caves",
     base: "Base: rooms and corridors",
@@ -73,21 +76,37 @@
 
   // ---- layouts: each draws the whole map (rock = 1); the canonical part is then mirrored ----------
 
+  // caves: smooth random hills (noise blurred twice), cut at the height where `density` of the map
+  // is rock, then tidied by a majority rule: blobs and tunnels whose amount follows the slider
   function caves(c, rand, o) {
     const { C } = c;
-    for (let i = 0; i < C * C; i++) c.a[i] = rand() < o.density ? 1 : 0;
-    // mirror the noise before growing (the rules below are symmetric, so the map stays symmetric)
-    mirror(c, o.symmetry);
-    for (let round = 0; round < 5; round++) {
-      const next = new Uint8Array(C * C);
+    let f = new Float32Array(C * C);
+    for (let i = 0; i < C * C; i++) f[i] = rand();
+    // mirror the noise first, so the caves come out symmetric
+    if (o.symmetry >= 2) for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) { const [sx, sy] = canon(C, o.symmetry, x, y); f[y * C + x] = f[sy * C + sx]; }
+    const r = Math.max(2, Math.round(C / 45));
+    for (let pass = 0; pass < 2; pass++) for (const horiz of [true, false]) {
+      const g = new Float32Array(C * C);
       for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
-        let n1 = 0, n2 = 0;
-        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-          if (!dx && !dy) continue;
-          const v = c.get(x + dx, y + dy);
-          if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) n1 += v; else n2 += v;
+        let sum = 0, n = 0;
+        for (let k = -r; k <= r; k++) {
+          const xx = horiz ? x + k : x, yy = horiz ? y : y + k;
+          if (xx < 0 || yy < 0 || xx >= C || yy >= C) continue;
+          sum += f[yy * C + xx]; n++;
         }
-        next[y * C + x] = n1 >= 5 || (round < 3 && n1 + n2 <= 3) ? 1 : 0;
+        g[y * C + x] = sum / n;
+      }
+      f = g;
+    }
+    const sorted = Float32Array.from(f).sort();
+    const cut = sorted[Math.min(C * C - 1, Math.floor((1 - o.density) * C * C))];
+    for (let i = 0; i < C * C; i++) c.a[i] = f[i] >= cut ? 1 : 0;
+    for (let round = 0; round < 2; round++) {
+      const next = c.a.slice();
+      for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) n += c.get(x + dx, y + dy);
+        if (n >= 6) next[y * C + x] = 1; else if (n <= 2) next[y * C + x] = 0;
       }
       c.a.set(next);
     }
@@ -98,7 +117,7 @@
   function base(c, rand, o, specials) {
     const { C } = c;
     const rooms = [];
-    const want = Math.round((C * C) / 260 * (1.25 - o.density));
+    const want = Math.round((C * C) / 260 * (1.5 - 1.8 * (o.density - 0.2)));
     for (let tries = 0; rooms.length < want && tries < want * 30; tries++) {
       const w = 4 + Math.floor(rand() * 8), h = 4 + Math.floor(rand() * 8);
       const x = 3 + Math.floor(rand() * (C - w - 6)), y = 3 + Math.floor(rand() * (C - h - 6));
@@ -137,9 +156,10 @@
   function rings(c, rand, o) {
     const { C } = c, mid = (C - 1) / 2;
     c.rect(0, 0, C, C, 0);
-    const step = 7 + Math.floor(rand() * 4);
+    const t = (o.density - 0.2) / 0.4; // 0 open .. 1 tight: rings closer together and thicker
+    const step = Math.round(12 - 5 * t) + Math.floor(rand() * 3);
     for (let r = step + 3; r < C / 2 - 4; r += step) {
-      const w = rand() < 0.4 ? 2.4 : 1.6;
+      const w = (rand() < 0.4 ? 2.4 : 1.6) + t * 1.2;
       c.ring(mid, mid, r, w, 1);
       const gaps = 2 + Math.floor(rand() * 3), turn = rand() * Math.PI * 2;
       for (let g = 0; g < gaps; g++) {
@@ -147,7 +167,7 @@
         c.disc(mid + Math.cos(a) * r, mid + Math.sin(a) * r, 2.2 + rand(), 0);
       }
     }
-    scatter(c, rand, o.density * 0.5, 1, 2);
+    scatter(c, rand, o.density * 0.8, 1, 2 + t);
   }
 
   // a hub with walls radiating out, broken by gaps
@@ -156,11 +176,12 @@
     c.rect(0, 0, C, C, 0);
     const hub = Math.max(5, Math.round(C * 0.09));
     c.ring(mid, mid, hub, 2, 1);
-    const k = [6, 8, 10, 12][Math.floor(rand() * 4)], turn = rand() * Math.PI;
+    const t = (o.density - 0.2) / 0.4; // 0 open .. 1 tight: more and thicker spokes
+    const k = [6, 8, 10, 12][Math.min(3, Math.floor(rand() * 2 + t * 2.5))], turn = rand() * Math.PI;
     for (let i = 0; i < k; i++) {
       const a = turn + (i / k) * Math.PI * 2;
       const r0 = hub + 3, r1 = C / 2 - 3;
-      c.line(mid + Math.cos(a) * r0, mid + Math.sin(a) * r0, mid + Math.cos(a) * r1, mid + Math.sin(a) * r1, 2.4, 1);
+      c.line(mid + Math.cos(a) * r0, mid + Math.sin(a) * r0, mid + Math.cos(a) * r1, mid + Math.sin(a) * r1, 2.4 + t * 1.6, 1);
       const gap = r0 + 4 + rand() * (r1 - r0 - 8);
       c.disc(mid + Math.cos(a) * gap, mid + Math.sin(a) * gap, 2.5, 0);
     }
@@ -170,12 +191,12 @@
       c.disc(mid + Math.cos(a) * hub, mid + Math.sin(a) * hub, 2.2, 0);
     }
     if (rand() < 0.6) c.ring(mid, mid, C * 0.36, 1.6, 1);
-    scatter(c, rand, o.density * 0.35, 1, 1.5);
+    scatter(c, rand, o.density * 0.9, 1, 1.5 + t * 1.5);
   }
 
   // a maze of two-cell passages; lower density knocks more walls out (loops, so no dead-end camping)
   function maze(c, rand, o) {
-    const { C } = c, U = 3; // passage 2 cells, wall 1 cell
+    const { C } = c, U = o.density < 0.4 ? 4 : 3; // passages 3 cells wide when open, 2 when tight; walls 1 cell
     const M = Math.floor((C - 1) / U);
     const seen = new Uint8Array(M * M);
     const stack = [[M >> 1, M >> 1]];
@@ -208,8 +229,12 @@
   function asteroids(c, rand, o, specials) {
     const { C } = c;
     c.rect(0, 0, C, C, 0);
-    scatter(c, rand, o.density * 0.9, 1, 3.5);
-    const n = Math.round(C * C / 120 * o.density);
+    // a few big rocks, more middling ones, and a scatter of small ones
+    const t = (o.density - 0.2) / 0.4;
+    scatter(c, rand, 0.1 + t * 0.6, 4, 7);
+    scatter(c, rand, 0.2 + t * 0.9, 2, 3.5);
+    scatter(c, rand, 0.2 + t * 0.6, 0.6, 1.4);
+    const n = Math.round(C * C / 90 * o.density);
     for (let i = 0; i < n; i++) {
       const x = 3 + Math.floor(rand() * (C - 6)), y = 3 + Math.floor(rand() * (C - 6));
       specials.push({ x, y, tile: [216, 218, 217][Math.floor(rand() * 3)] });
@@ -219,7 +244,7 @@
   // left vs right: a fortress each side with a flag room, a field of cover between
   function teams(c, rand, o, specials) {
     const { C } = c, mid = (C - 1) / 2;
-    caves(c, rand, Object.assign({}, o, { density: Math.min(0.42, o.density * 0.85) }));
+    caves(c, rand, Object.assign({}, o, { density: o.density * 0.8 })); // the field: a little more open than caves
     const fw = Math.round(C * 0.22), fh = Math.round(C * 0.4);
     const fx = 3, fy = Math.round(mid - fh / 2);
     // the fortress: open inside, a wall ring two cells thick, gates toward the field
@@ -353,12 +378,38 @@
     a.set(next);
   }
 
+  // the open cell of the canonical part farthest from rock and at least a quarter of the way out
+  // from the centre: where a flag can be fought over
+  function flagSpots(c, sym) {
+    const { C, a } = c, d = new Int32Array(C * C).fill(-1), q = [];
+    for (let i = 0; i < C * C; i++) if (a[i]) { d[i] = 0; q.push(i); }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h], x = i % C, y = (i - x) / C;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= C || ny >= C || d[ny * C + nx] >= 0) continue;
+        d[ny * C + nx] = d[i] + 1; q.push(ny * C + nx);
+      }
+    }
+    const mid = (C - 1) / 2;
+    let best = null;
+    for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+      const [sx, sy] = canon(C, sym, x, y);
+      if (sx !== x || sy !== y || a[y * C + x]) continue;
+      if (Math.hypot(x - mid, y - mid) < C * 0.22) continue;
+      const score = d[y * C + x] * 1000 + Math.hypot(x - mid, y - mid); // roomiest, then farthest out
+      if (!best || score > best.score) best = { x, y, score };
+    }
+    return best ? [{ x: best.x, y: best.y, tile: 170 }] : [];
+  }
+
   /**
    * options:
    *  layout: one of LAYOUTS (default caves); size: small|medium|large|huge;
    *  density 0.2-0.6 (how much rock); symmetry 1|2|4 (team layout is always 2);
-   *  thickness: wall thickness in tiles, 1 (lines) to 3 (default 3);
-   *  flags: put flags in (base layout; the team layout always has them);
+   *  thickness: 0 solid rock (default: the rock is wall all through, drawn with the pack's plain
+   *    interior), or walls 1 (lines) to 3 tiles thick round hollow rock;
+   *  flags: put flags in, in the open spot of each part of the map farthest from any wall (the
+   *    base layout uses its farthest rooms, the team layout always has its flag rooms);
    *  tile: the wall tile (1-161) when there's no tile layout; tiles: an Autotile layout to tidy with.
    * Returns { grid, cells, C, seed, layout, specials }.
    */
@@ -368,7 +419,7 @@
     const C = SIZES[options.size] ?? SIZES.medium;
     const density = Math.min(0.6, Math.max(0.2, options.density ?? 0.45));
     const symmetry = layout === "teams" ? 2 : [1, 2, 4].includes(options.symmetry) ? options.symmetry : 4;
-    const thickness = Math.min(3, Math.max(1, Math.round(options.thickness ?? 3)));
+    const thickness = Math.min(3, Math.max(0, Math.round(options.thickness ?? 0)));
     const tile = Math.min(161, Math.max(1, options.tile ?? 1));
     const o = { density, symmetry, flags: !!options.flags };
     const mid = Math.floor((C - 1) / 2);
@@ -388,6 +439,10 @@
     connect(c, mid);
     unionOpen(c, symmetry);
 
+    // flags for layouts without their own: the canonical part's open cell farthest from rock,
+    // well away from the centre (where everyone starts), mirrored into each part
+    if (o.flags && layout !== "base" && layout !== "teams") specials.push(...flagSpots(c, symmetry));
+
     // specials: those in the canonical part, mirrored, on open cells only
     const placed = [], taken = new Set();
     for (const s of specials) {
@@ -400,21 +455,55 @@
       }
     }
 
-    // to tiles: each cell 3x3, centred on the map; walls are the rock tiles within `thickness`
-    // tiles of open space (thick solid rock is a wall, as in hand-made maps, not a filled field)
+    // to tiles: each cell 3x3, centred on the map. Smooth layouts take each tile's rock from the
+    // cells round it (bilinear, a saddle counts as rock), so edges run diagonally and round instead
+    // of in three-tile stairs; open cells that meet edge to edge stay joined, so nothing is cut off.
     const S = 3, T = C * S, origin = Math.floor(N / 2 - T / 2);
-    const rockT = (tx, ty) => tx < 0 || ty < 0 || tx >= T || ty >= T ? 1 : c.a[Math.floor(ty / S) * C + Math.floor(tx / S)];
-    const grid = new Uint8Array(N * N);
-    const k = thickness;
+    const R = new Uint8Array(T * T);
+    const cellAt = (x, y) => (x < 0 || y < 0 || x >= C || y >= C ? 1 : c.a[y * C + x]);
+    const smoothEdges = SMOOTH.has(layout);
     for (let ty = 0; ty < T; ty++) for (let tx = 0; tx < T; tx++) {
-      if (!rockT(tx, ty)) continue;
-      let wall = tx < k || ty < k || tx >= T - k || ty >= T - k; // the outer border is a wall too
-      for (let dy = -k; dy <= k && !wall; dy++) for (let dx = -k; dx <= k; dx++) if (!rockT(tx + dx, ty + dy)) { wall = true; break; }
-      if (wall) grid[(origin + ty) * N + origin + tx] = tile;
+      if (!smoothEdges) { R[ty * T + tx] = cellAt(Math.floor(tx / S), Math.floor(ty / S)); continue; }
+      const u = (tx + 0.5) / S - 0.5, v = (ty + 0.5) / S - 0.5, x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+      const val = cellAt(x0, y0) * (1 - fx) * (1 - fy) + cellAt(x0 + 1, y0) * fx * (1 - fy) + cellAt(x0, y0 + 1) * (1 - fx) * fy + cellAt(x0 + 1, y0 + 1) * fx * fy;
+      R[ty * T + tx] = val >= 0.5 ? 1 : 0;
+    }
+    // each rock tile's distance (in tiles, chessboard) to the nearest open tile; outside the map counts as rock
+    const D = new Int32Array(T * T), BIG = 1 << 20;
+    const dAt = (x, y) => (x < 0 || y < 0 || x >= T || y >= T ? BIG : D[y * T + x]);
+    for (let ty = 0; ty < T; ty++) for (let tx = 0; tx < T; tx++) {
+      const i = ty * T + tx;
+      D[i] = R[i] ? Math.min(BIG, dAt(tx - 1, ty) + 1, dAt(tx, ty - 1) + 1, dAt(tx - 1, ty - 1) + 1, dAt(tx + 1, ty - 1) + 1) : 0;
+    }
+    for (let ty = T - 1; ty >= 0; ty--) for (let tx = T - 1; tx >= 0; tx--) {
+      const i = ty * T + tx;
+      if (R[i]) D[i] = Math.min(D[i], dAt(tx + 1, ty) + 1, dAt(tx, ty + 1) + 1, dAt(tx + 1, ty + 1) + 1, dAt(tx - 1, ty + 1) + 1);
+    }
+    // walls: rock within `depth` tiles of open space. Solid rock goes all the way in, unless that
+    // would pass the tile budget (a .lvl must stay under 2 MB): then as deep as the budget allows
+    let depth = thickness;
+    if (thickness === 0) {
+      const hist = new Map();
+      let count = 0;
+      for (let i = 0; i < T * T; i++) if (R[i]) { count++; hist.set(D[i], (hist.get(D[i]) || 0) + 1); }
+      depth = BIG;
+      if (count > TILE_BUDGET) {
+        let sum = 0; depth = 0;
+        for (const d of [...hist.keys()].sort((a, b) => a - b)) { if (sum + hist.get(d) > TILE_BUDGET) break; sum += hist.get(d); depth = d; }
+        depth = Math.max(3, depth);
+      }
+    }
+    const grid = new Uint8Array(N * N);
+    const k = Math.min(depth, 3);
+    for (let ty = 0; ty < T; ty++) for (let tx = 0; tx < T; tx++) {
+      const i = ty * T + tx;
+      if (!R[i]) continue;
+      const border = tx < k || ty < k || tx >= T - k || ty >= T - k; // the outer border is a wall too
+      if (D[i] <= depth || border) grid[(origin + ty) * N + origin + tx] = tile;
     }
     for (const s of placed) grid[(origin + s.y * S + 1) * N + origin + s.x * S + 1] = s.tile;
     if (options.tiles && root.Autotile) root.Autotile.tidy(grid, options.tiles);
-    return { grid, cells: c.a, C, seed, layout, symmetry, specials: placed };
+    return { grid, cells: c.a, C, seed, layout, symmetry, specials: placed, solidDepth: thickness === 0 ? depth : null };
   }
 
   root.Lvl = Object.assign(root.Lvl || {}, { generate, GEN_LAYOUTS: LAYOUTS, GEN_SIZES: SIZES });

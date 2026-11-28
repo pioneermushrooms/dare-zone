@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ship wizard mockup</title>
+<style>
+:root{--bg:#0b0f17;--panel:#131a26;--card:#0f1520;--line:#253048;--text:#e6ebf5;--dim:#8a96ad;--acc:#facc15;--red:#f87171;--green:#4ade80}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,sans-serif;padding:24px 16px}
+h1{font-size:20px;margin:0 0 4px}p.note{color:var(--dim);margin:0 0 16px;max-width:760px}
+.app{display:grid;grid-template-columns:150px 1fr;max-width:1100px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.nav{background:var(--card);border-right:1px solid var(--line);padding:12px 8px;font-size:13px}.nav a{display:block;padding:5px 8px;border-radius:6px;color:var(--dim);text-decoration:none}.nav a.on{background:#1d2638;color:var(--text)}
+.main{padding:16px 18px;background:var(--panel)}
+.top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+select,button,input{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+button.pri{background:var(--acc);color:#111;border-color:var(--acc);font-weight:600}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap}.tabs span{padding:6px 12px;color:var(--dim);font-size:13px}.tabs span.on{color:var(--acc);border-bottom:2px solid var(--acc)}.tabs span.soon{opacity:.45}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:16px}
+.ctl > b{display:block;margin-bottom:4px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}.seg span{flex:1;text-align:center;padding:5px 4px;font-size:12px;color:var(--dim);border-right:1px solid var(--line)}.seg span:last-child{border-right:0}.seg span.on{background:var(--acc);color:#111;font-weight:600}
+.items{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}.items label{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:3px 7px}.items input{width:34px;padding:1px 4px}
+.small{font-size:12px;color:var(--dim)}
+.ships{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ship{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px}.ship.open{border-color:var(--acc)}
+.ship .art{height:42px;border-radius:6px;background:#0a0e15;border:1px dashed var(--line);display:grid;place-items:center;font-size:11px;color:var(--dim);margin-bottom:6px}
+.ship select{width:100%;margin:4px 0}.ship small{color:var(--dim);display:block;min-height:34px}.ship .ft{font-size:12px;color:var(--acc);cursor:pointer}
+.tuned{display:inline-block;font-size:10px;background:#3b2f0a;color:var(--acc);border-radius:4px;padding:0 4px;margin-left:4px}
+.drawer{margin-top:12px;background:var(--card);border:1px solid var(--acc);border-radius:9px;padding:12px}
+.drawer h4{margin:0 0 8px}.groups{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 18px}
+.row{display:grid;grid-template-columns:1fr 90px 52px;gap:6px;align-items:center;font-size:12px;margin:3px 0}.row input[type=range]{width:100%}.row input[type=number]{width:52px;padding:1px 4px}
+.row.t span:first-child::after{content:" •";color:var(--acc)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.preview{max-width:1100px;margin-top:24px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--dim);font-weight:500}.chg{color:var(--green)}.skp{color:var(--red)}
+@media(max-width:800px){.app{grid-template-columns:1fr}.grid2,.groups{grid-template-columns:1fr}.ships{grid-template-columns:repeat(2,1fr)}}
+</style></head><body>
+<h1>Phase 1 — Game mode tab and ship wizard</h1>
+<p class="note">A layout mockup with placeholder art. Values are examples. Greyed tabs come in later phases.</p>
+
+<div class="app">
+  <div class="nav"><a>Overview</a><a>Map</a><a>Tile Editor</a><a>LVZ</a><a>Graphics</a><a>Settings</a><a class="on">Game mode</a><a>Messages</a><a>Crew</a></div>
+  <div class="main">
+    <div class="top">
+      <b>Game mode</b>
+      <select><option>Fast CTF (yours)</option><option>4v4 lives duel</option><option>Chill turf</option><option>+ New game mode</option></select>
+      <button>Rename</button><button>Duplicate</button><button>Delete</button>
+      <span class="small">Saved to your account: every pilot name on it sees these.</span>
+    </div>
+    <div class="tabs"><span class="soon">Objective</span><span class="soon">Teams &amp; lives</span><span class="soon">Scoring</span><span class="soon">Time</span><span class="soon">Flags / ball</span><span class="on">Ships</span><span class="soon">Timers &amp; rules</span></div>
+
+    <div class="grid2">
+      <div class="ctl"><b>Pace</b><div class="seg"><span>Slow &amp; deliberate</span><span>Steady</span><span>Standard</span><span class="on">Fast</span><span>Crazy mayhem</span></div><div class="small">Speed, fire rate, energy costs and recharge for every ship.</div></div>
+      <div class="ctl"><b>Items</b><div class="seg"><span>None</span><span>Few</span><span class="on">Standard</span><span>Lots</span><span>Loads</span></div><div class="small">How many greens appear and how many items a ship can hold.</div></div>
+      <div class="ctl"><b>Upgrades</b><div class="seg"><span>Off</span><span class="on">Slow</span><span>Standard</span><span>Fast</span></div>
+        <div class="small" style="margin-top:6px">Start with: <b>fixed levels</b> · <span style="opacity:.5">random (coming with rules)</span> &nbsp;|&nbsp; Pilots pick up greens: <b>yes</b> · no</div></div>
+      <div class="ctl"><b>Starting items</b> <span class="small">(every ship; a role can add more)</span>
+        <div class="items"><label>Repel <input type="number" value="1"></label><label>Burst <input type="number" value="0"></label><label>Decoy <input type="number" value="0"></label><label>Thor <input type="number" value="0"></label><label>Brick <input type="number" value="0"></label><label>Rocket <input type="number" value="1"></label><label>Portal <input type="number" value="0"></label></div></div>
+    </div>
+
+    <div class="ships">
+      <div class="ship"><div class="art">Warbird</div><select><option>Gunner</option></select><small>L2→L3 guns, double barrel, quick fire</small><span class="ft">Fine-tune</span></div>
+      <div class="ship open"><div class="art">Javelin</div><select><option>Bomber</option></select><small>L3 bouncing bombs, more shrapnel <span class="tuned">2 tuned</span></small><span class="ft">Close</span></div>
+      <div class="ship"><div class="art">Spider</div><select><option>Interceptor</option></select><small>fast turn, rockets to start</small><span class="ft">Fine-tune</span></div>
+      <div class="ship"><div class="art">Leviathan</div><select><option>Anchor</option></select><small>turret slots, huge energy, antiwarp</small><span class="ft">Fine-tune</span></div>
+      <div class="ship"><div class="art">Terrier</div><select><option>Deployer</option></select><small>turret slots, portals, bricks</small><span class="ft">Fine-tune</span></div>
+      <div class="ship"><div class="art">Weasel</div><select><option>Cloaker</option></select><small>cloak + stealth on, no X-radar</small><span class="ft">Fine-tune</span></div>
+      <div class="ship"><div class="art">Lancaster</div><select><option>Sniper</option></select><small>very fast L3 bullets, slow fire</small><span class="ft">Fine-tune</span></div>
+      <div class="ship"><div class="art">Shark</div><select><option>Support</option></select><small>repels, decoys, bricks, bursts</small><span class="ft">Fine-tune</span></div>
+    </div>
+
+    <div class="drawer">
+      <h4>Javelin: Bomber, fine-tune <span class="small">(• = your change; it stays when pace or items change)</span></h4>
+      <div class="groups">
+        <div><b class="small">Movement</b>
+          <div class="row"><span>Top speed</span><input type="range"><input type="number" value="3200"></div>
+          <div class="row"><span>Thrust</span><input type="range"><input type="number" value="15"></div>
+          <div class="row"><span>Rotation</span><input type="range"><input type="number" value="230"></div></div>
+        <div><b class="small">Bombs &amp; mines</b>
+          <div class="row"><span>Bomb level start / max</span><input type="range"><input type="number" value="2"></div>
+          <div class="row t"><span>Bounces</span><input type="range"><input type="number" value="2"></div>
+          <div class="row t"><span>Shrapnel</span><input type="range"><input type="number" value="14"></div></div>
+        <div><b class="small">Specials</b>
+          <div class="row"><span>Cloak</span><select><option>No</option><option>Can get</option><option>Starts with</option></select><span></span></div>
+          <div class="row"><span>X-radar</span><select><option>Can get</option></select><span></span></div>
+          <div class="row"><span>Turret slots</span><input type="range"><input type="number" value="0"></div></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span>This game mode sets <b>214 settings</b> · <u>Show</u> · <u>Save as settings set</u></span>
+      <span><select><option>#mycastle (draft)</option><option>mycastle</option></select> <button class="pri">Apply to arena…</button></span>
+    </div>
+  </div>
+</div>
+
+<div class="preview">
+  <b>Apply "Fast CTF" to #mycastle?</b> <span class="small">186 change · 26 same · 2 skipped</span>
+  <table><tr><th>Setting</th><th>Now</th><th>New</th><th></th></tr>
+    <tr><td>Warbird:InitialGuns</td><td>1</td><td>2</td><td class="chg">change</td></tr>
+    <tr><td>Javelin:BombBounceCount</td><td>0</td><td>2</td><td class="chg">change</td></tr>
+    <tr><td>Prize:PrizeFactor</td><td>1300</td><td>1300</td><td class="small">same</td></tr>
+    <tr><td>Misc:SomethingStaffOnly</td><td>—</td><td>1</td><td class="skp">skipped: not an arena owner setting</td></tr>
+  </table>
+  <div style="margin-top:10px"><button class="pri">Apply</button> <button>Cancel</button></div>
+</div>
+</body></html>

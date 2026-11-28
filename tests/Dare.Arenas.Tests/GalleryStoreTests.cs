@@ -78,7 +78,7 @@ public sealed class GalleryStoreTests : IDisposable
             ["prizes"] = ["prizes", "warppnt", "shield", "super"], ["shield"] = ["prizes", "warppnt", "shield", "super"],
             ["super"] = ["prizes", "warppnt", "shield", "super"], ["warppnt"] = ["prizes", "warppnt", "shield", "super"],
         };
-        foreach (var kind in AccountStore.GalleryKinds.Where(k => k.Name != "ship"))
+        foreach (var kind in AccountStore.GalleryKinds.Where(k => k.Name != "ship" && AccountStore.FindGalleryFileKind(k.Name) is null))
         {
             var file = File.ReadAllBytes(StockFile(kind.Name));
             var found = AccountStore.DetectGalleryKinds(file, out var w, out var h, out var error);
@@ -88,7 +88,7 @@ public sealed class GalleryStoreTests : IDisposable
         }
         // Every graphic the game lets arenas replace is shareable, except the colour table and ships (one "ship" kind).
         Assert.Equal(GameGraphics.Slots.Where(s => GameGraphics.ShipIndex(s.Name) == 0 && s.Name != "gradient").Select(s => s.Name).Order(),
-            AccountStore.GalleryKinds.Where(k => k.Name != "ship").Select(k => k.Name).Order());
+            AccountStore.GalleryKinds.Where(k => k.Name != "ship" && AccountStore.FindGalleryFileKind(k.Name) is null).Select(k => k.Name).Order());
     }
 
     // The stock ships come as one sheet of all eight; one ship's 4 rows is a ship at any frame size.

@@ -1,4 +1,5 @@
 // The Foundry (/foundry.html): ships and graphics pilots shared for everyone (/account/api/gallery).
+// Banners: pilots' own are cards like any design; the Banner Emporium's library is foundry-banners.js.
 // Anyone can browse and download; a signed-in pilot can keep a copy in their own Shipyard or Armory
 // (other graphics become their own picture for that graphic), share their own, and take theirs down.
 // The server decides what a sheet is from its size and frame grid; this page only asks the pilot
@@ -107,6 +108,109 @@ function iconFrom(canvas, src, kind) {
   return canvas;
 }
 
+// ---- maps and tilesets (the map editor's lvl.js, /arena/lvl.js) --------------------------------
+// A map's preview is built once, here, when it is shared: its tiles drawn in the colours of its own
+// tileset (or the standard one when it has none), sent along and kept with it. Cards only load that PNG.
+const THUMB = 256;
+let stockTiles = null;
+
+async function standardTiles() {
+  if (stockTiles) return stockTiles;
+  const r = await fetch("/arena/tiles.bm2");
+  if (!r.ok) throw new Error("no standard tiles");
+  return (stockTiles = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())));
+}
+
+/** Each tile slot's average colour in a tileset (19×10 slots of 16 px); null where the slot is black. */
+function slotColours(ts) {
+  const out = new Array(256).fill(null);
+  if (!ts) return out;
+  const w = Math.min(ts.width, 304), h = Math.min(ts.height, 160);
+  const d = ts.getContext("2d").getImageData(0, 0, w, h).data;
+  for (let t = 1; t <= 190; t++) {
+    const x0 = ((t - 1) % 19) * 16, y0 = Math.floor((t - 1) / 19) * 16;
+    if (x0 + 16 > w || y0 + 16 > h) continue;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 16; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i] + d[i + 1] + d[i + 2] < 24) continue; // black shows as space
+      r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+    }
+    // a mostly-black tile is a thin wall: its lit pixels, brightened a little so it still reads at a quarter size
+    if (n) out[t] = [r / n, g / n, b / n].map((v) => Math.min(255, Math.round(v * (n < 64 ? 1.2 : 1))));
+  }
+  return out;
+}
+
+/** The PNG preview of a map: the part with tiles (as the editor's overview), square, THUMB a side. */
+async function mapThumb(parsed) {
+  const { grid, tileset } = parsed, N = Lvl.N;
+  const colours = slotColours(tileset ?? await standardTiles().catch(() => null));
+  let minX = N, minY = N, maxX = -1, maxY = -1;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (grid[y * N + x]) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  let side = N, x0 = 0, y0 = 0;
+  if (maxX >= 0) {
+    side = Math.min(N, Math.max(maxX - minX, maxY - minY) + 9);
+    x0 = Math.max(0, Math.min(N - side, Math.floor((minX + maxX - side) / 2)));
+    y0 = Math.max(0, Math.min(N - side, Math.floor((minY + maxY - side) / 2)));
+  }
+  // As the editor's overview draws it: every tile at least one whole pixel, so thin walls stay visible at a quarter size.
+  const out = el("canvas", { width: String(THUMB), height: String(THUMB) });
+  const o = out.getContext("2d"), img = o.createImageData(THUMB, THUMB), px = img.data;
+  for (let i = 0; i < px.length; i += 4) { px[i] = 4; px[i + 1] = 7; px[i + 2] = 14; px[i + 3] = 255; }
+  const k = THUMB / side, dot = Math.max(1, Math.ceil(k));
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    const t = grid[(y + y0) * N + x + x0];
+    if (!t) continue;
+    const c = colours[t] ?? hexRgb(Lvl.color(t));
+    const ox = Math.floor(x * k), oy = Math.floor(y * k);
+    for (let dy = 0; dy < dot && oy + dy < THUMB; dy++) for (let dx = 0; dx < dot && ox + dx < THUMB; dx++) {
+      const i = ((oy + dy) * THUMB + ox + dx) * 4;
+      px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2];
+    }
+  }
+  o.putImageData(img, 0, 0);
+  const blob = await new Promise((r) => out.toBlob(r, "image/png"));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+/** A tileset sheet as a canvas (8-bit, RLE8 or 24-bit BMP, as the editor reads them). */
+async function tilesetCanvas(src) {
+  const bytes = src instanceof Uint8Array ? src : new Uint8Array(await (await fetch(src)).arrayBuffer());
+  return Lvl.decodeBmp(bytes);
+}
+
+/** Card art for maps (the stored preview) and tilesets (the sheet); a click or Enter shows it bigger. */
+const KIND_RENDER = {
+  map: (it) => zoomable(el("img", { class: "sheet map", src: it.image, alt: `Map preview: ${it.name}`, loading: "lazy", width: "132", height: "132" }), it),
+  tileset: (it) => {
+    const c = el("canvas", { class: "sheet tileset", role: "img", "aria-label": `Tileset: ${it.name}`, width: "304", height: "160" });
+    tilesetCanvas(it.file ?? it.image).then((ts) => c.getContext("2d").drawImage(ts, 0, 0)).catch(() => c.setAttribute("aria-label", `${it.name} (couldn't be drawn)`));
+    return zoomable(c, it);
+  },
+  banner: (it) => zoomable(el("img", { class: "sheet banner", src: it.image, alt: `Banner: ${it.name}`, loading: "lazy", width: "96", height: "64" }), it),
+};
+
+function zoomable(art, it) {
+  const b = el("button", { type: "button", class: "zoomer", title: "Show it bigger", "aria-label": `Show ${it.name} bigger` }, art);
+  b.addEventListener("click", () => showZoom(art, it));
+  return b;
+}
+
+function showZoom(art, it) {
+  const box = $("zoom");
+  const big = art.tagName === "IMG" ? el("img", { src: art.src, alt: art.alt }) : el("canvas", { width: String(art.width), height: String(art.height), role: "img", "aria-label": art.getAttribute("aria-label") });
+  if (big.tagName === "CANVAS") big.getContext("2d").drawImage(art, 0, 0);
+  big.className = "zoomed " + (it.kind === "tileset" || it.kind === "banner" ? it.kind : "map");
+  $("zoom-title").textContent = `${it.name} · ${kindText(it)}`;
+  $("zoom-art").replaceChildren(big);
+  box.showModal();
+}
+
 // ---- the server ---------------------------------------------------------------------------------
 async function call(path, body) {
   const r = await fetch(API + path, {
@@ -151,12 +255,15 @@ function writeAddress() {
   history.replaceState(null, "", location.pathname + (s ? "?" + s : ""));
 }
 
+const PLURAL = { map: "Maps", tileset: "Tilesets", banner: "Banners" };
+
 function fillKinds() {
   const sel = $("kind");
   if (sel.options.length > 1) return;
   sel.append(el("option", { value: "ship", text: "Ships" }));
+  for (const k of kinds) if (PLURAL[k.name]) sel.append(el("option", { value: k.name, text: PLURAL[k.name] }));
   const groups = new Map();
-  for (const k of kinds) if (k.name !== "ship") (groups.get(k.group) ?? groups.set(k.group, []).get(k.group)).push(k);
+  for (const k of kinds) if (k.name !== "ship" && !PLURAL[k.name]) (groups.get(k.group) ?? groups.set(k.group, []).get(k.group)).push(k);
   for (const [g, list] of groups) sel.append(el("optgroup", { label: g }, ...list.map((k) => el("option", { value: k.name, text: k.label }))));
   sel.value = filter.kind;
 }
@@ -213,9 +320,13 @@ async function load(more = false) {
 
 const filtered = () => !!(filter.q || filter.kind || filter.pilot);
 
+/** Tells the banner library (foundry-banners.js) what the filters are: it shows with Kind = Banners. */
+const announce = () => document.dispatchEvent(new CustomEvent("foundry-filter", { detail: { ...filter } }));
+
 function refresh() {
   writeAddress();
   showActive();
+  announce();
   next = 0;
   void load();
 }
@@ -239,7 +350,7 @@ async function showLinked() {
 
 function card(it) {
   const k = kindOf(it.kind);
-  const art = iconFrom(iconCanvas(104, `${it.name}, ${kindText(it)}`), it.image, it.kind);
+  const art = KIND_RENDER[it.kind]?.(it) ?? iconFrom(iconCanvas(104, `${it.name}, ${kindText(it)}`), it.image, it.kind);
   const by = el("span", { class: "by" }, "by ", el("a", { href: `/pilot/${encodeURIComponent(it.by)}`, text: it.by, title: `${it.by}'s profile` }));
   const pilotFilter = el("button", { type: "button", class: "seeall", text: `See all by ${it.by}`, title: `Everything ${it.by} shared` });
   pilotFilter.addEventListener("click", () => { filter.pilot = it.by; refresh(); });
@@ -252,19 +363,27 @@ function card(it) {
   const acts = el("div", { class: "acts" });
   const keep = el("button", { type: "button", class: "btn small primary", text: keepLabel(k) });
   keep.addEventListener("click", () => void keepIt(it, k, keep));
-  const dl = el("a", { class: "btn small", href: `${it.image}&download=1`, download: "", text: "Download" });
-  acts.append(keep, dl);
+  const dl = el("a", { class: "btn small", href: `${it.file ?? it.image}&download=1`, download: "", text: "Download",
+    title: k?.file ? `The .${k.file} file` : undefined });
+  acts.append(keep);
+  if (it.kind === "banner") {
+    const use = el("button", { type: "button", class: "btn small", text: "Use as my banner" });
+    use.addEventListener("click", () => void useBanner(it, use));
+    acts.append(use);
+  }
+  acts.append(dl);
   if (viewer && (it.mine || viewer.staff)) {
     const rm = el("button", { type: "button", class: "btn small danger", text: it.mine ? "Take down" : "Take down (staff)" });
     rm.addEventListener("click", () => void takeDown(it, rm));
     acts.append(rm);
   }
-  const li = el("li", { class: "card", id: "d" + it.id }, el("div", { class: "art" }, art), body, acts);
+  const li = el("li", { class: "card", id: "d" + it.id }, el("div", { class: "art" + (KIND_RENDER[it.kind] ? " wide" : "") }, art), body, acts);
   if (!filter.pilot) body.querySelector(".meta").after(el("p", { class: "seeallrow" }, pilotFilter));
   return li;
 }
 
-const keepLabel = (k) => k?.save === "shipyard" ? "Keep in my Shipyard" : k?.save === "armory" ? "Keep in my Armory" : `Use as my ${(k?.label ?? "graphic").toLowerCase()}`;
+const KEEP = { shipyard: "Keep in my Shipyard", armory: "Keep in my Armory", maps: "Keep in my maps", tilesets: "Keep in my tilesets" };
+const keepLabel = (k) => KEEP[k?.save] ?? `Use as my ${(k?.label ?? "graphic").toLowerCase()}`;
 
 async function keepIt(it, k, button) {
   if (!viewer) { location.href = signInHref(); return; }
@@ -272,7 +391,30 @@ async function keepIt(it, k, button) {
   button.disabled = true;
   try {
     const r = await call("/gallery/save", { id: it.id });
+    if (r.kept === "maps" || r.kept === "tilesets") {
+      // Kept in the Arena Editor's library: the map editor opens a map as a draft, or puts a tileset into the map there.
+      const href = r.kept === "maps" ? `/arena/map?lib=${r.keptId}` : `/arena/map?tileset=${r.keptId}`;
+      const s = $("status");
+      s.className = "status good";
+      s.replaceChildren(`${it.name}: ${r.message} `, el("a", { href, text: r.kept === "maps" ? "Open it in the map editor" : "Use it in the map editor" }),
+        r.kept === "maps" ? " (a draft: your arena keeps its map until you Publish or Apply)." : " (it goes into the map you're editing; nothing changes until you Publish).");
+      return;
+    }
     say(`${it.name}: ${r.message}${k?.save === "graphics" ? "" : " Put it on in the game's Graphics overlay (Esc → G)."}`, "good");
+  } catch (e) {
+    say(e.message, "bad");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Keeps a shared banner in the Armory and makes it the pilot's banner. */
+async function useBanner(it, button) {
+  if (!viewer) { location.href = signInHref(); return; }
+  button.disabled = true;
+  try {
+    const r = await call("/gallery/save", { id: it.id, use: true });
+    say(`${it.name}: ${r.message} It shows beside your name in the game.`, "good");
   } catch (e) {
     say(e.message, "bad");
   } finally {
@@ -297,7 +439,7 @@ const signInHref = () => "/account/login?next=" + encodeURIComponent(location.pa
 
 // ---- sharing ------------------------------------------------------------------------------------
 const dlg = $("share");
-let picked = null; // { from: "file", bytes } | { from: "armory"|"shipyard", id, kind, prompt }
+let picked = null; // { from: "file", bytes, thumb?, previews? } | { from: "armory"|"shipyard", id, kind, prompt }
 let choices = []; // kinds the picture can be
 
 function openShare() {
@@ -327,29 +469,44 @@ function setPickTab(which) {
 
 async function loadSaved() {
   const list = $("savedlist");
-  list.replaceChildren(el("li", { class: "empty", text: "Loading…" }));
+  list.replaceChildren(el("p", { class: "empty", text: "Loading…" }));
   try {
     const [a, y] = await Promise.all([call("/armory"), call("/shipyard")]);
     const labels = Object.fromEntries(a.kinds.map((k) => [k.name, k.label]));
     const items = [
-      ...y.ships.map((s) => ({ from: "shipyard", id: s.id, kind: "ship", name: s.name, prompt: s.prompt ?? "", url: `${API}/shipyard/sheet?id=${s.id}`,
+      ...y.ships.map((s) => ({ from: "shipyard", id: s.id, kind: "ship", name: s.name, prompt: s.prompt ?? "", created: s.created ?? "", url: `${API}/shipyard/sheet?id=${s.id}`,
         label: "Ship" })),
-      ...a.items.map((i) => ({ from: "armory", id: i.id, kind: i.kind, name: i.name, prompt: i.prompt ?? "", url: `${API}/armory/sheet?id=${i.id}`,
+      ...a.items.map((i) => ({ from: "armory", id: i.id, kind: i.kind, name: i.name, prompt: i.prompt ?? "", created: i.created ?? "", url: `${API}/armory/sheet?id=${i.id}`,
         label: labels[i.kind] ?? i.kind })),
     ];
-    if (!items.length) { list.replaceChildren(el("li", { class: "empty", text: "Your Shipyard and Armory are empty. Make some in the game's Graphics overlay (Esc → G)." })); return; }
-    list.replaceChildren(...items.map((it) => {
-      const b = el("button", { type: "button", "aria-pressed": "false", title: it.prompt || it.name },
-        iconFrom(iconCanvas(48, it.name), it.url, it.kind), el("span", { class: "name", text: it.name }), el("span", { class: "kind", text: it.label }));
-      b.addEventListener("click", () => {
-        for (const x of list.querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
-        void pickSaved(it);
-      });
-      return el("li", null, b);
-    }));
+    if (!items.length) { list.replaceChildren(el("p", { class: "empty", text: "Your Shipyard and Armory are empty. Make some in the game's Graphics overlay (Esc → G)." })); return; }
+    list.replaceChildren(...savedGroups(items).map(([title, group]) =>
+      el("section", { class: "savedgroup", "aria-label": title },
+        el("h3", null, title, el("small", { text: String(group.length) })),
+        el("ul", { class: "savedgrid" }, ...group.map((it) => {
+          const b = el("button", { type: "button", "aria-pressed": "false", title: it.prompt || it.name },
+            iconFrom(iconCanvas(48, it.name), it.url, it.kind), el("span", { class: "name", text: it.name }));
+          b.addEventListener("click", () => {
+            for (const x of list.querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
+            void pickSaved(it);
+          });
+          return el("li", null, b);
+        })))));
   } catch (e) {
-    list.replaceChildren(el("li", { class: "empty", text: e.status === 401 ? "Sign in to share from your Shipyard or Armory." : e.message }));
+    list.replaceChildren(el("p", { class: "empty", text: e.status === 401 ? "Sign in to share from your Shipyard or Armory." : e.message }));
   }
+}
+
+/** The pilot's saved designs grouped by kind, in the Kind menu's order (Ships, Maps, Tilesets, Banners, then the
+ *  graphics), newest first within each kind. Returns [heading, items][]. */
+function savedGroups(items) {
+  const order = ["ship", ...kinds.filter((k) => PLURAL[k.name]).map((k) => k.name), ...kinds.filter((k) => k.name !== "ship" && !PLURAL[k.name]).map((k) => k.name)];
+  const rank = (kind) => { const i = order.indexOf(kind); return i < 0 ? order.length : i; };
+  const byKind = new Map();
+  for (const it of items) (byKind.get(it.kind) ?? byKind.set(it.kind, []).get(it.kind)).push(it);
+  const newest = (a, b) => String(b.created).localeCompare(String(a.created)) || b.id - a.id;
+  return [...byKind].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)).map(([kind, group]) =>
+    [kind === "ship" ? "Ships" : PLURAL[kind] ?? kindOf(kind)?.label ?? group[0].label, group.sort(newest)]);
 }
 
 async function pickSaved(it) {
@@ -375,6 +532,29 @@ async function shipBmpToPng(bytes, w, h) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** A 12×8 picture as a 24-bit BMP (clear pixels black), which the server matches to the game's palette. */
+async function bannerBmp(bytes) {
+  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const c = el("canvas", { width: "12", height: "8" });
+  const g = c.getContext("2d");
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, 12, 8);
+  g.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const px = g.getImageData(0, 0, 12, 8).data;
+  const out = new Uint8Array(54 + 36 * 8);
+  const v = new DataView(out.buffer);
+  out[0] = 0x42; out[1] = 0x4d;
+  v.setUint32(2, out.length, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+  v.setInt32(18, 12, true); v.setInt32(22, 8, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 12; x++) {
+      const s = (y * 12 + x) * 4, d = 54 + (7 - y) * 36 + x * 3;
+      out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s];
+    }
+  return out;
+}
+
 function sizeOf(b) {
   if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50) return { png: true, w: (b[16] << 24 | b[17] << 16 | b[18] << 8 | b[19]) >>> 0, h: (b[20] << 24 | b[21] << 16 | b[22] << 8 | b[23]) >>> 0 };
   if (b.length >= 26 && b[0] === 0x42 && b[1] === 0x4d) {
@@ -382,6 +562,23 @@ function sizeOf(b) {
     return { png: false, w: v.getInt32(18, true), h: Math.abs(v.getInt32(22, true)) };
   }
   return null;
+}
+
+/** For a map file: its preview PNG, and what each kind it could be looks like (the map, or the tileset inside it). */
+async function mapPreviews(bytes, matches) {
+  if (!matches.some((k) => k.name === "map" || k.name === "tileset") || !window.Lvl) return {};
+  const out = {};
+  const isMap = matches.some((k) => k.name === "map");
+  const parsed = isMap ? Lvl.parse(bytes) : null;
+  if (isMap) out.thumb = await mapThumb(parsed);
+  if (out.thumb) out.map = new Blob([out.thumb], { type: "image/png" });
+  if (matches.some((k) => k.name === "tileset")) {
+    try {
+      const ts = parsed ? parsed.tileset : Lvl.decodeBmp(bytes);
+      if (ts) out.tileset = await new Promise((r) => ts.toBlob(r, "image/png"));
+    } catch { /* the server checked it; no preview */ }
+  }
+  return out;
 }
 
 async function pickFile(file) {
@@ -392,15 +589,21 @@ async function pickFile(file) {
   if (size && !size.png && size.w % 10 === 0 && size.h === size.w / 10 * 4) {
     try { bytes = await shipBmpToPng(bytes, size.w, size.h); } catch { /* the server will say */ }
   }
+  if (size?.png && size.w === 12 && size.h === 8) {
+    try { bytes = await bannerBmp(bytes); } catch { /* the server will say */ }
+  }
   say("Checking what it is…", "", "share-status");
   try {
     const d = await call("/gallery/detect", { sheet: base64(bytes) });
-    picked = { from: "file", bytes };
     choices = d.matches;
+    const previews = await mapPreviews(bytes, choices);
+    picked = { from: "file", bytes, thumb: previews.thumb, previews };
     const stem = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 40);
     showChosen(new Blob([bytes]), choices[0].name, stem || choices[0].label);
     $("prompthint").hidden = true;
-    if (choices.length === 1) $("detect").replaceChildren(`${d.width}×${d.height}: `, el("b", { text: choices[0].label }), ".");
+    const what = choices[0].name === "map" ? `${kb(bytes.length)} map` : `${d.width}×${d.height}`;
+    if (choices.length === 1) $("detect").replaceChildren(`${what}: `, el("b", { text: choices[0].label }), ".");
+    else if (choices[0].name === "map") $("detect").replaceChildren(`A ${kb(bytes.length)} map with its own tileset: share the map, or just its tileset.`);
     else $("detect").replaceChildren(`${d.width}×${d.height} is the size of ${choices.length} kinds.`);
     say("", "", "share-status");
   } catch (e) {
@@ -408,20 +611,42 @@ async function pickFile(file) {
   }
 }
 
+const kb = (n) => Math.max(1, Math.round(n / 1024)) + " KB";
+
+/** The preview of the picked file as `kind`: a map's preview, a tileset sheet, or the sheet's animated icon. */
+function previewAs(canvas, src, kind) {
+  icons.delete(canvas);
+  const own = picked?.previews?.[kind];
+  if (own || KIND_RENDER[kind]) {
+    const img = new Image();
+    img.addEventListener("load", () => {
+      const g = canvas.getContext("2d"), s = Math.min(canvas.width / img.width, canvas.height / img.height);
+      g.imageSmoothingEnabled = false;
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(img, (canvas.width - img.width * s) / 2, (canvas.height - img.height * s) / 2, img.width * s, img.height * s);
+    });
+    img.src = URL.createObjectURL(own ?? src);
+    return;
+  }
+  iconFrom(canvas, src, kind);
+}
+
 function showChosen(src, kind, name) {
   $("chosen").hidden = false;
   const canvas = iconCanvas(128, `Preview of ${name}`, $("chosen-icon"));
-  icons.delete(canvas);
-  iconFrom(canvas, src, kind);
+  previewAs(canvas, src, kind);
   $("name").value = name;
   const box = $("kindchoices");
   $("kinds").hidden = choices.length < 2;
   box.replaceChildren(...(choices.length < 2 ? [] : choices.map((k) => {
     const input = el("input", { type: "radio", name: "kindpick", value: k.name });
-    input.addEventListener("change", () => { iconFrom(canvas, src, k.name); $("share-go").disabled = false; });
+    input.addEventListener("change", () => { previewAs(canvas, src, k.name); $("share-go").disabled = false; });
     return el("label", null, input, `${k.label} `, el("small", { text: `(${k.group})` }));
   })));
-  $("share-go").disabled = choices.length !== 1;
+  // a map that carries a tileset is most likely shared as the map: chosen already, the pilot can switch
+  const first = box.querySelector('input[value="map"]');
+  if (first) first.checked = true;
+  $("share-go").disabled = choices.length !== 1 && !first;
 }
 
 async function share(event) {
@@ -430,7 +655,10 @@ async function share(event) {
   const kind = choices.length === 1 ? choices[0].name : document.querySelector('input[name="kindpick"]:checked')?.value;
   if (!kind) { say("Choose which kind it is.", "bad", "share-status"); return; }
   const body = { kind, name: $("name").value.trim(), keywords: $("keywords").value.trim() };
-  if (picked.from === "file") body.sheet = base64(picked.bytes); else { body.from = picked.from; body.id = picked.id; }
+  if (picked.from === "file") {
+    body.sheet = base64(picked.bytes);
+    if (kind === "map" && picked.thumb) body.thumb = base64(picked.thumb);
+  } else { body.from = picked.from; body.id = picked.id; }
   $("share-go").disabled = true;
   say("Sharing…", "", "share-status");
   try {
@@ -470,6 +698,9 @@ drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.ad
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
 drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); void pickFile(e.dataTransfer.files[0]); });
 $("shareform").addEventListener("submit", (e) => void share(e));
+$("zoom-close").addEventListener("click", () => $("zoom").close());
+$("zoom").addEventListener("click", (e) => { if (e.target === $("zoom")) $("zoom").close(); });
 addEventListener("hashchange", () => void showLinked());
 showActive();
+announce();
 void load();

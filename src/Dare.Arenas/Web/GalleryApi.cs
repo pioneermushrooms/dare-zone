@@ -25,14 +25,18 @@ internal sealed partial class WebServer
     private async Task<Reply> GalleryRouteAsync(HttpListenerRequest req, string api)
     {
         var method = req.HttpMethod;
+        if (api == "/gallery/banners" || api.StartsWith("/gallery/banners/", StringComparison.Ordinal))
+            return await BannerLibraryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/gallery")
             return method == "GET" ? await GalleryListAsync(req).ConfigureAwait(false) : MethodNotAllowed();
         if (api == "/gallery/image")
             return method == "GET" ? GalleryImage(req) : MethodNotAllowed();
+        if (api == "/gallery/thumb")
+            return method == "GET" ? GalleryThumb(req) : MethodNotAllowed();
         if (method != "POST") return MethodNotAllowed();
         if (AccountPostCheck(req) is { } refused) return refused;
         var big = api is "/gallery/add" or "/gallery/detect";
-        var (body, error) = await ReadJsonAsync(req, big ? MaxShipJsonBytes : MaxJsonBytes).ConfigureAwait(false);
+        var (body, error) = await ReadJsonAsync(req, big ? MaxGalleryJsonBytes : MaxJsonBytes).ConfigureAwait(false);
         if (body is null) return error!;
         if (api == "/gallery/detect") return GalleryDetect(req, body);
         if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
@@ -43,6 +47,14 @@ internal sealed partial class WebServer
                 return GalleryAdd(req, id, body);
             case "/gallery/save":
                 if (!_m.GallerySavePerAccount.TryTake("gallery:save:" + id)) return Bad(TooMany, 429);
+                if (KeepInLibrary(cur.Account.Name, Num(body, "id")) is { } kept) return kept;
+                if (IsYes(body, "use"))
+                {
+                    // a shared banner, kept in the Armory and made the pilot's banner
+                    var used = _m.Accounts.UseGalleryBanner(id, Num(body, "id"));
+                    if (used.Ok) await ApplyBannerNowAsync(cur.Account).ConfigureAwait(false);
+                    return ResultReply(used);
+                }
                 return ResultReply(_m.Accounts.SaveGalleryItem(id, Num(body, "id")));
             case "/gallery/remove":
                 var staff = await OnMain(() => _m.IsWebStaff(cur.Account.Name)).ConfigureAwait(false);
@@ -54,7 +66,21 @@ internal sealed partial class WebServer
         }
     }
 
-    private static object KindJson(GalleryKind k) => new { name = k.Name, label = k.Label, group = k.Group, width = k.Width, height = k.Height, save = k.Save };
+    // a map (up to 1 MB) and its preview, as base64
+    private const int MaxGalleryJsonBytes = (LvlFile.MaxGalleryBytes + AccountStore.MaxGalleryThumbBytes) / 3 * 4 + 16 * 1024;
+
+    private static object KindJson(GalleryKind k) => new
+    {
+        name = k.Name, label = k.Label, group = k.Group, width = k.Width, height = k.Height, save = k.Save,
+        file = AccountStore.FindGalleryFileKind(k.Name) is { } f ? f.Extension : null,
+    };
+
+    /// <summary>Keep for maps and tilesets (into the pilot's maps or tilesets, the Arena Editor's library); null for every other kind.</summary>
+    private Reply? KeepInLibrary(string pilot, long itemId)
+    {
+        if (_m.Accounts.KeepGalleryInLibrary(itemId, _m.WebStore, pilot) is not { } k) return null;
+        return JsonReply(k.Result.Ok ? 200 : 400, new { ok = k.Result.Ok, message = k.Result.Message, kept = k.Result.Ok ? k.Kept : null, keptId = k.KeptId });
+    }
 
     /// <summary>?kind= &amp;ship= &amp;q= &amp;pilot= &amp;before= &amp;limit=: a page of designs, newest first, and the kinds there are.</summary>
     private async Task<Reply> GalleryListAsync(HttpListenerRequest req)
@@ -84,7 +110,10 @@ internal sealed partial class WebServer
                 mine = i.Mine,
                 created = i.Created,
                 saves = i.Saves,
-                image = $"{AccountPrefix}/api/gallery/image?id={i.Id}",
+                // a picture to show: a map's preview (built when it was shared), else the design itself
+                image = AccountStore.FindGalleryFileKind(i.Kind) is { ThumbWidth: > 0 }
+                    ? $"{AccountPrefix}/api/gallery/thumb?id={i.Id}" : $"{AccountPrefix}/api/gallery/image?id={i.Id}",
+                file = $"{AccountPrefix}/api/gallery/image?id={i.Id}",
             }),
             kinds = AccountStore.GalleryKinds.Select(KindJson),
             viewer = cur is { } v ? new { name = v.Account.Name, staff } : null,
@@ -100,10 +129,19 @@ internal sealed partial class WebServer
         if (req.QueryString["download"] == "1")
         {
             var stem = new string(item.Name.ToLowerInvariant().Select(ch => char.IsAsciiLetterOrDigit(ch) ? ch : '-').ToArray()).Trim('-');
-            var ext = ImageType(item.Image) == "image/png" ? "png" : "bmp";
+            var ext = AccountStore.FindGalleryFileKind(item.Kind)?.Extension ?? (ImageType(item.Image) == "image/png" ? "png" : "bmp");
             headers.Add(("Content-Disposition", $"attachment; filename=\"{item.Kind}-{(stem.Length == 0 ? id.ToString() : stem)}.{ext}\""));
         }
-        return new Reply(200, ImageType(item.Image), item.Image, [.. headers]);
+        var type = AccountStore.FindGalleryFileKind(item.Kind)?.ContentType ?? ImageType(item.Image);
+        return new Reply(200, type, item.Image, [.. headers]);
+    }
+
+    /// <summary>?id=: a map's preview PNG, built once by the pilot who shared it (404 when it has none).</summary>
+    private Reply GalleryThumb(HttpListenerRequest req)
+    {
+        if (!long.TryParse(req.QueryString["id"], out var id)) return Text(400, "Bad id.");
+        if (_m.Accounts.GalleryThumb(id) is not { } png) return Text(404, "Not found.");
+        return new Reply(200, "image/png", png, [("Cache-Control", "public, max-age=86400"), ("X-Content-Type-Options", "nosniff")]);
     }
 
     /// <summary>{"sheet"}: which kinds a picture can be, by its size, before it is shared.</summary>
@@ -112,7 +150,7 @@ internal sealed partial class WebServer
         if (!_m.GalleryDetectPerIp.TryTake("gallery:detect:" + ClientIp(req))) return Bad(TooMany, 429);
         byte[] image;
         try { image = Convert.FromBase64String(Str(body, "sheet") ?? ""); }
-        catch (FormatException) { return Bad("That isn't a picture."); }
+        catch (FormatException) { return Bad("That isn't a picture or a map."); }
         var matches = AccountStore.DetectGalleryKinds(image, out var w, out var h, out var why);
         if (matches.Count == 0) return JsonReply(400, new { ok = false, message = why, width = w, height = h, matches = Array.Empty<object>() });
         return JsonReply(200, new { ok = true, width = w, height = h, matches = matches.Select(m => KindJson(AccountStore.FindGalleryKind(m)!)) });
@@ -135,10 +173,10 @@ internal sealed partial class WebServer
         }
         else
         {
-            byte[] image;
-            try { image = Convert.FromBase64String(Str(body, "sheet") ?? ""); }
-            catch (FormatException) { return Bad("That isn't a picture."); }
-            r = _m.Accounts.AddGalleryItem(accountId, Str(body, "kind"), ship, Str(body, "name"), Str(body, "keywords"), null, "uploaded", image);
+            byte[] image, thumb;
+            try { image = Convert.FromBase64String(Str(body, "sheet") ?? ""); thumb = Convert.FromBase64String(Str(body, "thumb") ?? ""); }
+            catch (FormatException) { return Bad("That isn't a picture or a map."); }
+            r = _m.Accounts.AddGalleryItem(accountId, Str(body, "kind"), ship, Str(body, "name"), Str(body, "keywords"), null, "uploaded", image, thumb);
         }
         if (r.Ok) return JsonReply(200, new { ok = true, message = r.Message, id = r.Id });
         var choices = r.Choices.Select(m => KindJson(AccountStore.FindGalleryKind(m)!)).ToArray();

@@ -188,6 +188,9 @@
   // ---- tile layout ---------------------------------------------------------------------------------
   const EDGES = "NESW";
   const CALM_KEYS = ["ESW", "NES", "NSW", "NEW"]; // the four edge (T) pieces' open edges
+  const INNER_KEYS = ["NE", "SE", "SW", "NW"]; // inside corners, by their open diagonal
+  // "en", "Ne", "NE" -> "NE"; anything that isn't one of N/S plus one of E/W -> ""
+  const normDiag = (k) => { const u = String(k).toUpperCase(); if (!/^[NESW]{2}$/.test(u)) return ""; const ns = u.match(/[NS]/g) || [], ew = u.match(/[EW]/g) || []; return ns.length === 1 && ew.length === 1 ? ns[0] + ew[0] : ""; };
   const normOpen = (s) => EDGES.split("").filter((e) => String(s || "").toUpperCase().includes(e)).join("");
   // Parse and check a layout (object or JSON text). Returns { layout, errors }; layout is null when
   // it can't be used. Warnings that don't stop use are in layout.warnings.
@@ -247,9 +250,24 @@
           calm.set(open, t);
         }
       }
+      // optional inside-corner pieces, by the open diagonal: where two walls meet at an inside corner
+      const inner = new Map();
+      if (p && p.inner !== undefined && p.inner !== null) {
+        if (typeof p.inner !== "object" || Array.isArray(p.inner)) errors.push(`pack ${id}: inner must be an object of open diagonal -> tile`);
+        else for (const [k, t] of Object.entries(p.inner)) {
+          const d = normDiag(k);
+          if (!INNER_KEYS.includes(d)) { errors.push(`pack ${id}: inner key "${k}" is not one of ${INNER_KEYS.join(", ")}`); continue; }
+          if (inner.has(d)) { errors.push(`pack ${id}: inner "${d}" given twice`); continue; }
+          if (!Number.isInteger(t) || t < 1 || t > maxTile) { errors.push(`pack ${id}: inner ${d} tile ${t} is not 1-${maxTile}`); continue; }
+          if (t >= reserved[0] && t <= reserved[1]) { errors.push(`pack ${id}: inner ${d} uses reserved tile ${t}`); continue; }
+          if (owner.has(t)) { errors.push(`tile ${t} is in ${owner.get(t)} and ${id}/inner-${d}`); continue; }
+          owner.set(t, `${id}/inner-${d}`);
+          inner.set(d, t);
+        }
+      }
       const missing = [...roles.keys()].filter((r) => !tiles.has(r));
       if (missing.length && tiles.size) warnings.push(`pack ${id} has no ${missing.join(", ")}`);
-      packs.push({ id, name: (p && p.name) || id, origin: p && Array.isArray(p.origin) ? p.origin.slice(0, 2) : null, tiles, interior, calm });
+      packs.push({ id, name: (p && p.name) || id, origin: p && Array.isArray(p.origin) ? p.origin.slice(0, 2) : null, tiles, interior, calm, inner });
     }
     let template = null;
     if (j.packTemplate && j.packTemplate.cells) {
@@ -275,7 +293,7 @@
       roles: Object.fromEntries([...layout.roles.values()].map((r) => [r.name, { open: r.open, label: r.label }])),
     };
     if (layout.template) o.packTemplate = { size: layout.template.size, cells: Object.fromEntries(layout.template.cells) };
-    o.packs = layout.packs.map((p) => ({ id: p.id, name: p.name, ...(p.origin ? { origin: p.origin } : {}), tiles: Object.fromEntries(p.tiles), ...(p.interior ? { interior: p.interior } : {}), ...(p.calm && p.calm.size ? { calm: Object.fromEntries(p.calm) } : {}) }));
+    o.packs = layout.packs.map((p) => ({ id: p.id, name: p.name, ...(p.origin ? { origin: p.origin } : {}), tiles: Object.fromEntries(p.tiles), ...(p.interior ? { interior: p.interior } : {}), ...(p.calm && p.calm.size ? { calm: Object.fromEntries(p.calm) } : {}), ...(p.inner && p.inner.size ? { inner: Object.fromEntries(p.inner) } : {}) }));
     if (layout.other.length) o.other = layout.other;
     o.reserved = { from: layout.reserved[0], to: layout.reserved[1], label: "Doors, flag, safe zone, goal, fly-over and fly-under" };
     return JSON.stringify(o, null, 1) + "\n";
@@ -310,7 +328,7 @@
       const c = col + dx, r = row + dy;
       if (c < COLS && r < ROWS) tiles.set(role, r * COLS + c + 1);
     }
-    return { id, name, origin: [col, row], tiles, interior: null, calm: new Map() };
+    return { id, name, origin: [col, row], tiles, interior: null, calm: new Map(), inner: new Map() };
   }
 
   // ---- tile ops --------------------------------------------------------------------------------------
@@ -366,7 +384,7 @@
     TileSheet,
     Bmp: { read: readBmp, write: writeBmp, quantize, nearest, fitSheet, defaultPalette },
     LvlFile: { split: splitLvl, join: joinLvl, tileset: tilesetOfLvl },
-    TileLayout: { EDGES, CALM_KEYS, normOpen, parse: parseLayout, toJson: layoutToJson, openOf, pick, roleOfTile, packAt },
+    TileLayout: { EDGES, CALM_KEYS, INNER_KEYS, normOpen, parse: parseLayout, toJson: layoutToJson, openOf, pick, roleOfTile, packAt },
     TileOps: { slotXY, getTile, setTile, flipH, flipV, rotateCW, turnOpen, suggestOpen },
   };
 });

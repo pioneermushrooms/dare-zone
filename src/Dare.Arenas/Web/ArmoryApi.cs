@@ -32,7 +32,7 @@ internal sealed partial class WebServer
             "/armory/generate" => await GenerateWeaponAsync(req, id, body).ConfigureAwait(false),
             "/armory/add" => AddWeapon(id, body),
             "/armory/remove" => ResultReply(_m.Accounts.RemoveArmoryItem(id, Num(body, "id"))),
-            "/armory/slot" => ResultReply(_m.Accounts.SetArmorySlot(id, Str(body, "kind"), (int)Num(body, "ship"), Num(body, "id"))),
+            "/armory/slot" => await ArmorySlotAsync(cur.Account, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
     }
@@ -52,7 +52,7 @@ internal sealed partial class WebServer
                 width = k.Width,
                 height = k.Height,
                 perShip = k.PerShip,
-                generate = k.Prompt ? new[] { "random", "prompt" } : ["random"],
+                generate = !k.Generate ? [] : k.Prompt ? new[] { "random", "prompt" } : ["random"],
             }),
             items = items.Select(i => new { id = i.Id, kind = i.Kind, name = i.Name, source = i.Source, created = i.Created, prompt = i.Prompt }),
             slots,
@@ -70,6 +70,22 @@ internal sealed partial class WebServer
         return new Reply(200, ImageType(image), image, [("Cache-Control", "private, max-age=31536000, immutable")]);
     }
 
+    /// <summary>Puts an item on a weapon, or the pilot's banner (which, when they're in the game, changes there at once).</summary>
+    private async Task<Reply> ArmorySlotAsync(Account account, JsonElement? body)
+    {
+        var kind = Str(body, "kind");
+        var r = _m.Accounts.SetArmorySlot(account.Id, kind, (int)Num(body, "ship"), Num(body, "id"));
+        if (r.Ok && kind == "banner") await ApplyBannerNowAsync(account).ConfigureAwait(false);
+        return ResultReply(r);
+    }
+
+    /// <summary>Shows the pilot's Armory banner (or none) in the game now, when they're in it under that name.</summary>
+    private async Task ApplyBannerNowAsync(Account account)
+    {
+        var px = _m.Accounts.PilotBanner(account.Id);
+        await OnMain(() => { _m.ShowBanner(account.Name, px); return true; }).ConfigureAwait(false);
+    }
+
     private Reply AddWeapon(long accountId, JsonElement? body)
     {
         byte[] image;
@@ -84,6 +100,7 @@ internal sealed partial class WebServer
     private async Task<Reply> GenerateWeaponAsync(HttpListenerRequest req, long accountId, JsonElement? body)
     {
         if (AccountStore.FindArmoryKind(Str(body, "kind")) is not { } kind) return Bad("That isn't one of the weapons.");
+        if (!kind.Generate) return Bad($"{kind.Label}s aren't generated: upload one, or keep one from the Foundry.");
         var mode = Str(body, "mode");
         var prompt = (Str(body, "prompt") ?? "").Trim();
         string serviceMode;

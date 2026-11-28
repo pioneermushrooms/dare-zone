@@ -10,9 +10,13 @@
 <script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
+<script src="/arena/dropdown.js" defer></script>
 <script src="/arena/tileart-styles.js" defer></script>
 <script src="/arena/tileart.js" defer></script>
 <script src="/arena/drawtools.js" defer></script>
+<script src="/arena/tiles.js" defer></script>
+<script src="/arena/elvl.js" defer></script>
+<script src="/arena/labels-layer.js" defer></script>
 <script src="/arena/editor.js" defer></script>
 <script src="/arena/lvz.js" defer></script>
 <script src="/arena/lvz-layer.js" defer></script>
@@ -25,11 +29,11 @@
   <div class="edtools" role="toolbar" aria-label="Tools">
     <button type="button" class="ghost small" id="undo">Undo</button>
     <button type="button" class="ghost small" id="redo">Redo</button>
+    <button type="button" class="ghost small" id="libsave" disabled title="No unsaved changes">Save to my maps</button>
     <button type="button" class="ghost small" id="zoomOut" aria-label="Zoom out">−</button>
     <button type="button" class="ghost small" id="zoomIn" aria-label="Zoom in">+</button>
   </div>
   <div class="edactions">
-    <button type="button" class="ghost small" id="libjump" title="Your saved maps: open, rename or delete">Your maps</button>
     <button type="button" class="ghost small" id="download" title="Download this map (a copy is kept in Your maps)">Download .lvl</button>
     <button type="button" class="hot small" id="publish" disabled>Publish</button>
     <a class="btn small" id="enterarena" href="/" title="Go into this arena in the game">Enter arena</a>
@@ -38,42 +42,42 @@
 </header>
 <div class="edbody">
   <aside class="edside">
+    <div class="row sidetop"><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Make the sidebar and its tiles bigger">Bigger</button></div>
     <section class="libpanel" id="libpanel" aria-labelledby="libtitle">
-      <p class="kicker" id="libtitle">Your maps <span class="dim" id="libcount"></span></p>
-      <ul class="libmaps" id="libmaps"></ul>
-      <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>
-        <button type="button" class="ghost small" id="libsave" title="Keep this map in your maps without publishing it">Save to my maps</button></div>
-      <p class="hint" id="libhint">Every map you add, download or publish is kept here, yours only. Open one to edit it as a draft; the arena changes only when you Publish.</p>
+      <p class="kicker" id="libtitle"><button type="button" class="libtoggle" id="libtoggle" aria-expanded="true" aria-controls="libbody">Your maps <span class="dim" id="libcount"></span></button></p>
+      <div class="libbody" id="libbody">
+        <ul class="libmaps" id="libmaps"></ul>
+        <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label></div>
+      </div>
     </section>
-    <p class="kicker">Start from</p>
-    <div class="row"><select id="startfrom" aria-label="Start from a map"><option value="">a ready-made map…</option><option value="!empty">an empty map</option></select></div>
+    <p class="kicker">New map</p>
+    <div class="row"><select id="startfrom" aria-label="Start a new map"><option value="" hidden selected>Start a new map…</option><option value="!empty">Empty</option><optgroup label="Maps on the server" id="servermaps"></optgroup></select></div>
     <div class="row"><button type="button" class="ghost small" id="randomize">Randomize</button>
       <select id="genlayout" aria-label="Kind of random map"></select></div>
     <div class="row">
-      <select id="gensize" aria-label="Size of a random map"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option><option value="huge">huge</option></select>
-      <select id="gensym" aria-label="Symmetry of a random map"><option value="4">4-way</option><option value="2">2-way</option><option value="1">no mirror</option></select>
-      <select id="genthick" aria-label="Wall thickness"><option value="3">thick walls</option><option value="2">medium walls</option><option value="1">thin walls</option></select></div>
-    <div class="row"><label class="hint" for="gendensity">Rock</label>
-      <input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="How much rock">
-      <label class="hint"><input type="checkbox" id="genflags"> flags</label></div>
+      <select id="gensize" aria-label="Size of a random map" title="How much of the 1024-tile map it covers"><option value="small">small (300 tiles)</option><option value="medium" selected>medium (420)</option><option value="large">large (600)</option><option value="huge">huge (900)</option></select>
+      <select id="gensym" aria-label="Symmetry of a random map" title="Mirrored maps are fair: every team and spawn sees the same map"><option value="4">4-way</option><option value="2">2-way</option><option value="1">no mirror</option></select>
+      <select id="genthick" aria-label="How rock is drawn" title="Solid rock fills every rock tile (the pack's plain interior inside); walls draw only a band round hollow rock"><option value="0">solid rock</option><option value="3">thick walls</option><option value="2">medium walls</option><option value="1">thin walls</option></select></div>
+    <div class="row gendensity" title="How much of the map is rock: open arenas at the left, tight caves, corridors and cover at the right"><label class="hint" for="gendensity">Density</label>
+      <span class="hint">open</span><input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="Density: how much of the map is rock"><span class="hint">tight</span></div>
+    <div class="row"><label class="hint" title="Puts a flag in the roomiest open spot of each mirrored part of the map (the team arena always has its flag rooms)"><input type="checkbox" id="genflags"> Add flags</label>
+      <label class="hint" title="Give the walls the chosen pack's ends, bars, corners and junctions, and put the standard tiles in the map"><input type="checkbox" id="genauto" checked> Fit wall pieces from the pack</label></div>
     <p class="hint" id="genseed"></p>
-    <p class="kicker">Wall tiles</p>
-    <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
-      <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
-    <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
-    <div class="row"><button type="button" class="ghost small" id="stdtiles" title="Put the standard tileset (the packs' art, with plain wall interiors) into this map, so the packs look right here and in game">Use the standard tiles</button></div>
-    <p class="hint" id="stdnote">The packs are drawn from the standard tileset: use it in this map to see (and publish) them as they're meant to look.</p>
-    <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
+    <section class="tilegroup" id="tilegroup" aria-labelledby="tilegrouptitle">
+      <p class="kicker" id="tilegrouptitle">Tileset</p>
+      <div id="tileart"></div>
+      <div class="row"><button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the piece that fits its spot: end, bar, corner, edge, inside corner or junction">Fit pieces: whole map</button>
+        <button type="button" class="ghost small" id="tidysel" disabled title="Fit pieces to the walls in the selection (make one with Select, Lasso or Magic wand)">Fit pieces: selection</button></div>
+      <label class="hint"><input type="checkbox" id="roleview"> Show wall roles</label>
+    </section>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
-    <div class="row palhead"><p class="kicker">Tiles</p><button type="button" class="ghost small" id="palzoom" aria-pressed="false" title="Show the tiles bigger">Bigger</button></div>
+    <p class="kicker">Tiles</p>
     <canvas id="palette" class="px" width="608" height="320" tabindex="0" aria-label="Tile palette: click a tile, or use the arrow keys, to draw with it"></canvas>
     <p class="hint" id="tilesetnote"></p>
     <p class="hint warnnote" id="blanknote" hidden></p>
-    <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
-    <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
-    <div id="tileart"></div>
     <section id="lvzpanel" aria-label="LVZ objects"></section>
+    <section id="labelspanel" class="labelspanel" aria-label="Game labels"></section>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>
     <p class="kicker">Whole map</p>
@@ -101,11 +105,11 @@
         <button type="button" class="ghost small" id="dtFlipV" title="Flip top-bottom (V)">Flip ↕</button>
         <button type="button" class="ghost small" id="dtRot" title="Turn 90° clockwise (])">Turn</button>
         <button type="button" class="ghost small" id="dtFillSel" title="Fill the selection with the current tile">Fill</button>
-        <button type="button" class="ghost small" id="dtTidySel" title="Tidy the walls in the selection">Tidy</button>
+        <button type="button" class="ghost small" id="dtTidySel" title="Give the walls in the selection the pieces that fit">Fit pieces</button>
         <button type="button" class="ghost small" id="dtNone" title="Select nothing (Esc)">Deselect</button></span>
       <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text fill">Mirror
         <select id="dtMirror" aria-label="Mirror drawing"><option value="none">off</option><option value="h">⟷</option><option value="v">↕</option><option value="hv">4-way</option></select></label>
-      <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text fill select lasso wand" title="Give drawn walls the right end, bar, corner and junction pieces"><input type="checkbox" id="dtAuto" checked> Auto-tile</label>
+      <label class="opt" data-tools="pencil line curve spray erase rect round ellipse polygon text fill select lasso wand" title="Give drawn walls the pieces that fit: ends, bars, corners and junctions"><input type="checkbox" id="dtAuto" checked> Auto-tile</label>
       <span class="opthint" id="dtHint"></span>
     </div>
     <div class="edcanvas">

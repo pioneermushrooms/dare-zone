@@ -132,6 +132,7 @@ function route() {
   if (shown === "graphics") loadGraphics();
   if (shown === "tiles") openTiles();
   if (shown === "lvz") openLvz();
+  if (shown === "gamemode" && typeof GameModeTab !== "undefined") GameModeTab.show();
 }
 
 /**
@@ -725,30 +726,15 @@ function sweepIcons() { for (const c of [...observed, ...shown]) if (!c.isConnec
 stillMotion.addEventListener?.("change", () => { for (const c of shown) drawIcon(c, 0); runIcons(); });
 document.addEventListener("visibilitychange", runIcons);
 
-/** The pilot's saved weapons (or ships) that fit this card: click one to use it here. */
-function savedList(arena, slot) {
-  const where = isShipSlot(slot.name) ? "shipyard" : "armory";
-  const mine = savedFor(slot);
-  const head = el("div", { class: "savedhead" }, el("span", { class: "title", text: `Your ${where}` }));
-  if (saved) head.append(el("span", { class: "count", text: String(mine.length) }));
-  const box = el("div", { class: "saved" }, head);
-  const list = el("ul", { class: "savedlist", "aria-label": `Your ${where}` });
-  if (!mine.length) {
-    list.append(el("li", { class: "empty", text: saved ? `Ones you make or upload land here.` : `Sign in to keep them in your ${where}.` }));
-    box.append(list);
-    return box;
-  }
-  for (const it of mine) {
-    const art = iconCanvas(40, it.name);
-    const img = new Image();
-    img.addEventListener("load", () => showIcon(art, img, slot.name));
-    img.src = it.url;
-    const b = el("button", { type: "button", class: "savedthumb", title: `${it.name}: use it for ${slot.label}` }, art, el("span", { class: "name", text: it.name }));
-    b.addEventListener("click", () => void useSaved(arena, slot, it));
-    list.append(el("li", null, b));
-  }
-  box.append(list);
-  return box;
+// ---- the Armory tab: a section per group (Ships, Weapons, Items, Effects, Map, Screen, Tilesets) ----
+// Each section has one bar (which picture, Upload, Generate) and, for ships and weapons, one shelf
+// of the pilot's own Shipyard or Armory; each picture's card keeps only its Download (and Reset).
+const gfxPick = new Map(); // group -> the slot name its bar acts on
+let tilesets = null; // { max, tilesets: [] } of the signed-in pilot, or null
+
+async function loadTilesets() {
+  const { body } = await getJson(API + "/tilesets");
+  tilesets = body?.ok ? { max: body.max, tilesets: body.tilesets } : null;
 }
 
 /** Puts one of the pilot's saved items on the arena's `slot`. */
@@ -759,12 +745,22 @@ async function useSaved(arena, slot, item) {
   await setGraphic(arena, slot, await r.blob());
 }
 
+async function downloadUrl(url, stem, what) {
+  try {
+    const r = await fetch(url, { credentials: "same-origin" });
+    if (!r.ok) throw new Error();
+    saveFile(new Uint8Array(await r.arrayBuffer()), slug(stem) || "graphic");
+  } catch {
+    msg($("gfxmsg"), `Couldn't download ${what}.`, false);
+  }
+}
+
 async function loadGraphics() {
   const arena = current?.arena;
   if (!arena) return;
   const host = $("gfxgroups");
   if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; sweepIcons(); }
-  const [{ body }] = await Promise.all([getJson(API + "/graphics?arena=" + encodeURIComponent(arena)), loadSaved()]);
+  const [{ body }] = await Promise.all([getJson(API + "/graphics?arena=" + encodeURIComponent(arena)), loadSaved(), loadTilesets()]);
   if (current?.arena !== arena) return;
   if (!body?.ok) { host.replaceChildren(el("p", { class: "msg bad", text: body?.message || "Couldn't load the graphics." })); return; }
   const owner = current.role === "owner";
@@ -773,51 +769,146 @@ async function loadGraphics() {
     if (!groups.has(slot.group)) groups.set(slot.group, []);
     groups.get(slot.group).push(slot);
   }
-  host.replaceChildren(...[...groups].map(([group, slots]) =>
-    el("div", null, el("h3", { text: group }), el("div", { class: "gfxgrid" }, ...slots.map((s) => gfxCard(arena, s, owner))))));
+  host.replaceChildren(...[...groups].map(([group, slots]) => gfxSection(arena, group, slots, owner)), tilesetSection(arena));
   sweepIcons();
+}
+
+/** One group: its bar (owner only), its shelf of the pilot's own, then a card per picture. */
+function gfxSection(arena, group, slots, owner) {
+  let pick = slots.find((s) => s.name === gfxPick.get(group)) ?? slots[0];
+  const cards = new Map(slots.map((s) => [s.name, gfxCard(arena, s, owner)]));
+  const sec = el("section", { class: "gfxsection", "aria-label": group });
+  const head = el("div", { class: "gfxsechead" }, el("h3", { text: group }));
+  sec.append(head);
+  let shelf = null;
+  const choose = (slot) => {
+    pick = slot;
+    gfxPick.set(group, slot.name);
+    for (const [name, card] of cards) card.classList.toggle("picked", owner && name === slot.name);
+    if (owner) { which.value = slot.name; fillGen(); }
+    if (shelf && isShipSlot(slot.name)) shelf.replaceWith(shelf = savedShelf(arena, slots, pick));
+  };
+  let which = null, gen = null;
+  const fillGen = () => {
+    gen.replaceChildren(el("option", { value: "", text: "Generate…" }), ...pick.generate.map((m) => el("option", { value: m, text: GEN_LABELS[m] || m })));
+    gen.disabled = !pick.generate.length;
+  };
+  if (owner) {
+    which = el("select", { "aria-label": `Which ${group.toLowerCase()} picture` },
+      ...slots.map((s) => el("option", { value: s.name, text: s.label })));
+    which.addEventListener("change", () => choose(slots.find((s) => s.name === which.value)));
+    const file = el("input", { type: "file", accept: ".png,.bmp,.bm2,image/png,image/bmp", hidden: "" });
+    const up = el("button", { type: "button", class: "small", text: "Upload…" });
+    up.addEventListener("click", () => file.click());
+    file.addEventListener("change", async () => {
+      const f = file.files[0]; file.value = "";
+      if (f) await setGraphic(arena, pick, f, { name: f.name.replace(/\.[^.]+$/, ""), source: "uploaded" });
+    });
+    gen = el("select", { "aria-label": "Generate a new picture" });
+    gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, pick, m); });
+    head.append(el("div", { class: "gfxbar" }, el("label", { class: "for" }, "For ", which), up, gen, file));
+    for (const [name, card] of cards) {
+      card.addEventListener("click", (e) => { if (!e.target.closest("button, select, input, a")) choose(slots.find((s) => s.name === name)); });
+    }
+    if (keepsOnAccount(slots[0])) sec.append(shelf = savedShelf(arena, slots, pick));
+  }
+  sec.append(el("div", { class: "gfxgrid" }, ...cards.values()));
+  choose(pick);
+  return sec;
+}
+
+/** The pilot's own Shipyard (ships) or Armory (weapons), once per section: click one to put it on. */
+function savedShelf(arena, slots, pick) {
+  const ships = isShipSlot(slots[0].name);
+  const where = ships ? "Shipyard" : "Armory";
+  const mine = ships ? savedFor(slots[0]) : slots.flatMap((s) => savedFor(s).map((i) => ({ ...i, slot: s })));
+  const head = el("div", { class: "savedhead" }, el("span", { class: "title", text: `Your ${where}` }));
+  if (saved) head.append(el("span", { class: "count", text: String(mine.length) }),
+    el("span", { class: "how", text: mine.length ? (ships ? `Click one to put it on ${pick.label}.` : "Click one to put it on this arena.") : "" }));
+  const list = el("ul", { class: "savedlist", "aria-label": `Your ${where}` });
+  if (!mine.length) {
+    list.append(el("li", { class: "empty", text: saved ? `Ones you make or upload here land in your ${where}.` : `Sign in to keep them in your ${where}.` }));
+  }
+  for (const it of mine) {
+    const slot = it.slot ?? pick;
+    const art = iconCanvas(40, it.name);
+    const img = new Image();
+    img.addEventListener("load", () => showIcon(art, img, slot.name));
+    img.src = it.url;
+    const b = el("button", { type: "button", class: "savedthumb", title: `${it.name}: put it on ${slot.label}` }, art, el("span", { class: "name", text: it.name }));
+    b.addEventListener("click", () => void useSaved(arena, slot, it));
+    const dl = el("button", { type: "button", class: "savedget", text: "Download", title: `Save ${it.name} as a file` });
+    dl.addEventListener("click", () => void downloadUrl(it.url, it.name, it.name));
+    list.append(el("li", null, b, dl));
+  }
+  return el("div", { class: "saved" }, head, list);
 }
 
 function gfxCard(arena, slot, owner) {
   const canvas = iconCanvas(88, slot.label + " now");
-  const srcText = slot.source === "arena" ? "Yours" : slot.source === "lvz" ? "From " + slot.lvzFile : "Stock";
+  const srcText = slot.source === "arena" ? "This arena's" : slot.source === "lvz" ? "From " + slot.lvzFile : "Stock";
+  const acts = el("div", { class: "acts" });
   const card = el("div", { class: "gfxcard" },
     el("div", { class: "head" }, el("b", { text: slot.label }), el("span", { class: "src " + slot.source, text: srcText })),
     el("div", { class: "thumb" }, canvas),
-    el("span", { class: "hint", text: slot.hint }));
+    el("span", { class: "hint", text: slot.hint }), acts);
   drawGraphic(canvas, arena, slot, false);
-  if (owner) {
-    const file = el("input", { type: "file", accept: ".png,.bmp,.bm2,image/png,image/bmp", hidden: "" });
-    const up = el("button", { type: "button", class: "small", text: "Upload" });
-    up.addEventListener("click", () => file.click());
-    file.addEventListener("change", async () => {
-      const f = file.files[0]; file.value = "";
-      if (f) await setGraphic(arena, slot, f, { name: f.name.replace(/\.[^.]+$/, ""), source: "uploaded" });
-    });
-    const acts = el("div", { class: "acts" }, up, file);
-    if (slot.generate.length) {
-      const gen = el("select", { "aria-label": "Generate a new " + slot.label });
-      gen.append(el("option", { value: "", text: "Generate…" }), ...slot.generate.map((m) => el("option", { value: m, text: GEN_LABELS[m] || m })));
-      gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, slot, m); });
-      acts.append(gen);
-    }
-    if (keepsOnAccount(slot)) card.append(savedList(arena, slot));
-    if (slot.source === "arena") {
-      const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
-      reset.addEventListener("click", async () => {
-        if (!await Dlg.confirm(`Put ${slot.label} back to the game's own picture?`, { title: "Reset picture", ok: "Reset", danger: true })) return;
-        const { body } = await postJson("/graphics/clear", { arena, name: slot.name });
-        msg($("gfxmsg"), webMessage(body?.message), body?.ok);
-        if (body?.ok) { loadGraphics(); refreshRestart(); }
-      });
-      acts.append(reset);
-    }
-    card.append(acts);
-  }
   const download = el("button", { type: "button", class: "small ghost", text: "Download", title: `Save ${slot.label} as a file` });
   download.addEventListener("click", () => void downloadGraphic(arena, slot));
-  (card.querySelector(".acts") ?? card.appendChild(el("div", { class: "acts" }))).append(download);
+  acts.append(download);
+  if (owner && slot.source === "arena") {
+    const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
+    reset.addEventListener("click", async () => {
+      if (!await Dlg.confirm(`Put ${slot.label} back to the game's own picture?`, { title: "Reset picture", ok: "Reset", danger: true })) return;
+      const { body } = await postJson("/graphics/clear", { arena, name: slot.name });
+      msg($("gfxmsg"), webMessage(body?.message), body?.ok);
+      if (body?.ok) { loadGraphics(); refreshRestart(); }
+    });
+    acts.append(reset);
+  }
   return card;
+}
+
+/** Tilesets: the pilot's own (the Tile Editor's library, the map editor's Tile art). An arena
+ *  gets one inside its map, so they're put on from the map editor, not here. */
+function tilesetSection(arena) {
+  const editor = "/arena/map?arena=" + encodeURIComponent(arena);
+  const sec = el("section", { class: "gfxsection", "aria-label": "Tilesets" });
+  const file = el("input", { type: "file", accept: ".bmp,.bm2,image/bmp", hidden: "" });
+  const up = el("button", { type: "button", class: "small", text: "Upload…" });
+  up.addEventListener("click", () => { if (tilesets) file.click(); else msg($("gfxmsg"), "Sign in to keep tilesets.", false); });
+  file.addEventListener("change", async () => {
+    const f = file.files[0]; file.value = "";
+    if (f) await uploadTileset(f);
+  });
+  const make = el("a", { class: "btn small ghost", href: "#tiles", text: "Draw one" });
+  const gen = el("a", { class: "btn small ghost", href: editor, text: "Generate… (map editor)", title: "The map editor's Tile art draws a whole new tileset in a style" });
+  sec.append(el("div", { class: "gfxsechead" }, el("h3", { text: "Tilesets" }), el("div", { class: "gfxbar" }, up, make, gen, file)));
+  const list = el("ul", { class: "savedlist", "aria-label": "Your tilesets" });
+  const sets = tilesets?.tilesets ?? [];
+  const head = el("div", { class: "savedhead" }, el("span", { class: "title", text: "Your tilesets" }));
+  if (tilesets) head.append(el("span", { class: "count", text: `${sets.length} of ${tilesets.max}` }),
+    el("span", { class: "how", text: "Put one in this arena's map from the map editor's Tile art menu, or open it in the Tile Editor." }));
+  if (!sets.length) list.append(el("li", { class: "empty", text: tilesets ? "Tilesets you draw, upload or keep from the Foundry land here." : "Sign in to keep tilesets." }));
+  for (const t of sets) {
+    const url = `${API}/tilesets/file?id=${t.id}`;
+    const img = el("img", { class: "tilethumb", src: url, alt: "", loading: "lazy" });
+    const open = el("a", { class: "savedthumb", href: editor, title: `${t.name}: put it in the map from Tile art` }, img, el("span", { class: "name", text: t.name }));
+    const dl = el("button", { type: "button", class: "savedget", text: "Download", title: `Save ${t.name} as a .bmp` });
+    dl.addEventListener("click", () => void downloadUrl(url, t.name, t.name));
+    list.append(el("li", null, open, dl));
+  }
+  sec.append(el("div", { class: "saved tilesets" }, head, list));
+  return sec;
+}
+
+async function uploadTileset(f) {
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const name = f.name.replace(/\.[^.]+$/, "").slice(0, 40) || "tileset";
+  msg($("gfxmsg"), `Keeping ${name}…`, true);
+  const { body } = await post(`${API}/tilesets/save?name=${encodeURIComponent(name)}`, JSON.stringify({ bmp: toBase64(bytes), roles: null }), "application/json");
+  msg($("gfxmsg"), body?.ok ? `${name} is in your tilesets. Put it in the map from the map editor's Tile art menu.` : (body?.message || "Couldn't keep that tileset."), !!body?.ok);
+  if (body?.ok) loadGraphics();
 }
 
 // The arena's current picture (or the stock one) as the card's icon; ships' stock pictures share one file.
@@ -1201,10 +1292,12 @@ async function saveSetSubmit(e) {
 }
 
 // The diff dialog: what a set, a file or a list of settings would change, applied to the chosen arena.
-const diff = { source: null, rows: [], fileSkipped: [] };
+const diff = { source: null, rows: [], fileSkipped: [], out: null };
 
-async function openDiff(source, title, name) {
+// outNode: where messages go when the dialog isn't open (the Settings tab's by default).
+async function openDiff(source, title, name, outNode) {
   diff.source = source;
+  diff.out = outNode || null;
   $("difftitle").textContent = title;
   $("diffsub").dataset.source = title.replace(/^Apply /, "");
   $("diffsub").dataset.name = name || "";
@@ -1223,7 +1316,7 @@ async function previewDiff() {
   dlg.classList.remove("busy");
   if (!body?.ok) {
     if (dlg.open) msg($("diffmsg"), body?.message || "That didn't work.", false);
-    else msg($("setsmsg"), body?.message || "That didn't work.", false);
+    else msg(diff.out || $("setsmsg"), body?.message || "That didn't work.", false);
     return false;
   }
   diff.rows = body.rows; diff.fileSkipped = body.fileSkipped || [];
@@ -1284,7 +1377,7 @@ async function applyDiff(e) {
   const { body } = await postJson("/settings/apply", { arena, settings });
   if (!body.ok) { msg($("diffmsg"), webMessage(body.message), false); diffCount(); return; }
   $("diffdlg").close();
-  msg($("setsmsg"), webMessage(body.message), true);
+  msg(diff.out || $("setsmsg"), webMessage(body.message), true);
   if (arena === current.arena) {
     for (const r of body.rows || []) if (r.status === "change") { const st = findSetting(r.section, r.key); if (st) st.value = r.value; }
     renderSettings(lastSettings);

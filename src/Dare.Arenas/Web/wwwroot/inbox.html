@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbox — SubSpace Foundation</title>
+<link rel="stylesheet" href="/account/style.css">
+<link rel="stylesheet" href="/account/header.css">
+<script src="/account/inbox.js" defer></script>
+</head>
+<body data-page="inbox">
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+  <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/account/header.js"></script>
+
+<main class="panel narrow" id="loading"><p class="dim">Loading…</p></main>
+
+<main class="inbox" id="page" hidden>
+<div class="page-head"><p class="eyebrow">YOUR INBOX</p><h1>Inbox</h1></div>
+<nav class="settabs inboxtabs" role="tablist" aria-label="Inbox">
+  <button type="button" class="settab" role="tab" id="tab-messages" data-tab="messages" aria-selected="true">Messages <span class="count" id="msgcount" hidden></span></button>
+  <button type="button" class="settab" role="tab" id="tab-notes" data-tab="notes" aria-selected="false">Notifications <span class="count" id="notecount" hidden></span></button>
+</nav>
+
+<!-- messages: conversations on the left, the open one on the right -->
+<section class="msgs" data-pane="messages">
+  <aside class="panel convs">
+    <div class="convhead"><h2>Conversations</h2><button type="button" class="small" id="newmsg">New message</button></div>
+    <ul class="convlist" id="convlist"></ul>
+    <p class="dim" id="convnone" hidden>No messages yet. Start one with New message, or from a pilot's profile.</p>
+  </aside>
+  <div class="panel thread" id="thread">
+    <div class="threadhead" id="threadhead">
+      <h2 id="threadwith">Pick a conversation</h2>
+      <a class="small" id="threadprofile" hidden>Profile →</a>
+    </div>
+    <form class="tofield" id="toform" hidden>
+      <label>To <input id="to" autocomplete="off" maxlength="24" placeholder="Pilot name" aria-label="To"></label>
+      <button type="submit" class="small">Open</button>
+    </form>
+    <p class="dim" id="threadempty">Your conversation shows here.</p>
+    <button type="button" class="ghost small" id="older" hidden>Older messages</button>
+    <ol class="msglist" id="msglist" aria-live="polite"></ol>
+    <form class="compose" id="compose" hidden>
+      <textarea id="msgtext" rows="2" maxlength="1000" aria-label="Your message" placeholder="Write a message (Enter sends, Shift+Enter for a new line)"></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+    <p class="msg" id="sendmsg" role="status"></p>
+  </div>
+</section>
+
+<!-- notifications: messages on your wall, replies to you, @mentions -->
+<section class="panel notes" data-pane="notes" hidden>
+  <ul class="notelist" id="notelist"></ul>
+  <p class="dim" id="notenone" hidden>Nothing yet. When someone writes on your wall, replies to you or @mentions you, it shows here.</p>
+</section>
+</main>
+</body>
+</html>

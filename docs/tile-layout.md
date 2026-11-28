@@ -74,7 +74,8 @@ The rest of the sheet is listed under `other` (decor that is not a full pack) an
   "packs": [ { "id": "…", "name": "…", "origin": [col, row],          // origin optional
                "tiles": { "<role>": tileNumber },                     // required, explicit
                "interior": tileNumber,                                // optional, see below
-               "calm": { "ESW": t, "NES": t, "NSW": t, "NEW": t } } ], // optional, any subset
+               "calm": { "ESW": t, "NES": t, "NSW": t, "NEW": t },    // optional, any subset
+               "inner": { "NE": t, "SE": t, "SW": t, "NW": t } } ],   // optional, any subset
   "other": [ { "tile": n | "tiles": [n…], "label": "…" } ],            // optional
   "reserved": { "from": 162, "to": 190, "label": "…" }                 // optional
 }
@@ -86,7 +87,7 @@ Rules a reader can rely on (checked by `TileLayout.parse` in
 - each `open` is a subset of `NESW` and no two roles share the same set;
 - tile numbers are 1–161, outside `reserved`, and no tile is in two packs;
 - a pack may leave roles out (a partial pack); tools fall back as below;
-- `interior` and `calm` tiles follow the same tile rules; neither is a role.
+- `interior`, `calm` and `inner` tiles follow the same tile rules; none of them is a role.
 
 **Interior** (optional, per pack): a plain piece for a cell whose eight neighbours, diagonals
 included, are all wall: the inside of a thick wall. `fill` stays the piece for crosses and the
@@ -100,6 +101,12 @@ uses it where the cell on the edge's inner side is `interior`, so the edge of a 
 quiet while a thin line's T junction keeps its decoration. Any subset may be given; a missing one
 means the ordinary T piece. Same tile checks as pack tiles; keys must be one of those four sets
 (letters in any order).
+
+**Inside corners** (optional, per pack): `inner` maps an open diagonal (`NE`, `SE`, `SW`, `NW`) to
+the piece for a wall cell whose four sides are wall but whose one diagonal neighbour on that side
+is open: the inside corner where two thick walls meet. Any subset may be given; a missing one
+means `fill` (or `interior`). Same tile checks as pack tiles; keys are one of N/S plus one of E/W,
+in either order or case (`en` reads as `NE`).
 
 **Fallbacks** when a pack lacks the exact role: drop open edges, fewest first, and take the
 first role that exists; among two-edge pieces a straight bar comes before a corner, so a missing

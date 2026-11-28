@@ -6,22 +6,29 @@
 <title>Arena editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <link rel="stylesheet" href="/arena/header.css">
-<script src="/arena/header.js" defer></script>
 <link rel="stylesheet" href="/arena/tiles.css">
 <link rel="stylesheet" href="/arena/lvz.css">
 <link rel="stylesheet" href="/arena/chat.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
+<script src="/arena/tileart-styles.js" defer></script>
+<script src="/arena/tileart.js" defer></script>
 <script src="/arena/tiles.js" defer></script>
 <script src="/arena/tile-studio.js" defer></script>
 <script src="/arena/lvz.js" defer></script>
 <script src="/arena/lvz-studio.js" defer></script>
 <script src="/arena/app.js" defer></script>
+<script src="/arena/gamemode-ships.js" defer></script>
+<script src="/arena/gamemode-rules.js" defer></script>
+<script src="/arena/elvl.js" defer></script>
+<script src="/arena/labels-layer.js" defer></script>
+<script src="/arena/gamemode.js" defer></script>
 <script type="module" src="/arena/chat.js"></script>
 </head>
 <body data-page="me">
 <header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
   <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" aria-current="page" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/arena/header.js"></script>
 <div class="page-head"><h1>Arena editor</h1></div>
 
 <main class="panel narrow" id="signin" hidden>
@@ -38,8 +45,9 @@
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#tiles" data-view="tiles" data-needs="arena">Tile Editor</a>
     <a href="#lvz" data-view="lvz" data-needs="arena">LVZ</a>
-    <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
+    <a href="#graphics" data-view="graphics" data-needs="arena">Armory</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
+    <a href="#gamemode" data-view="gamemode" data-needs="arena">Game mode</a>
     <a href="#messages" data-view="messages" data-needs="arena">Messages</a>
     <a href="#bots" id="botnav" data-view="bots" data-needs="arena" hidden>Bots</a>
     <a href="#crew" data-view="crew" data-needs="arena">Crew</a>
@@ -149,7 +157,7 @@
           <p class="dim" id="arenameta"></p>
           <div class="tiles">
             <a class="btn" href="#map">Edit map</a>
-            <a class="btn ghost" href="#graphics">Graphics</a>
+            <a class="btn ghost" href="#graphics">Armory</a>
             <a class="btn ghost" href="#settings">Settings</a>
             <a class="btn ghost" href="#crew" id="crewtile">Crew</a>
             <a class="btn ghost" href="#bots" id="botstile" hidden>Bots</a>
@@ -192,9 +200,9 @@
     </section>
 
     <section data-view="graphics" hidden>
-      <p class="kicker">Graphics</p>
-      <h2>Game graphics</h2>
-      <p class="dim">Give this arena its own ships, bombs, bullets, items and effects: upload a picture or generate one. Each keeps the game's frame layout, shown under its name. Players see them after the arena restarts.</p>
+      <p class="kicker">Armory</p>
+      <h2>This arena's armory</h2>
+      <p class="dim">The ships, weapons, items, effects and map art everyone flies with here. In each section, pick a picture, then upload one, generate one, or put on one from your own Shipyard or Armory (what you make here is kept there too, for other arenas). Each keeps the game's frame layout, shown under its name. Players see changes after the arena restarts.</p>
       <div id="gfxgroups" class="gfxgroups"></div>
       <p class="msg" id="gfxmsg" role="status"></p>
       <h2>Graphics files (.lvz)</h2>
@@ -233,6 +241,14 @@
       <p class="msg" id="setmsg"></p>
       <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
       <div id="settings"></div>
+    </section>
+
+    <section data-view="gamemode" hidden>
+      <p class="kicker">Game mode</p>
+      <h2>Game mode</h2>
+      <p class="dim">Rules you keep on your account and apply to any arena you run. You see every change before it's applied.</p>
+      <div id="gamemode" class="gamemode"></div>
+      <p class="msg" id="gmmsg" role="status"></p>
     </section>
 
     <section data-view="messages" hidden>

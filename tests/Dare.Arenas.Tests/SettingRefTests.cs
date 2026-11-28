@@ -8,6 +8,7 @@ public class SettingRefTests
     [InlineData("Bullet:BulletSpeed", "Bullet", "BulletSpeed")]
     [InlineData("  Misc:Some_Key2 ", "Misc", "Some_Key2")]
     [InlineData("a:b", "a", "b")]
+    [InlineData("Spawn:Team0-X", "Spawn", "Team0-X")] // the server's team spawn keys have a dash
     public void Parses_valid_references(string text, string section, string key)
     {
         Assert.True(SettingRef.TryParse(text, out var s, out var k));
@@ -29,6 +30,7 @@ public class SettingRefTests
     [InlineData("Bullet:Spé")]
     [InlineData("Bullet:Sp\needd")]
     [InlineData("Sec-tion:Key")]
+    [InlineData("Spawn:-X")]
     public void Rejects_invalid_references(string text)
     {
         Assert.False(SettingRef.TryParse(text, out var s, out var k));
