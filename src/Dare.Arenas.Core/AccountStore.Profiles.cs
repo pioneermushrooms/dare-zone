@@ -52,7 +52,7 @@ public sealed partial class AccountStore
             var me = LoadAccount("id = $id", ("$id", accountId));
             if (me is null || me.Status != "active") return Fail("Sign in again first.");
             if (avatarShip is { } ship &&
-                Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $s AND account_id = $a", ("$s", ship), ("$a", accountId)) == 0)
+                Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $s AND person_id = $a", ("$s", ship), ("$a", PersonKey(accountId))) == 0)
                 return Fail("Pick one of your own Shipyard ships.");
             Run("""
                 INSERT INTO pilot_profiles(account_id, bio, avatar_ship, show_contribs, show_arenas, show_ships, mod_hidden, updated)

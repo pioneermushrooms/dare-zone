@@ -143,4 +143,26 @@ public sealed partial class AccountStore
         }
         Run("UPDATE accounts SET person_id = $to WHERE person_id = $from", ("$to", into), ("$from", from));
     }
+
+    /// <summary><see cref="PersonOfLocked"/> for queries: -1 (matches nothing) when there is no such row. Under the lock.</summary>
+    private long PersonKey(long accountId) => PersonOfLocked(accountId) ?? -1;
+
+    /// <summary>The account libraries: who owns each item (the name that made it stays in <c>account_id</c>).</summary>
+    private static readonly string[] LibraryTables = ["armory_items", "shipyard_ships", "gallery_items"];
+
+    /// <summary>
+    /// Adds <c>person_id</c> to the libraries and fills it for rows that have none yet (made before
+    /// this, or by older code) from the name that made them. Rows whose name is gone stay without
+    /// one and are no longer shown.
+    /// </summary>
+    private void AddLibraryPersons()
+    {
+        foreach (var t in LibraryTables)
+        {
+            if (Scalar($"SELECT COUNT(*) FROM pragma_table_info('{t}') WHERE name = 'person_id'") == 0)
+                Exec($"ALTER TABLE {t} ADD COLUMN person_id INTEGER NULL;");
+            Exec($"CREATE INDEX IF NOT EXISTS ix_{t}_person ON {t}(person_id);");
+            Exec($"UPDATE {t} SET person_id = (SELECT a.person_id FROM accounts a WHERE a.id = {t}.account_id) WHERE person_id IS NULL;");
+        }
+    }
 }

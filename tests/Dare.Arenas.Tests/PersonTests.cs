@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Dare.Arenas.Core;
 using Microsoft.Data.Sqlite;
 
@@ -137,5 +138,74 @@ public sealed class PersonTests : IDisposable
         SqliteConnection.ClearAllPools();
         _s = new AccountStore(_db, () => _now);
         Assert.Equal(before, _s.PersonOf(4));
+    }
+
+    private static byte[] Png(uint w, uint h, int pad = 64)
+    {
+        var b = new byte[33 + pad];
+        new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A }.CopyTo(b, 0);
+        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(8), 13);
+        "IHDR"u8.CopyTo(b.AsSpan(12));
+        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(16), w);
+        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(20), h);
+        return b;
+    }
+
+    [Fact]
+    public void armory_and_gallery_are_the_accounts()
+    {
+        var dare = SignUp("dare", "dare@example.com");
+        Assert.True(_s.AddPilot(dare.Id, "nerd", out var nerd).Ok);
+        var stranger = Claim("stranger");
+        Assert.True(_s.AddArmoryItem(dare.Id, "bombs", "Plasma", "uploaded", Png(160, 208, 1), out var plasma).Ok);
+        Assert.Single(_s.Armory(nerd!.Id).Items);
+        Assert.True(_s.SetArmorySlot(nerd.Id, "bombs", 1, plasma).Ok);
+        Assert.Empty(_s.Armory(stranger.Id).Items);
+        Assert.False(_s.SetArmorySlot(stranger.Id, "bombs", 1, plasma).Ok);
+
+        var shared = _s.AddGalleryFromSaved(nerd.Id, "armory", plasma, null, 0, null, "");
+        Assert.True(shared.Ok, shared.Message);
+        Assert.True(_s.Gallery(dare.Id).Items.Single().Mine);
+        Assert.False(_s.Gallery(stranger.Id).Items.Single().Mine);
+        Assert.Equal("nerd", _s.Gallery(dare.Id).Items.Single().By);
+        // the name that shared it is deleted: the item stays, credited to the account's other name
+        Assert.True(_s.DeletePilot(dare.Id, "nerd", out _).Ok);
+        Assert.Equal("dare", _s.Gallery(dare.Id).Items.Single().By);
+        Assert.False(_s.RemoveGalleryItem(stranger.Id, shared.Id, staff: false).Ok);
+        Assert.True(_s.RemoveGalleryItem(dare.Id, shared.Id, staff: false).Ok);
+    }
+
+    [Fact]
+    public void a_loadout_is_per_name_and_can_be_loaded_from_another_name()
+    {
+        var dare = SignUp("dare", "dare@example.com");
+        Assert.True(_s.AddPilot(dare.Id, "nerd", out var nerd).Ok);
+        Assert.True(_s.AddShipyardShip(dare.Id, "Hawk", "random", Png(360, 144), out var hawk).Ok);
+        Assert.True(_s.SetShipyardSlot(dare.Id, 3, hawk).Ok);
+        Assert.True(_s.SavePilotSettings(dare.Id, "[keys]\nFire=Space\n").Ok);
+        Assert.Equal(0, _s.Shipyard(nerd!.Id).Slots[2]);
+        Assert.Equal("", _s.PilotSettings(nerd.Id));
+
+        Assert.True(_s.CopyLoadout(nerd.Id, "dare", "nerd", LoadoutParts.Ships).Ok);
+        Assert.Equal(hawk, _s.Shipyard(nerd.Id).Slots[2]);
+        Assert.Equal("", _s.PilotSettings(nerd.Id)); // only what was asked
+        Assert.True(_s.CopyLoadout(nerd.Id, "dare", "nerd", LoadoutParts.All).Ok);
+        Assert.Equal(_s.PilotSettings(dare.Id), _s.PilotSettings(nerd.Id));
+
+        var stranger = Claim("stranger");
+        Assert.False(_s.CopyLoadout(stranger.Id, "dare", "stranger", LoadoutParts.All).Ok);
+        Assert.False(_s.CopyLoadout(dare.Id, "dare", "dare", LoadoutParts.All).Ok);
+    }
+
+    [Fact]
+    public void joining_two_accounts_brings_the_libraries_along()
+    {
+        var dare = SignUp("dare", "dare@example.com");
+        var nomad = Claim("nomad");
+        Assert.True(_s.AddShipyardShip(nomad.Id, "Old", "random", Png(360, 144), out _).Ok);
+        Assert.True(_s.AddShipyardShip(dare.Id, "New", "random", Png(360, 144, 70), out _).Ok);
+        Assert.True(_s.StartAddEmail(nomad.Id, "dare@example.com", out var code).Ok);
+        Assert.True(_s.VerifyAddEmail(nomad.Id, code).Ok);
+        Assert.Equal(new[] { "Old", "New" }, _s.Shipyard(dare.Id).Ships.Select(x => x.Name));
     }
 }
