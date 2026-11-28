@@ -1,6 +1,6 @@
 # Game Mode Wizard — phased design (draft for Chris's approval)
 
-Date: 2026-11-27 · Repo: dare-zone (branch `claude/game-mode-wizard-904376`) · Status: **draft**.
+Date: 2026-11-27 · Repo: dare-zone (branch `claude/game-mode-wizard-904376`) · Status: **approved by Chris 2026-11-27** (overview and phase order; each phase still gets its own design).
 Nothing is built yet. Each phase below gets its own short design, which Chris approves before
 it is built.
 
@@ -83,7 +83,10 @@ trigger/action need one new plugin module.
 
 ## Shape of a game mode
 
-A game mode is a pilot's named record (`pilot_game_modes`, alongside settings sets) holding:
+A game mode is a named record owned by the pilot's **account** (person), not by one pilot name
+(Chris: any fly-as name on the account sees and edits the same game modes, and renaming or
+switching names never loses them). Table `pilot_game_modes` keyed on `person_id`, with an
+optional `made_by` name for credit. It holds:
 
 - `answers`: what the wizard asked and the pilot chose (so the wizard can reopen on it).
 - `settings`: its own `Section:Key → value` map, checked on save with the settings sets' rules
@@ -189,15 +192,15 @@ reused by every game mode.
 Phases 1–3 ship value without a zone restart. Phase 4 is the single server change. Phase 5
 can build on `tile-editor`'s LVZ library, on `main` since 10ed3f5 (`Lvz.RESERVED_IDS`, `Lvz.isReserved`, `Lvz.nextId`).
 
-## Questions for Chris
+## Decided by Chris (2026-11-27)
 
-1. **Screen designer placement**: a toggleable screen overlay on the map editor (recommended:
-   screen objects only make sense over a map, and one place to drag things), or a separate
-   "Screen" tab with a still map picture behind it?
-2. **Order**: start with Phase 1 (ship wizard, quick, no server change) as proposed, or with the
-   timers/screen designer you listed first (needs the rules module, so it lands after Phase 4)?
-3. **Where game modes live**: per pilot and applied to arenas (recommended: reusable across
-   your arenas and shareable later), or one per arena?
+1. The screen designer is a toggleable overlay on the map editor.
+2. Phase order as proposed: Phase 1 (game mode record and ship wizard) first.
+3. Game modes, like every saved item, belong to the **account**, not the pilot name. The
+   `account-person` session (spec `2026-11-27-account-person-design.md`, branch
+   `claude/sleepy-bose-8a4a38`, not yet approved) proposes the key: `person_id`, from
+   `AccountStore.PersonOf(accountId)` / `PersonOfName(name)`; on the web
+   `Accounts.PersonOf(cur.Account.Id)`. Phase 1 uses whatever that session lands.
 
 ## Left to each phase's design
 
