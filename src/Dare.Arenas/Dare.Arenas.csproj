@@ -42,6 +42,11 @@
     <EmbeddedResource Include="../../voice/phrases.json" LogicalName="voice.phrases.json" />
   </ItemGroup>
 
+  <!-- The in-game tutorial script (steps, mentor lines, checks, bot casts). -->
+  <ItemGroup>
+    <EmbeddedResource Include="tutorial/script.json" LogicalName="tutorial.script.json" />
+  </ItemGroup>
+
   <!--
     The server ships Microsoft.Data.Sqlite 9.0.3 / SQLitePCLRaw (managed + native) in its bin/.
     Exclude their runtime/native assets so the plugin folder carries no copy and the server's are used.
