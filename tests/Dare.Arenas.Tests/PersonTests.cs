@@ -223,6 +223,10 @@ public sealed class PersonTests : IDisposable
         Assert.NotNull(arenas.MapFile("nerd", map));
         Assert.Single(arenas.LvzList("dare"));
         Assert.True(arenas.RenameSettingSet("nerd", set, "faster").Ok);
+        Assert.True(arenas.SaveMap("nerd", null, "sky again", new byte[] { 1, 2, 3 }, out var again).Ok);
+        Assert.Equal(map, again); // the same bytes from another name of the account: one row
+        Assert.True(arenas.SaveSettingSet("nerd", null, "slow", new Dictionary<string, string> { ["Warbird:BulletSpeed"] = "1000" }, out _).Ok);
+        Assert.Equal(2, arenas.SettingSets("dare").Count); // the 25-set cap counts the account's sets
         Assert.Empty(arenas.Maps("stranger"));
         Assert.Null(arenas.LvzFileOf("stranger", lvz));
         Assert.False(arenas.RemoveMap("stranger", map).Ok);
