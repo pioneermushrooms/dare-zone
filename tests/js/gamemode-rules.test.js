@@ -6,18 +6,19 @@ const R = require("../../src/Dare.Arenas/Web/wwwroot/gamemode-rules.js");
 
 // Specs like the arena's /api/me settings list: every key the rules module may write.
 const INT_KEYS = ["Team:DesiredTeams", "Team:MaxPerTeam", "Team:MaxFrequency", "Team:MaxTeamDifference", "LegalShip:ArenaMask",
-  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagCount",
+  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "Flag:CarryFlags", "Flag:FlagCount",
   "Flag:WinDelay", "Flag:FlagReward", "Flag:FlagDropDelay", "Flag:FlaggerSpeedAdjustment", "Soccer:BallCount", "Soccer:Reward",
   "Soccer:WinBy", "Periodic:RewardDelay", "Periodic:RewardPoints", "King:DeathCount", "King:MinPlayers", "King:RewardFactor"];
 const BOOL_KEYS = ["Team:ForceEvenTeams", "Misc:TeamKillPoints", "Flag:SplitPoints", "Flag:DropOwned", "Flag:DropCenter",
   "Flag:FlaggerOnRadar", "Flag:PersistentTurfOwners", "Soccer:BallBounce", "Soccer:AllowGuns", "Soccer:AllowBombs", "King:AutoStart"];
 function specs(extra = {}) {
   const s = {};
-  for (const k of INT_KEYS) s[k] = { type: "int", min: k === "Flag:FlagMode" || k === "Kill:FixedKillReward" ? -1 : 0, max: k === "LegalShip:ArenaMask" ? 255 : k === "Flag:FlagCount" ? 256 : k === "Soccer:BallCount" ? 8 : 1000000 };
+  for (const k of INT_KEYS) s[k] = { type: "int", min: k === "Kill:FixedKillReward" ? -1 : 0, max: k === "LegalShip:ArenaMask" ? 255 : k === "Flag:FlagCount" ? 256 : k === "Soccer:BallCount" ? 8 : 1000000 };
   for (const k of BOOL_KEYS) s[k] = { type: "bool" };
   s["Misc:TimerWarnings"] = { type: "text" };
   s["GameMode:Attach"] = { type: "flags" };
   s["Soccer:Mode"] = { type: "enum", choices: R.GOAL_LAYOUTS.map((g) => g.id) };
+  s["Flag:FlagMode"] = { type: "enum", choices: ["CarryAll", "OwnAllDropped", "None"] }; // as the server sends it
   return { ...s, ...extra };
 }
 const game = (objective, more = {}) => R.withDefaults({ objective, ...more });
@@ -27,7 +28,7 @@ test("fight turns flags, balls and periodic off", () => {
   assert.equal(out["Flag:FlagCount"], "0");
   assert.equal(out["Soccer:BallCount"], "0");
   assert.equal(out["Periodic:RewardDelay"], "0");
-  assert.equal(out["Flag:FlagMode"], "-1");
+  assert.equal(out["Flag:FlagMode"], "None");
   assert.equal(out["GameMode:Attach"], "Kills");
 });
 
@@ -35,7 +36,7 @@ test("rabbit is one carried flag with hold time", () => {
   const out = R.settings(game("rabbit"), specs());
   assert.equal(out["Flag:CarryFlags"], "1");
   assert.equal(out["Flag:FlagCount"], "1");
-  assert.equal(out["Flag:FlagMode"], "0");
+  assert.equal(out["Flag:FlagMode"], "CarryAll");
   assert.equal(out["Flag:WinDelay"], "18000");
 });
 
@@ -48,8 +49,9 @@ test("turf uses static flags and periodic", () => {
 });
 
 test("ownall sets flag mode 1 and carryall 0", () => {
-  assert.equal(R.settings(game("ownall"), specs())["Flag:FlagMode"], "1");
-  assert.equal(R.settings(game("carryall"), specs())["Flag:FlagMode"], "0");
+  assert.equal(R.settings(game("ownall"), specs())["Flag:FlagMode"], "OwnAllDropped");
+  assert.equal(R.settings(game("carryall"), specs())["Flag:FlagMode"], "CarryAll");
+  assert.equal(R.settings(game("turf"), specs())["Flag:FlagMode"], "None");
   assert.equal(R.settings(game("carryall"), specs())["Flag:FlagCount"], "6");
 });
 

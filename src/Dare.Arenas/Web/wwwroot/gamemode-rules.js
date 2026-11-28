@@ -33,6 +33,7 @@
   ];
   const FLAG_GAMES = new Set(["carryall", "ownall", "rabbit", "turf"]);
   const ATTACH_ORDER = ["Kills", "Flags", "Balls", "King", "Ships", "ShipChange"];
+  // Flag:FlagMode is an enum setting: the server sends and checks it by name (None, CarryAll, OwnAllDropped).
 
   function defaults() {
     return {
@@ -99,13 +100,13 @@
       "GameMode:Attach": attach(g).join(", ") || "None",
     };
     const noBall = { "Soccer:BallCount": 0 };
-    const noFlags = { "Flag:FlagCount": 0, "Flag:FlagMode": -1 };
+    const noFlags = { "Flag:FlagCount": 0, "Flag:FlagMode": "None" };
     const noPeriodic = { "Periodic:RewardDelay": 0 };
     switch (g.objective) {
       case "carryall": case "ownall": case "rabbit":
         Object.assign(v, noBall, noPeriodic, {
           "Flag:CarryFlags": 1,
-          "Flag:FlagMode": g.objective === "ownall" ? 1 : 0,
+          "Flag:FlagMode": g.objective === "ownall" ? "OwnAllDropped" : "CarryAll",
           "Flag:FlagCount": g.objective === "rabbit" ? 1 : +f.count,
           "Flag:WinDelay": ticks(f.holdSec),
           "Flag:FlagReward": +s.winReward,
@@ -119,7 +120,7 @@
         break;
       case "turf":
         Object.assign(v, noBall, {
-          "Flag:CarryFlags": 0, "Flag:FlagMode": -1,
+          "Flag:CarryFlags": 0, "Flag:FlagMode": "None",
           "Periodic:RewardDelay": ticks(s.turfEverySec), "Periodic:RewardPoints": +s.turfPoints,
           "Flag:PersistentTurfOwners": 1,
         });

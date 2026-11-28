@@ -1,12 +1,15 @@
-// The Game mode tab of /arena/me: the account's game modes and, for now, their Ships panel.
-// Uses app.js (el, $, getJson, postJson, msg, current, lastSettings, openDiff) and gamemode-ships.js.
-// Spec: docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md.
+// The Game mode tab of /arena/me: the account's game modes, the wizard (first time? yes / no / expert) and
+// its panels: Objective, Teams, Scoring, Time, Flags / ball, Ships, Review.
+// Uses app.js (el, $, getJson, postJson, msg, current, lastSettings, openDiff), lvl.js (Lvl.parse),
+// gamemode-ships.js and gamemode-rules.js.
+// Specs: docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md, 2026-11-28-game-mode-phase2-wizard-design.md.
 "use strict";
 
 const GameModeTab = (() => {
   const G = GameModeShips;
-  const PANELS = [["objective", "Objective"], ["teams", "Teams & lives"], ["scoring", "Scoring"], ["time", "Time"],
-    ["flags", "Flags / ball"], ["ships", "Ships"], ["rules", "Timers & rules"]];
+  const R = GameModeRules;
+  const PANELS = [["objective", "Objective"], ["teams", "Teams"], ["scoring", "Scoring"], ["time", "Time"],
+    ["flags", "Flags / ball"], ["ships", "Ships"], ["review", "Review"], ["rules", "Timers & rules"]];
   const PACE_LABELS = { slow: "Slow & deliberate", steady: "Steady", standard: "Standard", fast: "Fast", mayhem: "Crazy mayhem" };
   const ITEM_LABELS = { none: "None", few: "Few", standard: "Standard", lots: "Lots", loads: "Loads" };
   const UPGRADE_LABELS = { off: "Off", slow: "Slow", standard: "Standard", fast: "Fast" };
@@ -20,7 +23,8 @@ const GameModeTab = (() => {
   ];
   const STATUS = ["No", "Can get", "Starts with"]; // CloakStatus etc. 0/1/2
 
-  const st = { modes: [], max: 25, id: null, name: "", data: null, open: null, saveTimer: 0, saving: null, loaded: false };
+  const st = { modes: [], max: 25, id: null, name: "", data: null, open: null, saveTimer: 0, saving: null, loaded: false,
+    tab: "objective", step: 0, map: null, mapArena: null };
 
   const words = (k) => k.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^Initial /, "Start ").replace(/^Maximum |^Max /, "Max ");
 
@@ -39,7 +43,9 @@ const GameModeTab = (() => {
   }
 
   const ships = () => st.data.ships;
-  const computed = () => G.settings(ships(), specs());
+  const game = () => st.data.game;
+  // Ships first, then the game panels: the game wins where both set a key (only Flag:Flagger* can overlap).
+  const computed = () => ({ ...G.settings(ships(), specs()), ...R.settings(game(), specs()) });
   function withoutTweak(name) {
     const t = { ...ships().tweaks }; delete t[name];
     return G.settings({ ...ships(), tweaks: t }, specs())[name];
@@ -69,16 +75,24 @@ const GameModeTab = (() => {
     st.data.ships.start = { ...G.defaults().start, ...(st.data.ships.start || {}) };
     st.data.ships.roles = { ...G.defaults().roles, ...(st.data.ships.roles || {}) };
     st.data.ships.tweaks = { ...(st.data.ships.tweaks || {}) };
-    st.open = null;
+    st.data.game = R.withDefaults(d.game);
+    // Phase 1 game modes have no wizard answer: they keep opening as tabs.
+    st.data.wizard = { experience: "expert", ...(d.wizard || {}) };
+    st.open = null; st.step = 0; st.tab = "objective";
   }
 
   async function create() {
     await flush();
     if (st.modes.length >= st.max) { note(`You have ${st.max} game modes; delete one to add another.`, false); return; }
+    const experience = await Dlg.choose("Is this your first time making a game mode?", {
+      title: "New game mode", choices: [{ value: "first", label: "Yes, walk me through it" },
+        { value: "some", label: "No, show me everything" }, { value: "expert", label: "I know what I'm doing" }] });
+    if (experience == null) return;
     const name = await Dlg.prompt("Name your game mode.", { value: "My game mode", maxLength: 40 });
     if (name == null) return;
-    const data = { version: 1, ships: G.defaults() };
-    const { body } = await postJson("/gamemodes/save", { name, data, settings: G.settings(data.ships, specs()) });
+    const data = { version: 1, ships: G.defaults(), game: R.defaults(), wizard: { experience } };
+    const settings = { ...G.settings(data.ships, specs()), ...R.settings(data.game, specs()) };
+    const { body } = await postJson("/gamemodes/save", { name, data, settings });
     if (!body?.ok) { note(body?.message, false); return; }
     await loadList(body.id);
     note(body.message, true);
@@ -86,7 +100,7 @@ const GameModeTab = (() => {
   }
 
   function changed() {
-    renderShips();
+    renderBody();
     clearTimeout(st.saveTimer);
     note("Saving…", true);
     st.saveTimer = setTimeout(() => { st.saveTimer = 0; st.saving = save(); }, 800);
@@ -179,17 +193,257 @@ const GameModeTab = (() => {
     if (st.id == null) {
       const start = btn("Make a game mode", create, "hot");
       host.replaceChildren(top, el("div", { class: "gmempty" },
-        el("p", { text: "A game mode is a set of rules you keep and apply to any of your arenas. Start with the ships: give each one a role, then set the pace and items." }), start));
+        el("p", { text: "A game mode is a set of rules you keep and apply to any of your arenas: what pilots try to do, the teams, scoring, time and ships. First time? The wizard walks you through it." }), start));
       return;
     }
-    const tabs = el("div", { class: "gmtabs", role: "tablist" });
-    for (const [id, label] of PANELS) {
-      const t = el("button", { type: "button", role: "tab", class: id === "ships" ? "on" : "soon", "aria-selected": String(id === "ships"), text: label });
-      if (id !== "ships") t.addEventListener("click", () => note(`${label} is coming next. Ships works now.`, true));
-      tabs.append(t);
+    host.replaceChildren(top, el("div", { id: "gmbody" }));
+    renderBody();
+    loadMap();
+  }
+
+  // ---- views: first time (one step at a time), some (one page), expert (tabs) -------------------
+  const STEP_LABELS = Object.fromEntries(PANELS);
+  /** The steps for this game: Flags / ball only when the objective uses flags or a ball. */
+  const steps = () => ["objective", "teams", "scoring", "time", ...(R.usesFlags(game()) || R.usesBall(game()) ? ["flags"] : []), "ships", "review"];
+
+  function renderBody() {
+    const host = $("gmbody");
+    if (!host || !st.data) return;
+    const exp = st.data.wizard.experience;
+    const link = (text, to) => {
+      const b = el("button", { type: "button", class: "linkish small", text });
+      b.addEventListener("click", () => { st.data.wizard.experience = to; st.step = 0; changed(); });
+      return b;
+    };
+    const head = el("div", { class: "gmsummary" }, el("p", { text: R.summary(game(), ships()) }),
+      el("div", { class: "gmviews small" }, exp !== "first" ? link("Walk me through it", "first") : null,
+        exp !== "some" ? link("Show everything on one page", "some") : null, exp !== "expert" ? link("Show as tabs", "expert") : null));
+    const list = steps();
+    let body;
+    if (exp === "first") {
+      st.step = Math.max(0, Math.min(st.step, list.length - 1));
+      const bar = el("div", { class: "gmsteps" }, ...list.map((id, i) => {
+        const b = el("button", { type: "button", class: i === st.step ? "on" : i < st.step ? "done" : "", text: `${i + 1} ${STEP_LABELS[id]}` });
+        b.addEventListener("click", () => { st.step = i; renderBody(); });
+        return b;
+      }));
+      const back = el("button", { type: "button", class: "small ghost", text: "Back" });
+      back.disabled = st.step === 0;
+      back.addEventListener("click", () => { st.step--; renderBody(); });
+      const last = st.step === list.length - 1;
+      const next = el("button", { type: "button", class: "hot", text: last ? "Apply to arena…" : `Next: ${STEP_LABELS[list[st.step + 1]]}` });
+      next.addEventListener("click", () => { if (last) apply(); else { st.step++; renderBody(); } });
+      body = el("div", null, bar, panel(list[st.step]), el("div", { class: "gmnav" }, back, next));
+    } else if (exp === "some") {
+      body = el("div", null, ...list.filter((id) => id !== "review").map((id) => el("section", { class: "gmsection" }, el("h3", { text: STEP_LABELS[id] }), panel(id))));
+    } else {
+      if (!list.includes(st.tab)) st.tab = "objective";
+      const tabs = el("div", { class: "gmtabs", role: "tablist" });
+      for (const [id, label] of PANELS) {
+        if (id === "flags" && !list.includes("flags")) continue;
+        const soon = id === "rules";
+        const t = el("button", { type: "button", role: "tab", class: soon ? "soon" : id === st.tab ? "on" : "", "aria-selected": String(id === st.tab), text: label });
+        t.addEventListener("click", () => {
+          if (soon) { note("Timers & rules come with the rules module (Phase 4).", true); return; }
+          st.tab = id; renderBody();
+        });
+        tabs.append(t);
+      }
+      body = el("div", null, tabs, panel(st.tab));
     }
-    host.replaceChildren(top, tabs, el("div", { id: "gmships" }));
-    renderShips();
+    const onReview = exp === "first" && list[st.step] === "review";
+    host.replaceChildren(...[head, body, onReview ? null : footer()].filter(Boolean));
+    if (host.querySelector("#gmships")) renderShips();
+  }
+
+  function footer() {
+    const out = computed();
+    const list = el("details", { class: "gmlist" }, el("summary", { text: "Show" }),
+      el("ul", null, ...Object.entries(out).map(([k, v]) => el("li", { text: `${k} = ${v}` }))));
+    const b1 = el("button", { type: "button", class: "small ghost", text: "Save as settings set" }); b1.addEventListener("click", saveAsSet);
+    const b2 = el("button", { type: "button", class: "hot", text: "Apply to arena…" }); b2.addEventListener("click", apply);
+    return el("div", { class: "gmfoot" }, el("span", null, "This game mode sets ", el("b", { text: String(Object.keys(out).length) }), " settings "), list, b1, b2);
+  }
+
+  // ---- panels -------------------------------------------------------------------------------
+  // Which keys each panel shows under "What this changes"; anything else lands under Objective.
+  const PANEL_KEYS = {
+    teams: (k) => k.startsWith("Team:") || k.startsWith("LegalShip:") || k === "Misc:ShipChangeInterval",
+    scoring: (k) => k.startsWith("Kill:") || ["Misc:TeamKillPoints", "Flag:FlagReward", "Flag:SplitPoints", "Periodic:RewardPoints", "Soccer:Reward", "King:RewardFactor"].includes(k),
+    time: (k) => k === "Misc:TimedGame" || k === "Misc:TimerWarnings",
+    flags: (k) => (k.startsWith("Flag:") && !["Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagReward", "Flag:SplitPoints"].includes(k)) || (k.startsWith("Soccer:") && k !== "Soccer:Reward") || (k.startsWith("King:") && k !== "King:RewardFactor"),
+  };
+  function changes(id) {
+    const out = R.settings(game(), specs());
+    const mine = Object.entries(out).filter(([k]) => id === "objective"
+      ? !Object.values(PANEL_KEYS).some((f) => f(k)) : PANEL_KEYS[id]?.(k));
+    if (!mine.length) return null;
+    return el("details", { class: "gmchanges" }, el("summary", { text: `What this changes (${mine.length} setting${mine.length === 1 ? "" : "s"})` }),
+      el("p", { class: "small", text: mine.map(([k, v]) => `${k} = ${v}`).join(" · ") }));
+  }
+
+  function panel(id) {
+    const box = el("div", { class: "gmpanel" });
+    if (id === "ships") { box.append(el("div", { id: "gmships" })); return box; }
+    const parts = { objective: objectivePanel, teams: teamsPanel, scoring: scoringPanel, time: timePanel, flags: flagsPanel, review: reviewPanel }[id]?.() || [];
+    box.append(...parts.filter(Boolean), ...(id === "review" ? [] : [changes(id)].filter(Boolean)));
+    return box;
+  }
+
+  const setG = (fn) => { fn(game()); changed(); };
+  function row(label, hint, ...controls) {
+    return el("div", { class: "gmrow2" }, el("div", { class: "gmlab" }, el("b", { text: label }), hint ? el("span", { class: "dim small", text: hint }) : null),
+      el("div", { class: "gmval" }, ...controls.filter(Boolean)));
+  }
+  function choice(values, current, onPick, label) {
+    const box = el("div", { class: "gmseg gmsegin", role: "radiogroup", "aria-label": label || "" });
+    for (const [v, text] of values) {
+      const b = el("button", { type: "button", role: "radio", "aria-checked": String(v === current), class: v === current ? "on" : "", text });
+      b.addEventListener("click", () => onPick(v));
+      box.append(b);
+    }
+    return box;
+  }
+  const yesNo = (value, onSet, label) => choice([[true, "Yes"], [false, "No"]], !!value, onSet, label);
+  function numBox(value, min, max, onSet, label, suffix) {
+    const n = el("input", { type: "number", min: String(min), max: String(max), step: "1", value: String(value), "aria-label": label, class: "numval" });
+    n.addEventListener("change", () => { const v = Math.max(min, Math.min(max, Math.round(+n.value) || 0)); n.value = v; onSet(v); });
+    return suffix ? el("span", { class: "gmnum" }, n, el("span", { class: "dim small", text: " " + suffix })) : n;
+  }
+  const soonRow = (label, text) => el("div", { class: "gmrow2 gmsoonrow" }, el("div", { class: "gmlab" }, el("b", { text: label })),
+    el("div", { class: "gmval dim small" }, text, " ", el("span", { class: "gmbadge", text: "COMING WITH RULES" })));
+
+  function objectivePanel() {
+    const g = game();
+    const cards = el("div", { class: "gmcards" });
+    for (const o of R.OBJECTIVES) {
+      const c = el("button", { type: "button", class: "gmcard" + (o.id === g.objective ? " on" : "") + (o.soon ? " soon" : ""), "aria-pressed": String(o.id === g.objective) },
+        o.soon ? el("span", { class: "gmbadge", text: "COMING WITH RULES" }) : null, el("b", { text: o.name }), el("span", { class: "dim small", text: o.blurb }));
+      if (o.soon) c.disabled = true;
+      else c.addEventListener("click", () => setG((x) => { x.objective = o.id; }));
+      cards.append(c);
+    }
+    return [el("p", { class: "gmq", text: "What do pilots try to do?" }), cards, mapNote()];
+  }
+
+  function teamsPanel() {
+    const t = game().teams;
+    const shipsRow = el("div", { class: "gmshiptoggles" });
+    G.SHIPS.forEach((name, i) => {
+      const on = ((t.ships >> i) & 1) === 1;
+      const b = el("button", { type: "button", class: on ? "on" : "", "aria-pressed": String(on), text: name });
+      b.addEventListener("click", () => setG((g) => { const m = g.teams.ships ^ (1 << i); g.teams.ships = m === 0 ? g.teams.ships : m; }));
+      shipsRow.append(b);
+    });
+    return [
+      el("p", { class: "gmq", text: "Who plays against whom?" }),
+      row("Teams", "How many teams the zone forms as pilots arrive.", choice([[0, "Free-for-all"], [2, "2"], [3, "3"], [4, "4"]], +t.count, (v) => setG((g) => { g.teams.count = v; }), "Teams")),
+      +t.count ? row("Pilots per team", "The most on one team.", numBox(t.perTeam, 1, 100, (v) => setG((g) => { g.teams.perTeam = v; }), "Pilots per team")) : null,
+      +t.count ? row("Keep teams even", "New pilots join the smaller team.", yesNo(t.even, (v) => setG((g) => { g.teams.even = v; }), "Keep teams even")) : null,
+      row("Private teams", "Pilots may make their own team with ?team.", yesNo(t.private, (v) => setG((g) => { g.teams.private = v; }), "Private teams")),
+      row("Ships allowed", "Tap a ship to turn it off. At least one stays on.", shipsRow),
+      row("Ship change wait", "Seconds between ship changes; 0 for none.", numBox(t.shipChangeSec, 0, 600, (v) => setG((g) => { g.teams.shipChangeSec = v; }), "Ship change wait", "seconds")),
+      soonRow("Lives", "Each pilot gets a set number of lives."),
+    ];
+  }
+
+  function scoringPanel() {
+    const g = game(), s = g.scoring, o = g.objective;
+    return [
+      el("p", { class: "gmq", text: "How do pilots score?" }),
+      row("Points for a kill", "The killed pilot's bounty, or the same number every time.",
+        choice([["bounty", "Their bounty"], ["fixed", "Fixed"]], s.kill, (v) => setG((x) => { x.scoring.kill = v; }), "Points for a kill"),
+        s.kill === "fixed" ? numBox(s.fixedKill, 0, 100000, (v) => setG((x) => { x.scoring.fixedKill = v; }), "Fixed kill points", "points") : null),
+      row("Team kills score", "Points for killing a teammate.", yesNo(s.teamKills, (v) => setG((x) => { x.scoring.teamKills = v; }), "Team kills score")),
+      ["carryall", "ownall", "rabbit"].includes(o) ? row("Win reward", "Points for winning the flag game.", numBox(s.winReward, 0, 1000000, (v) => setG((x) => { x.scoring.winReward = v; }), "Win reward", "points")) : null,
+      ["carryall", "ownall", "rabbit"].includes(o) ? row("Split the reward", "Share it across the team instead of each getting it all.", yesNo(s.split, (v) => setG((x) => { x.scoring.split = v; }), "Split the reward")) : null,
+      o === "turf" ? row("Points per flag", "For each flag a team holds, each time.", numBox(s.turfPoints, 0, 100000, (v) => setG((x) => { x.scoring.turfPoints = v; }), "Points per flag", "points")) : null,
+      o === "turf" ? row("Every", "How often turf points are handed out.", numBox(s.turfEverySec, 10, 3600, (v) => setG((x) => { x.scoring.turfEverySec = v; }), "Turf interval", "seconds")) : null,
+      o === "powerball" ? row("Goal reward", "Points for scoring a goal.", numBox(s.goalReward, 0, 1000000, (v) => setG((x) => { x.scoring.goalReward = v; }), "Goal reward", "points")) : null,
+      o === "king" ? row("Winner's reward", "Grows with the number of pilots.", numBox(s.kingReward, 0, 100000, (v) => setG((x) => { x.scoring.kingReward = v; }), "King reward")) : null,
+      soonRow("First to N points", "End the game when a team reaches a score."),
+    ];
+  }
+
+  function timePanel() {
+    const t = game().time;
+    const warn = el("input", { type: "text", value: t.warnings.join(", "), "aria-label": "Warnings", class: "textval", maxlength: "40" });
+    warn.addEventListener("change", () => setG((g) => {
+      g.time.warnings = warn.value.split(/[\s,]+/).map((x) => Math.round(+x)).filter((x) => x > 0 && x < 100000).slice(0, 8);
+    }));
+    return [
+      el("p", { class: "gmq", text: "How long is a round?" }),
+      row("Time limit", "0 for no limit. Pilots see the time left with ?time.", numBox(t.minutes, 0, 600, (v) => setG((g) => { g.time.minutes = v; }), "Time limit", "minutes")),
+      +t.minutes ? row("Warnings", "Seconds before the end, separated by commas.", warn) : null,
+      soonRow("When time runs out", "Points to the leader, restart, or warp everyone to spawn."),
+      +t.minutes ? el("p", { class: "dim small", text: "The server does nothing when the timer ends today: the countdown shows, then the game carries on." }) : null,
+    ];
+  }
+
+  function flagsPanel() {
+    const g = game(), f = g.flags, b = g.ball, o = g.objective;
+    const out = [];
+    if (R.usesFlags(g)) {
+      out.push(el("p", { class: "gmq", text: o === "turf" ? "Turf flags" : "The flags" }));
+      if (o === "turf") out.push(el("p", { class: "dim small", text: "Turf flags are the flag tiles on your map: place them in the map editor." }));
+      if (o === "carryall" || o === "ownall") out.push(row("How many flags", "They appear near the middle of the map.", numBox(f.count, 1, 256, (v) => setG((x) => { x.flags.count = v; }), "How many flags")));
+      if (o !== "turf") {
+        out.push(row(o === "rabbit" ? "Hold to win" : "Hold all to win", "How long the winning team must keep them.", numBox(f.holdSec, 1, 3600, (v) => setG((x) => { x.flags.holdSec = v; }), "Hold time", "seconds")));
+        out.push(row("Dropped flags go", "Where a flag lands when its carrier drops it.", choice([[false, "Near the carrier"], [true, "Back to the middle"]], !!f.dropCenter, (v) => setG((x) => { x.flags.dropCenter = v; }), "Dropped flags go")));
+        out.push(row("Carrier drops it after", "Seconds; 0 to keep it until killed.", numBox(f.dropAfterSec, 0, 3600, (v) => setG((x) => { x.flags.dropAfterSec = v; }), "Auto drop", "seconds")));
+        out.push(row("Carrier shows on radar", "Everyone sees the carrier as a red dot.", yesNo(f.carrierOnRadar, (v) => setG((x) => { x.flags.carrierOnRadar = v; }), "Carrier on radar")));
+        out.push(row("Carrier speed change", "Negative slows the carrier down.", numBox(f.carrierSpeed, -5000, 5000, (v) => setG((x) => { x.flags.carrierSpeed = v; }), "Carrier speed")));
+      }
+    }
+    if (R.usesBall(g)) {
+      out.push(el("p", { class: "gmq", text: "The ball" }));
+      out.push(row("How many balls", "", numBox(b.count, 1, 8, (v) => setG((x) => { x.ball.count = v; }), "How many balls")));
+      const layouts = el("div", { class: "gmlayouts" });
+      for (const l of R.GOAL_LAYOUTS) {
+        const c = el("button", { type: "button", class: l.id === b.layout ? "on" : "", "aria-pressed": String(l.id === b.layout), text: l.name });
+        c.addEventListener("click", () => setG((x) => { x.ball.layout = l.id; }));
+        layouts.append(c);
+      }
+      out.push(row("Goals each team defends", "Goals are the goal tiles on your map.", layouts));
+      out.push(row("Ball bounces off walls", "", yesNo(b.bounce, (v) => setG((x) => { x.ball.bounce = v; }), "Ball bounces")));
+      out.push(row("Carrier can fire guns", "", yesNo(b.guns, (v) => setG((x) => { x.ball.guns = v; }), "Carrier guns")));
+      out.push(row("Carrier can fire bombs", "", yesNo(b.bombs, (v) => setG((x) => { x.ball.bombs = v; }), "Carrier bombs")));
+      out.push(row("Win by", "Goals ahead needed to win; 0 for any lead.", numBox(b.winBy, 0, 100, (v) => setG((x) => { x.ball.winBy = v; }), "Win by", "goals")));
+    }
+    out.push(mapNote());
+    return out;
+  }
+
+  function reviewPanel() {
+    const n = Object.keys(computed()).length;
+    return [el("p", { class: "gmq", text: `${st.name}, ready to apply` }), el("p", { class: "gmbig", text: R.summary(game(), ships()) }),
+      el("p", { class: "dim small", text: `Sets ${n} settings. You see every change before it's applied.` })];
+  }
+
+  // ---- map checks: flag tiles (170) for turf, goal tiles (172) for powerball ----------------------
+  async function loadMap() {
+    const arena = typeof current !== "undefined" && current?.arena;
+    if (!arena || st.mapArena === arena || typeof Lvl === "undefined") return;
+    st.mapArena = arena; st.map = null;
+    try {
+      const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
+      if (!r.ok) return;
+      const grid = Lvl.parse(new Uint8Array(await r.arrayBuffer())).grid;
+      let flags = 0, goals = 0;
+      for (const t of grid) { if (t === 170) flags++; else if (t === 172) goals++; }
+      if (st.mapArena === arena) { st.map = { arena, flags, goals }; renderBody(); }
+    } catch { /* no map check */ }
+  }
+
+  function mapNote() {
+    const m = st.map, o = game().objective;
+    if (!m) return null;
+    const editor = () => { const a = el("a", { href: "/arena/map?arena=" + encodeURIComponent(m.arena), text: "Open the map editor" }); return a; };
+    if (o === "turf" && m.flags === 0) return el("div", { class: "gmwarn" }, el("span", { text: `Turf needs flags on the map, and ${m.arena}'s map has none.` }), editor());
+    if (o === "turf") return el("div", { class: "gmok small", text: `${m.arena}'s map has ${m.flags} flag${m.flags === 1 ? "" : "s"}.` });
+    if (o === "powerball" && m.goals === 0) return el("div", { class: "gmwarn" }, el("span", { text: `Powerball needs goals on the map, and ${m.arena}'s map has none.` }), editor());
+    if (o === "powerball") return el("div", { class: "gmok small", text: `${m.arena}'s map has ${m.goals} goal tile${m.goals === 1 ? "" : "s"}.` });
+    return null;
   }
 
   function seg(label, values, labels, current, onPick, hint) {
@@ -257,15 +511,7 @@ const GameModeTab = (() => {
         el("small", { class: "dim" }, role.blurb, n ? el("span", { class: "gmtuned", text: ` ${n} tuned` }) : null), ft));
     }
 
-    const out = computed();
-    const list = el("details", { class: "gmlist" }, el("summary", { text: "Show" }),
-      el("ul", null, ...Object.entries(out).map(([k, v]) => el("li", { text: `${k} = ${v}` }))));
-    const foot = el("div", { class: "gmfoot" },
-      el("span", null, "This game mode sets ", el("b", { text: String(Object.keys(out).length) }), " settings "), list,
-      (() => { const b = el("button", { type: "button", class: "small ghost", text: "Save as settings set" }); b.addEventListener("click", saveAsSet); return b; })(),
-      (() => { const b = el("button", { type: "button", class: "hot", text: "Apply to arena…" }); b.addEventListener("click", apply); return b; })());
-
-    host.replaceChildren(...[grid, cards, st.open ? drawer(st.open) : null, foot].filter(Boolean));
+    host.replaceChildren(...[grid, cards, st.open ? drawer(st.open) : null].filter(Boolean));
   }
 
   function drawer(ship) {
