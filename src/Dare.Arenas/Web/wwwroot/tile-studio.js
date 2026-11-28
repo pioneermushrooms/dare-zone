@@ -74,6 +74,8 @@ window.TileStudio = (() => {
           <button type="button" class="ghost small st-dlroles">Roles .json</button></div>
         <p class="hint st-libhint"></p>
         <ul class="st-lib"></ul>
+        <p class="hint st-defhint" hidden>Default tilesets (generated in the standard layout; Save keeps a copy to change):</p>
+        <div class="st-defaults"></div>
       </section>
       <section class="st-card">
         <h4>Use it in a map</h4>
@@ -362,6 +364,7 @@ window.TileStudio = (() => {
       const ip = layout.packs.find((p) => p.interior === t);
       if (ip) return `${ip.name}: interior (the plain inside of a thick wall)`;
       for (const p of layout.packs) for (const [open, t2] of p.calm || []) if (t2 === t) return `${p.name}: calm ${open} edge (next to interior)`;
+      for (const p of layout.packs) for (const [d, t2] of p.inner || []) if (t2 === t) return `${p.name}: inside corner, open to the ${d}`;
       for (const o of layout.other) if (o.tile === t || (Array.isArray(o.tiles) && o.tiles.includes(t))) return o.label; return ""; };
     function showSlot() {
       const [x, y] = slotXY(sel), r = TileLayout.roleOfTile(layout, sel), reserved = sel >= layout.reserved[0] && sel <= layout.reserved[1];
@@ -826,30 +829,56 @@ window.TileStudio = (() => {
       return [Bmp.fitSheet(Bmp.read(s.bmp)), Object.assign({ name: name.replace(/\.lvl$/i, ""), elvl: s.elvl, tiles: s.tiles, from: "lvl" }, extra)];
     }
     async function fetchBytes(url) { const r = await fetch(url, { credentials: "same-origin" }).catch(() => null); if (!r || !r.ok) return null; return { bytes: new Uint8Array(await r.arrayBuffer()), r }; }
+    // ---- default tilesets: tile art's generated styles (tileart.js), each drawn as a whole sheet in the
+    // standard layout. [value, label]: the mixed themes first, then one sheet per style.
+    const cap = (w) => w.replace(/(^|-)(\w)/g, (m, d, c) => (d ? " " : "") + c.toUpperCase());
+    function defaults() {
+      const d = window.TileArt && TileArt.data; if (!d) return [];
+      return [...Object.keys(d.themes || {}).map((id) => [id, `${cap(id)} (mixed)`]), ...(d.styles || []).map((st) => [st.id, st.name])];
+    }
+    async function defaultSheet(id) {
+      await TileArt.ready();
+      const d = TileArt.data, lay = await TileArt.layout();
+      const canvas = TileArt.paint(null, TileArt.sheetPlan(lay, id, d), TileArt.stylesFor(id, d)[0]);
+      const rgba = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      return [Bmp.fitSheet(Bmp.quantize(rgba, canvas.width, canvas.height)), (defaults().find(([v]) => v === id) || [id, id])[1]];
+    }
+    // the newest open wins: an earlier one still loading (the arena's map on the first visit) doesn't
+    // replace what the pilot picked after it
+    let openSeq = 0;
     async function openChoice(v) {
       const [kind, id] = [v.slice(0, v.indexOf(":")), v.slice(v.indexOf(":") + 1)];
+      const my = ++openSeq, stale = () => my !== openSeq;
       try {
         if (kind === "arena") {
           const f = await fetchBytes(API + "/map?arena=" + encodeURIComponent(arena));
           if (!f) { say(`Couldn't read ${arena}'s map.`, false); return; }
+          if (stale()) return;
           const [im, from] = fromLvl(arena + ".lvl", f.bytes, { label: `${arena}'s map`, arena: true });
           libId = null; setImage(im, from); say(`Opened ${arena}'s current tileset.`, true);
         } else if (kind === "map") {
           const f = await fetchBytes(API + "/library/file?id=" + encodeURIComponent(id));
           if (!f) { say("Couldn't open that map from Your maps.", false); return; }
+          if (stale()) return;
           const name = decodeURIComponent(f.r.headers.get("X-Map-Name") || "map");
           const [im, from] = fromLvl(name, f.bytes, { label: `${name} (Your maps)`, mapId: +id });
           libId = null; setImage(im, from); say(`Opened ${name}'s tileset.`, true);
         } else if (kind === "shared") {
           const f = await fetchBytes(API + "/maps/file?name=" + encodeURIComponent(id));
           if (!f) { say(`Couldn't open ${id}.`, false); return; }
+          if (stale()) return;
           const [im, from] = fromLvl(id, f.bytes); libId = null; setImage(im, from); say(`Opened ${id}.`, true);
         } else if (kind === "std") {
           const f = await fetchBytes("/arena/standard-tiles.bmp");
           if (!f) { say("Couldn't load the standard tiles.", false); return; }
+          if (stale()) return;
           libId = null; setImage(Bmp.fitSheet(Bmp.read(f.bytes)), { name: "standard tiles", elvl: null, tiles: new Uint8Array(0), from: "file" });
           say("Opened the standard tiles.", true);
-        } else if (kind === "set") await openTileset(+id);
+        } else if (kind === "gen") {
+          const [im, name] = await defaultSheet(id); if (stale()) return;
+          libId = null; setImage(im, { name, label: `${name} (default tileset)`, elvl: null, tiles: new Uint8Array(0), from: "file" });
+          renderLib(); say(`Opened the default tileset ${name}. Save keeps a copy in Your tilesets.`, true);
+        } else if (kind === "set") await openTileset(+id, stale);
       } catch (err) { say(err.message, false); }
     }
     q("st-open").addEventListener("change", async (e) => { const v = e.target.value; e.target.value = ""; if (v && (await confirmDiscard())) openChoice(v); });
@@ -893,6 +922,7 @@ window.TileStudio = (() => {
       const group = (label, items) => { if (!items.length) return; const g = document.createElement("optgroup"); g.label = label; for (const [v, t2] of items) g.append(new Option(t2, v)); open.append(g); };
       if (arena) group("This arena", [["arena:", `${arena}'s current map`]]);
       group("Standard", [["std:", "Standard tiles (the standard layout's packs)"]]);
+      group("Default tilesets (generated)", defaults().map(([v, t2]) => ["gen:" + v, t2]));
       group("Your tilesets", tilesets.map((x) => ["set:" + x.id, x.name]));
       group("Your maps", maps.map((x) => ["map:" + x.id, x.name]));
       group("Ready-made maps", ((s.body && s.body.maps) || []).map((n) => ["shared:" + n, n]));
@@ -904,6 +934,14 @@ window.TileStudio = (() => {
       renderLib();
     }
     function renderLib() {
+      const box = q("st-defaults"); box.replaceChildren();
+      q("st-defhint").hidden = !defaults().length;
+      for (const [v, t2] of defaults()) {
+        const b = document.createElement("button"); b.type = "button"; b.className = "ghost small"; b.textContent = t2;
+        b.title = `Open the default tileset ${t2}`; if (src.label === `${t2} (default tileset)`) b.classList.add("on");
+        b.addEventListener("click", async () => { if (await confirmDiscard()) openChoice("gen:" + v); });
+        box.append(b);
+      }
       const ul = q("st-lib"); ul.replaceChildren();
       q("st-libhint").textContent = signedIn === false ? "Sign in to keep tilesets in your account." : `Your tilesets: ${tilesets.length}${tilesets.length ? "" : " (Save keeps this one)"}.`;
       for (const t of tilesets) {
@@ -921,7 +959,8 @@ window.TileStudio = (() => {
         ul.append(li);
       }
     }
-    async function openTileset(id) {
+    async function openTileset(id, stale) {
+      if (!stale) { const my = ++openSeq; stale = () => my !== openSeq; }
       const f = await fetchBytes(API + "/tilesets/file?id=" + id);
       if (!f) { say("Couldn't open that tileset.", false); return; }
       const name = decodeURIComponent(f.r.headers.get("X-Tileset-Name") || "tileset");
@@ -929,6 +968,7 @@ window.TileStudio = (() => {
       const t = tilesets.find((x) => x.id === id);
       let roles = null;
       if (!t || t.hasRoles) { const r = await fetch(API + "/tilesets/roles?id=" + id, { credentials: "same-origin" }).catch(() => null); if (r && r.ok) roles = TileLayout.parse(await r.text()).layout; }
+      if (stale()) return;
       libId = id;
       if (roles) { layout = roles; packId = layout.packs[0] ? layout.packs[0].id : null; showPacks(); }
       setImage(im, { name, label: `${name} (Your tilesets)`, elvl: null, tiles: new Uint8Array(0), from: "set" });
