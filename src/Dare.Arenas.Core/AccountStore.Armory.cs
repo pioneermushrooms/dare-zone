@@ -40,7 +40,7 @@ public sealed partial class AccountStore
         lock (_gate)
         {
             var items = new List<ArmoryItem>();
-            using (var c = Cmd("SELECT id, kind, name, source, created, prompt FROM armory_items WHERE account_id = $a ORDER BY id", ("$a", accountId)))
+            using (var c = Cmd("SELECT id, kind, name, source, created, prompt FROM armory_items WHERE person_id = $p ORDER BY id", ("$p", PersonKey(accountId))))
             using (var r = c.ExecuteReader())
                 while (r.Read()) items.Add(new ArmoryItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5)));
             var slots = ArmoryKinds.ToDictionary(k => k.Name, _ => new long[ShipSlots + 1]);
@@ -60,7 +60,7 @@ public sealed partial class AccountStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT png FROM armory_items WHERE id = $id AND account_id = $a", ("$id", itemId), ("$a", accountId));
+            using var c = Cmd("SELECT png FROM armory_items WHERE id = $id AND person_id = $p", ("$id", itemId), ("$p", PersonKey(accountId)));
             return c.ExecuteScalar() as byte[];
         }
     }
@@ -78,9 +78,9 @@ public sealed partial class AccountStore
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id AND status = 'active'", ("$id", accountId)) == 0)
                 return Fail("Sign in again first.");
-            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE account_id = $a", ("$a", accountId)) >= MaxArmoryItems)
+            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE person_id = $p", ("$p", PersonKey(accountId))) >= MaxArmoryItems)
                 return Fail($"Your armory is full ({MaxArmoryItems}). Remove one first.");
-            Run("INSERT INTO armory_items(account_id, kind, name, source, png, created, prompt) VALUES($a, $k, $n, $s, $p, $c, $pr)",
+            Run("INSERT INTO armory_items(account_id, person_id, kind, name, source, png, created, prompt) VALUES($a, $who, $k, $n, $s, $p, $c, $pr)", ("$who", PersonKey(accountId)),
                 ("$a", accountId), ("$k", k.Name), ("$n", clean), ("$s", source), ("$p", image), ("$c", Now()), ("$pr", CleanPrompt(prompt)));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok("Added to your armory.");
@@ -92,9 +92,9 @@ public sealed partial class AccountStore
     /// <summary>Removes an item; any weapon wearing it goes back to the arena's.</summary>
     public Result RemoveArmoryItem(long accountId, long itemId) => Tx(() =>
     {
-        if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND account_id = $a", ("$id", itemId), ("$a", accountId)) == 0)
+        if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND person_id = $p", ("$id", itemId), ("$p", PersonKey(accountId))) == 0)
             return Fail("That isn't in your armory.");
-        Run("DELETE FROM armory_slots WHERE account_id = $a AND item_id = $id", ("$a", accountId), ("$id", itemId));
+        Run("DELETE FROM armory_slots WHERE item_id = $id", ("$id", itemId)); // every name of the account that had it equipped
         Run("DELETE FROM armory_items WHERE id = $id", ("$id", itemId));
         return Ok("Removed from your armory.");
     });
@@ -116,8 +116,8 @@ public sealed partial class AccountStore
                 Run("DELETE FROM armory_slots WHERE account_id = $a AND kind = $k AND ship = $s", ("$a", accountId), ("$k", k.Name), ("$s", ship));
                 return Ok($"{k.Label} on {where}: back to the default.");
             }
-            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND account_id = $a AND kind = $k",
-                    ("$id", itemId), ("$a", accountId), ("$k", k.Name)) == 0)
+            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND person_id = $p AND kind = $k",
+                    ("$id", itemId), ("$p", PersonKey(accountId)), ("$k", k.Name)) == 0)
                 return Fail($"That isn't {k.Label.ToLowerInvariant()} in your armory.");
             Run("INSERT OR REPLACE INTO armory_slots(account_id, kind, ship, item_id) VALUES($a, $k, $s, $id)",
                 ("$a", accountId), ("$k", k.Name), ("$s", ship), ("$id", itemId));

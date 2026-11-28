@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="The Foundry: ships, weapons and effects pilots designed for the Foundation zone. Browse, keep a copy, or share your own.">
+<meta name="description" content="The Foundry: ships, weapons, effects, maps and tilesets pilots designed for the Foundation zone. Browse, keep a copy, or share your own.">
 <title>The Foundry — SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/foundry.css?v=3">
+<link rel="stylesheet" href="/foundry.css?v=4">
 <link rel="stylesheet" href="/header.css?v=3">
-<script type="module" src="/foundry.js?v=4"></script>
+<script src="/arena/lvl.js" defer></script>
+<script type="module" src="/foundry.js?v=5"></script>
 </head>
 <body>
 <header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
@@ -20,7 +21,7 @@
   <section class="hero">
     <p class="eyebrow">Foundation zone</p>
     <h1>The Foundry</h1>
-    <p class="intro">Ships, weapons and effects pilots designed for everyone. Keep a copy in your own Shipyard or Armory, download it, or share one of yours.</p>
+    <p class="intro">Ships, weapons, effects, maps and tilesets pilots designed for everyone. Keep a copy in your own Shipyard, Armory or maps, download it, or share one of yours.</p>
   </section>
 
   <section class="tools" aria-label="Find designs">
@@ -49,7 +50,7 @@
       <button type="button" class="tab" id="pick-saved" aria-pressed="false">From my Shipyard or Armory</button>
     </div>
     <div id="from-file" class="from">
-      <label class="drop" id="drop"><input type="file" id="file" accept="image/png,image/bmp,.png,.bmp,.bm2"><span>Choose a PNG or BMP (.bm2) sheet, or drop it here</span></label>
+      <label class="drop" id="drop"><input type="file" id="file" accept="image/png,image/bmp,.png,.bmp,.bm2,.lvl"><span>Choose a PNG or BMP (.bm2) sheet, a tileset or a map (.lvl), or drop it here</span></label>
     </div>
     <div id="from-saved" class="from" hidden>
       <ul class="savedlist" id="savedlist" aria-label="Your saved ships and weapons"></ul>
@@ -67,6 +68,13 @@
     <p class="status" id="share-status" role="status" aria-live="polite"></p>
     <footer class="dlgfoot"><button type="button" class="btn" id="share-cancel">Cancel</button><button type="submit" class="btn primary" id="share-go" disabled>Share it</button></footer>
   </form>
+</dialog>
+
+<dialog id="zoom" aria-labelledby="zoom-title" class="zoombox">
+  <div class="dlg">
+    <header class="dlghead"><h2 id="zoom-title"></h2><button type="button" class="ghost" id="zoom-close" aria-label="Close">✕</button></header>
+    <div id="zoom-art" class="zoomart"></div>
+  </div>
 </dialog>
 </body>
 </html>

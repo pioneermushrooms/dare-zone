@@ -189,6 +189,7 @@ internal sealed partial class WebServer
             "/pilots/switch" => SwitchPilot(req, body),
             "/pilots/add" => AddPilot(req, body),
             "/pilots/settings" => SavePilotSettings(req, body),
+            "/pilots/loadout" => CopyLoadout(req, body),
             "/pilots/delete" => await DeletePilotAsync(req, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
@@ -470,6 +471,28 @@ internal sealed partial class WebServer
         return r.Ok ? Ok(r.Message) : Bad(r.Message);
     }
 
+    /// <summary>
+    /// Copies one name's setup onto another of the account's names: {"from", "to", "parts": ["keys",
+    /// "ships", "armory", "graphics"]}. What it copies replaces what the other name had.
+    /// </summary>
+    private Reply CopyLoadout(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var parts = LoadoutParts.None;
+        if (body is { } b && b.TryGetProperty("parts", out var list) && list.ValueKind == System.Text.Json.JsonValueKind.Array)
+            foreach (var p in list.EnumerateArray())
+                parts |= p.GetString() switch
+                {
+                    "keys" => LoadoutParts.Keys,
+                    "ships" => LoadoutParts.Ships,
+                    "armory" => LoadoutParts.Armory,
+                    "graphics" => LoadoutParts.Graphics,
+                    _ => LoadoutParts.None,
+                };
+        var r = _m.Accounts.CopyLoadout(cur.Account.Id, Str(body, "from") ?? "", Str(body, "to") ?? cur.Account.Name, parts);
+        return r.Ok ? Ok(r.Message) : Bad(r.Message);
+    }
+
     /// <summary>Switches the site session to another name on the same confirmed email (no password).</summary>
     private Reply SwitchPilot(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
@@ -492,22 +515,16 @@ internal sealed partial class WebServer
     }
 
     /// <summary>
-    /// Deletes one of the signed-in pilot's names: {"name", "keep": {"arena": "other name", ...}}
-    /// (arenas and drafts not listed are archived). Deleting the name signed in now switches the
-    /// session to another of the pilot's names.
+    /// Deletes one of the signed-in pilot's names: {"name"}. Its arenas and saved items stay with the
+    /// account. Deleting the name signed in now switches the session to another of the pilot's names.
     /// </summary>
     private async Task<Reply> DeletePilotAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
         var name = Str(body, "name") ?? "";
-        var keep = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (body is { } b && b.TryGetProperty("keep", out var k) && k.ValueKind == System.Text.Json.JsonValueKind.Object)
-            foreach (var p in k.EnumerateObject())
-                if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String && p.Name.Length <= 32)
-                    keep[p.Name] = p.Value.GetString() ?? "";
         var before = _m.Accounts.PilotsOf(cur.Account.Id);
         Account? deleted = null;
-        var r = await OnMain(() => _m.DeletePilotName(cur.Account.Id, name, keep, out deleted)).ConfigureAwait(false);
+        var r = await OnMain(() => _m.DeletePilotName(cur.Account.Id, name, out deleted)).ConfigureAwait(false);
         if (!r.Ok || deleted is null) return Bad(r.Message);
         // deleted the name signed in now: carry on as another of the pilot's names
         if (deleted.Id == cur.Account.Id && before.FirstOrDefault(a => a.Id != deleted.Id) is { } next

@@ -11,6 +11,24 @@ namespace Dare.Arenas.Core;
 /// </summary>
 public sealed record GalleryKind(string Name, string Label, string Group, int Width, int Height, string Save);
 
+/// <summary>Whether a file is this kind's format, from its raw bytes (before any picture check).</summary>
+public delegate bool GalleryFits(ReadOnlySpan<byte> file);
+
+/// <summary>Null when the file is a good one of this kind, else why not.</summary>
+public delegate string? GalleryCheck(ReadOnlySpan<byte> file);
+
+/// <summary>
+/// A kind that isn't a picture at a stock size (a map, a tileset, a banner...), plugged into the
+/// kinds table from its own partial file: <see cref="Fits"/> runs on the raw bytes before the picture
+/// check, so its files need not be pictures at all; <see cref="Validate"/> then checks one that fits.
+/// <see cref="Stored"/> is what is kept (e.g. the tileset cut out of a map; null keeps the file as
+/// sent). <see cref="ThumbWidth"/>×<see cref="ThumbHeight"/>, when not 0, is the PNG preview that
+/// may come with it, built once by the sharer and served with the item.
+/// </summary>
+public sealed record GalleryFileKind(GalleryKind Kind, int MaxBytes, GalleryFits Fits, GalleryCheck Validate,
+    Func<byte[], byte[]>? Stored = null, string Extension = "bin", string ContentType = "application/octet-stream",
+    int ThumbWidth = 0, int ThumbHeight = 0);
+
 /// <summary>One shared design. <see cref="By"/> is the contributing pilot name, and nothing else about them.</summary>
 public sealed record GalleryItem(long Id, string Kind, int Ship, string Name, string Keywords, string Prompt, string Source,
     string By, bool Mine, string Created, long Saves);
@@ -30,6 +48,8 @@ public sealed record GalleryPage(IReadOnlyList<GalleryItem> Items, long Count, l
 public sealed partial class AccountStore
 {
     public const int MaxGalleryPerAccount = 60;
+    private const string GalleryCredit =
+        "COALESCE(a.name, (SELECT o.name FROM accounts o WHERE o.person_id = g.person_id AND o.status = 'active' ORDER BY o.name COLLATE NOCASE LIMIT 1))";
     public const int MaxGalleryItems = 20_000;
     public const int MaxGalleryImageBytes = 256 * 1024;
     public const int MaxGalleryKeywordsLength = 200;
@@ -45,14 +65,27 @@ public sealed partial class AccountStore
         ("over1", 240, 32), ("over2", 320, 96), ("over3", 240, 32), ("over4", 480, 192), ("over5", 320, 480), ("wall", 160, 32),
     ];
 
-    /// <summary>Ships first, then the armory's weapons, then the rest in the game's order. The gradient (a colour table) isn't shared.</summary>
+    public const int MaxGalleryThumbBytes = 128 * 1024;
+
+    /// <summary>
+    /// Kinds that aren't stock-size pictures, each from its own partial file (AccountStore.GalleryMaps.cs,
+    /// AccountStore.GalleryBanners.cs...). Add yours here: this one line is the only shared edit.
+    /// Declared before <see cref="GalleryKinds"/>, which lists them last.
+    /// </summary>
+    public static readonly IReadOnlyList<GalleryFileKind> GalleryFileKinds = [.. MapGalleryKinds()];
+
+    /// <summary>Ships first, then the armory's weapons, then the rest in the game's order, then the file kinds. The gradient (a colour table) isn't shared.</summary>
     public static readonly IReadOnlyList<GalleryKind> GalleryKinds =
     [
         new("ship", "Ship", "Ships", 360, 144, "shipyard"),
         .. StockSizes.Select(s => (Slot: GameGraphics.Find(s.Name)!, s.W, s.H))
             .Select(s => new GalleryKind(s.Slot.Name, s.Slot.Label, s.Slot.Group, s.W, s.H,
                 FindArmoryKind(s.Slot.Name) is null ? "graphics" : "armory")),
+        .. GalleryFileKinds.Select(f => f.Kind),
     ];
+
+    public static GalleryFileKind? FindGalleryFileKind(string? name) =>
+        GalleryFileKinds.FirstOrDefault(k => string.Equals(k.Kind.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public static GalleryKind? FindGalleryKind(string? name) =>
         GalleryKinds.FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -70,6 +103,29 @@ public sealed partial class AccountStore
     public static IReadOnlyList<string> DetectGalleryKinds(ReadOnlySpan<byte> image, out int width, out int height, out string error)
     {
         width = height = 0;
+        // File kinds first, on the raw bytes: a map isn't a picture, and a map with a tileset starts like a BMP.
+        var files = new List<string>();
+        var fileError = "";
+        foreach (var f in GalleryFileKinds)
+        {
+            if (!f.Fits(image)) continue;
+            if (image.Length > f.MaxBytes) fileError = $"{f.Kind.Label}s must be {f.MaxBytes / 1024} KB or smaller.";
+            else if (f.Validate(image) is { } bad) fileError = bad;
+            else files.Add(f.Kind.Name);
+        }
+        var matches = DetectPictureKinds(image, out width, out height, out error);
+        if (files.Count > 0)
+        {
+            error = "";
+            return [.. files, .. matches.Where(m => !files.Contains(m))];
+        }
+        if (fileError.Length > 0) { error = fileError; return []; }
+        return matches;
+    }
+
+    private static List<string> DetectPictureKinds(ReadOnlySpan<byte> image, out int width, out int height, out string error)
+    {
+        width = height = 0;
         if (!GameGraphics.TryCheckImage(image, out var ext, out width, out height, out error)) return [];
         if (width % 10 == 0 && width / 10 is >= 8 and <= 96 && height == width / 10 * 32)
         {
@@ -80,7 +136,7 @@ public sealed partial class AccountStore
         var matches = new List<string>();
         if (IsShipGrid(width, height) && ext == ".png") matches.Add("ship");
         foreach (var k in GalleryKinds)
-            if (k.Name != "ship" && k.Width == width && k.Height == height) matches.Add(k.Name);
+            if (k.Name != "ship" && k.Width == width && k.Height == height && FindGalleryFileKind(k.Name) is null) matches.Add(k.Name);
         // Weapons before ships before the rest, so the likelier reading comes first.
         matches.Sort((a, b) => Rank(a).CompareTo(Rank(b)));
         if (matches.Count > 0) { error = ""; return matches; }
@@ -123,7 +179,7 @@ public sealed partial class AccountStore
     /// kind must be one the size fits. <paramref name="ship"/> is the ship a ship sheet was made for (0 = any).
     /// </summary>
     public GalleryAddResult AddGalleryItem(long accountId, string? kind, int ship, string? name, string? keywords, string? prompt,
-        string source, byte[] image)
+        string source, byte[] image, byte[]? thumb = null)
     {
         if (!GallerySources.Contains(source)) return new(false, "Unknown source.", 0, []);
         var matches = DetectGalleryKinds(image, out _, out _, out var why);
@@ -139,6 +195,19 @@ public sealed partial class AccountStore
         else if (matches.Count == 1) chosen = matches[0];
         else return new(false, $"That size fits more than one kind: {string.Join(", ", matches.Select(LabelOf))}. Choose which it is.", 0, matches);
 
+        if (FindGalleryFileKind(chosen) is { } file)
+        {
+            if (file.Stored is { } cut) image = cut(image);
+            if (thumb is { Length: > 0 })
+            {
+                if (file.ThumbWidth == 0) return new(false, $"{LabelOf(chosen)}s don't take a preview picture.", 0, []);
+                if (thumb.Length > MaxGalleryThumbBytes || !IsPngOfSize(thumb, file.ThumbWidth, file.ThumbHeight))
+                    return new(false, $"The preview must be a {file.ThumbWidth}×{file.ThumbHeight} PNG of at most {MaxGalleryThumbBytes / 1024} KB.", 0, []);
+            }
+            else if (file.ThumbWidth > 0) return new(false, $"{Article(file.Kind.Label)[..1].ToUpperInvariant()}{Article(file.Kind.Label)[1..]} needs its {file.ThumbWidth}×{file.ThumbHeight} preview picture (the Foundry page draws it when you share).", 0, []);
+            else thumb = null;
+        }
+        else thumb = null;
         if (chosen != "ship") ship = 0;
         if (ship is < 0 or > ShipSlots) return new(false, "Choose any ship, or a ship from 1 to 8.", 0, []);
         var label = LabelOf(chosen);
@@ -154,13 +223,13 @@ public sealed partial class AccountStore
                 return Fail("Sign in again first.");
             if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE sha = $h", ("$h", sha)) > 0)
                 return Fail("That exact picture is already shared.");
-            if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE account_id = $a", ("$a", accountId)) >= MaxGalleryPerAccount)
+            if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE person_id = $p", ("$p", PersonKey(accountId))) >= MaxGalleryPerAccount)
                 return Fail($"You've shared {MaxGalleryPerAccount}, the most one pilot can. Take one down first.");
             if (Scalar("SELECT COUNT(*) FROM gallery_items") >= MaxGalleryItems)
                 return Fail("The gallery is full for now.");
-            Run("INSERT INTO gallery_items(account_id, kind, ship, name, keywords, prompt, source, png, sha, created) VALUES($a, $k, $s, $n, $w, $p, $src, $img, $h, $c)",
+            Run("INSERT INTO gallery_items(account_id, person_id, kind, ship, name, keywords, prompt, source, png, sha, created, thumb) VALUES($a, $who, $k, $s, $n, $w, $p, $src, $img, $h, $c, $th)", ("$who", PersonKey(accountId)),
                 ("$a", accountId), ("$k", chosen), ("$s", ship), ("$n", clean), ("$w", words), ("$p", cleanPrompt), ("$src", source),
-                ("$img", image), ("$h", sha), ("$c", Now()));
+                ("$img", image), ("$h", sha), ("$c", Now()), ("$th", (object?)thumb ?? DBNull.Value));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok($"Shared: {label.ToLowerInvariant()} “{clean}”.");
         });
@@ -179,12 +248,12 @@ public sealed partial class AccountStore
         {
             var sql = from switch
             {
-                "armory" => "SELECT kind, name, prompt, png FROM armory_items WHERE id = $id AND account_id = $a",
-                "shipyard" => "SELECT 'ship', name, prompt, png FROM shipyard_ships WHERE id = $id AND account_id = $a",
+                "armory" => "SELECT kind, name, prompt, png FROM armory_items WHERE id = $id AND person_id = $a",
+                "shipyard" => "SELECT 'ship', name, prompt, png FROM shipyard_ships WHERE id = $id AND person_id = $a",
                 _ => null,
             };
             if (sql is null) return new(false, "Choose your armory or your shipyard.", 0, []);
-            using var c = Cmd(sql, ("$id", itemId), ("$a", accountId));
+            using var c = Cmd(sql, ("$id", itemId), ("$a", PersonKey(accountId)));
             using var r = c.ExecuteReader();
             if (!r.Read()) return new(false, $"That isn't in your {from}.", 0, []);
             (savedKind, savedName, prompt, image) = (r.GetString(0), r.GetString(1), r.GetString(2), (byte[])r.GetValue(3));
@@ -216,20 +285,22 @@ public sealed partial class AccountStore
             ps.Add(($"$q{n}", "% " + w.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%"));
             n++;
         }
-        if (!string.IsNullOrWhiteSpace(pilot)) { where.Add("a.name = $p COLLATE NOCASE"); ps.Add(("$p", pilot.Trim())); }
+        if (!string.IsNullOrWhiteSpace(pilot)) { where.Add(GalleryCredit + " = $p COLLATE NOCASE"); ps.Add(("$p", pilot.Trim())); }
         var filter = where.Count == 0 ? "" : " AND " + string.Join(" AND ", where);
-        const string from = " FROM gallery_items g JOIN accounts a ON a.id = g.account_id WHERE 1 = 1";
+        // credited to the name that shared it; once that name is deleted, to the account's first remaining name
+        const string from = " FROM gallery_items g LEFT JOIN accounts a ON a.id = g.account_id WHERE " + GalleryCredit + " IS NOT NULL";
         lock (_gate)
         {
+            var viewer = PersonKey(viewerId);
             var count = Scalar("SELECT COUNT(*)" + from + filter, [.. ps]);
             var items = new List<GalleryItem>();
             var page = filter + (before > 0 ? " AND g.id < $before" : "");
-            using (var c = Cmd("SELECT g.id, g.kind, g.ship, g.name, g.keywords, g.prompt, g.source, a.name, g.account_id, g.created, g.saves" + from + page +
+            using (var c = Cmd("SELECT g.id, g.kind, g.ship, g.name, g.keywords, g.prompt, g.source, " + GalleryCredit + ", g.person_id, g.created, g.saves" + from + page +
                        " ORDER BY g.id DESC LIMIT $limit", [.. ps, ("$before", before), ("$limit", limit + 1)]))
             using (var r = c.ExecuteReader())
                 while (r.Read())
                     items.Add(new GalleryItem(r.GetInt64(0), r.GetString(1), (int)r.GetInt64(2), r.GetString(3), r.GetString(4), r.GetString(5),
-                        r.GetString(6), r.GetString(7), r.GetInt64(8) == viewerId, r.GetString(9), r.GetInt64(10)));
+                        r.GetString(6), r.GetString(7), !r.IsDBNull(8) && r.GetInt64(8) == viewer, r.GetString(9), r.GetInt64(10)));
             var next = items.Count > limit ? items[limit - 1].Id : 0;
             if (items.Count > limit) items.RemoveAt(limit);
             return new GalleryPage(items, count, next);
@@ -247,12 +318,30 @@ public sealed partial class AccountStore
         }
     }
 
+    /// <summary>A shared design's preview PNG (file kinds that have one), or null.</summary>
+    public byte[]? GalleryThumb(long itemId)
+    {
+        lock (_gate)
+        {
+            using var c = Cmd("SELECT thumb FROM gallery_items WHERE id = $id", ("$id", itemId));
+            return c.ExecuteScalar() is byte[] b ? b : null;
+        }
+    }
+
+    /// <summary>Counts one more keep of <paramref name="itemId"/> (a keep that happened outside this store, e.g. into the map library).</summary>
+    public void CountGallerySave(long itemId) =>
+        Tx(() => { Run("UPDATE gallery_items SET saves = saves + 1 WHERE id = $id", ("$id", itemId)); return Ok(""); });
+
+    private static bool IsPngOfSize(ReadOnlySpan<byte> b, int w, int h) =>
+        b.Length >= 33 && b[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) && b.Slice(12, 4).SequenceEqual("IHDR"u8)
+        && System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(b[16..20]) == w && System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(b[20..24]) == h;
+
     /// <summary>Takes a design down: its contributor may, and so may staff (<paramref name="staff"/>).</summary>
     public Result RemoveGalleryItem(long accountId, long itemId, bool staff) => Tx(() =>
     {
-        var owner = Scalar("SELECT COALESCE((SELECT account_id FROM gallery_items WHERE id = $id), 0)", ("$id", itemId));
-        if (owner == 0) return Fail("That design isn't in the gallery.");
-        if (owner != accountId && !staff) return Fail("Only the pilot who shared it, or staff, can take it down.");
+        if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE id = $id", ("$id", itemId)) == 0) return Fail("That design isn't in the gallery.");
+        var owner = Scalar("SELECT COALESCE((SELECT person_id FROM gallery_items WHERE id = $id), 0)", ("$id", itemId));
+        if (owner != PersonKey(accountId) && !staff) return Fail("Only the pilot who shared it, or staff, can take it down.");
         Run("DELETE FROM gallery_items WHERE id = $id", ("$id", itemId));
         return Ok("Taken down.");
     });
@@ -278,10 +367,11 @@ public sealed partial class AccountStore
             "shipyard" => AddShipyardShip(accountId, name, "uploaded", image, out _, prompt),
             "armory" => AddArmoryItem(accountId, kind, name, "uploaded", image, out _, prompt),
             "graphics" => SetPilotGraphic(accountId, kind, image),
+            // file kinds kept somewhere other than the account (maps and tilesets: the editor's library) are kept by the web layer
             _ => Fail("That kind can't be kept."),
         };
         if (!result.Ok) return result;
-        Tx(() => { Run("UPDATE gallery_items SET saves = saves + 1 WHERE id = $id", ("$id", itemId)); return Ok(""); });
+        CountGallerySave(itemId);
         return result;
     }
 
@@ -310,6 +400,10 @@ public sealed partial class AccountStore
             CREATE INDEX IF NOT EXISTS ix_gallery_account ON gallery_items(account_id);
             CREATE INDEX IF NOT EXISTS ix_gallery_kind ON gallery_items(kind, id);
             """);
+        // gallery_items.person_id (the account that owns it) is added by AddLibraryPersons
+        // A file kind's preview PNG (maps), built once when it is shared.
+        if (Scalar("SELECT COUNT(*) FROM pragma_table_info('gallery_items') WHERE name = 'thumb'") == 0)
+            Exec("ALTER TABLE gallery_items ADD COLUMN thumb BLOB NULL;");
         // The prompt a saved sheet was drawn from (added later), so shared ones can be found by it.
         foreach (var table in new[] { "armory_items", "shipyard_ships" })
             if (Scalar($"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'prompt'") == 0)

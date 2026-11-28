@@ -53,4 +53,22 @@ public class GroupDefTests
         var lines = File.ReadAllLines(Path.Combine(dir!.FullName, "deploy", "default-caps.txt")).Select(l => l.Trim());
         Assert.Contains("cmd_bots", lines);
     }
+
+    /// <summary>
+    /// The settings editor is Dare.Arenas' own ?quickfix, open to every player and checking the arena
+    /// role itself; "changesettings" (any arena-scope setting outside owned arenas) stays staff-only.
+    /// </summary>
+    [Fact]
+    public void every_player_may_ask_for_the_settings_editor_but_owners_never_get_changesettings()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Dare.sln"))) dir = dir.Parent;
+        var lines = File.ReadAllLines(Path.Combine(dir!.FullName, "deploy", "default-caps.txt")).Select(l => l.Trim()).ToList();
+        Assert.Contains("cmd_quickfix", lines);
+        Assert.Contains("cmd_getsettings", lines);
+        Assert.Contains("cmd_settingseditor", lines);
+        Assert.DoesNotContain("changesettings", lines);
+        foreach (var file in new[] { "arenaowner", "arenamod", "arenacaps", "arenastaff" })
+            Assert.DoesNotContain("changesettings", Caps(file));
+    }
 }

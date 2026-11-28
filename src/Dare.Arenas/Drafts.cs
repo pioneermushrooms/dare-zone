@@ -295,7 +295,7 @@ public sealed partial class ArenaOwnership
         var mine = Store.DraftsOwnedBy(player.Name!);
         if (mine.Count == 0)
         {
-            Reply(player, $"You have no draft. Make one with ?draft <name> (up to {ArenaStore.MaxPerPilot}), or at subspacefoundation.com/build.html.");
+            Reply(player, "You have no draft. Make one with ?draft <name>, or at subspacefoundation.com/build.html.");
             return;
         }
         foreach (var d in mine)
@@ -306,8 +306,7 @@ public sealed partial class ArenaOwnership
             var invited = d.Invited.Count == 0 ? "nobody invited" : "invited: " + string.Join(", ", d.Invited);
             Reply(player, $"#{d.Name} ({state}; {invited}).");
         }
-        if (mine.Count < ArenaStore.MaxPerPilot)
-            Reply(player, $"You can make {ArenaStore.MaxPerPilot - mine.Count} more with ?draft <name>. Commands act on the draft you're in.");
+        Reply(player, "Make another with ?draft <name>. Commands act on the draft you're in.");
     }
 
     [CommandHelp(

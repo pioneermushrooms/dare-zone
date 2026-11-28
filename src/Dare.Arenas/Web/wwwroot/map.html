@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
+<link rel="stylesheet" href="/arena/lvz.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
@@ -13,6 +14,8 @@
 <script src="/arena/tileart.js" defer></script>
 <script src="/arena/drawtools.js" defer></script>
 <script src="/arena/editor.js" defer></script>
+<script src="/arena/lvz.js" defer></script>
+<script src="/arena/lvz-layer.js" defer></script>
 </head>
 <body class="editor">
 <header class="edbar">
@@ -59,6 +62,7 @@
       <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
     <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
     <div class="row"><button type="button" class="ghost small" id="stdtiles" title="Put the standard tileset (the packs' art, with plain wall interiors) into this map, so the packs look right here and in game">Use the standard tiles</button></div>
+    <div class="row"><select id="mytilesets" aria-label="Put one of your saved tilesets into this map" title="Your tilesets: drawn in the Tile Editor or kept from the Foundry"><option value="">Use one of your tilesets…</option></select></div>
     <p class="hint" id="stdnote">The packs are drawn from the standard tileset: use it in this map to see (and publish) them as they're meant to look.</p>
     <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
     <p class="kicker">Current tile</p>
@@ -70,6 +74,7 @@
     <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
     <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
     <div id="tileart"></div>
+    <section id="lvzpanel" aria-label="LVZ objects"></section>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>
     <p class="kicker">Whole map</p>

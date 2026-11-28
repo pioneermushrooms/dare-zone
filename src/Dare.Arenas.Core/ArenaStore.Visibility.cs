@@ -30,7 +30,7 @@ public sealed partial class ArenaStore
     public Result SetPrivate(string arena, string owner, bool makePrivate) => Tx(() =>
     {
         var a = Load(arena);
-        if (a is null || !Same(a.Owner, owner)) return Fail("Only the arena's owner can change that.");
+        if (a is null || !SameAccount(a.Owner, owner)) return Fail("Only the arena's owner can change that.");
         if (a.Status != ArenaStatus.Active) return Fail($"'{arena}' is {a.Status.ToString().ToLowerInvariant()}.");
         Run("UPDATE arenas SET private = $p WHERE name = $a", ("$p", makePrivate ? 1 : 0), ("$a", arena));
         AddEvent(Now(), arena, owner, makePrivate ? "private" : "public", "");
@@ -41,7 +41,7 @@ public sealed partial class ArenaStore
     public Result Discard(string arena, string owner) => Tx(() =>
     {
         var a = Load(arena);
-        if (a is null || !Same(a.Owner, owner)) return Fail("Only the arena's owner can discard it.");
+        if (a is null || !SameAccount(a.Owner, owner)) return Fail("Only the arena's owner can discard it.");
         if (a.Status == ArenaStatus.Archived) return Fail($"'{arena}' is already gone.");
         var now = Now();
         Run("UPDATE arenas SET status = 'Archived' WHERE name = $a", ("$a", arena));
