@@ -25,8 +25,6 @@ public sealed partial class ArenaStore
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
             return Fail("Player and draft name are required.");
         name = DraftRules.PublicOf(name);
-        if (DraftCount(owner) >= MaxPerPilot)
-            return Fail($"You already have {MaxPerPilot} drafts; archive or publish one first.");
         if (NameTaken(name))
             return Fail($"The name '{name}' is already taken.");
         var draft = DraftRules.DraftOf(name);
@@ -46,11 +44,11 @@ public sealed partial class ArenaStore
     {
         var d = LoadDraft(name);
         if (d is null) return Fail($"No such draft '{DraftRules.DraftOf(name)}'.");
-        if (!Same(d.Owner, owner)) return Fail("Only the draft's owner can invite pilots.");
+        if (!SameAccount(d.Owner, owner)) return Fail("Only the draft's owner can invite pilots.");
         if (string.IsNullOrWhiteSpace(player)) return Fail("Player name is required.");
-        if (Same(d.Owner, player)) return Fail("You don't need an invite to your own draft.");
+        if (SameAccount(d.Owner, player)) return Fail("That's one of your own names; it doesn't need an invite.");
         if (!hasAccount(player)) return Fail($"{player} has no Foundation account.");
-        if (d.Invited.Any(i => Same(i, player))) return Fail($"{player} is already invited.");
+        if (d.Invited.Any(i => SameAccount(i, player))) return Fail($"{player} is already invited.");
         if (d.Invited.Count >= MaxInvites) return Fail($"A draft can have at most {MaxInvites} invited pilots.");
         Run("INSERT INTO draft_invites(name, player) VALUES($n,$p)", ("$n", d.Name), ("$p", player));
         AddEvent(Now(), DraftRules.DraftOf(d.Name), owner, "invite", player);
@@ -61,7 +59,7 @@ public sealed partial class ArenaStore
     {
         var d = LoadDraft(name);
         if (d is null) return Fail($"No such draft '{DraftRules.DraftOf(name)}'.");
-        if (!Same(d.Owner, owner)) return Fail("Only the draft's owner can remove invites.");
+        if (!SameAccount(d.Owner, owner)) return Fail("Only the draft's owner can remove invites.");
         if (!d.Invited.Any(i => Same(i, player))) return Fail($"{player} is not invited.");
         Run("DELETE FROM draft_invites WHERE name=$n AND player=$p", ("$n", d.Name), ("$p", player));
         AddEvent(Now(), DraftRules.DraftOf(d.Name), owner, "uninvite", player);
@@ -72,11 +70,9 @@ public sealed partial class ArenaStore
     public Result RequestPublic(string owner, string name, string pitch) => Tx(() =>
     {
         var d = LoadDraft(name ?? "");
-        if (d is null || !Same(d.Owner, owner)) return Fail($"You have no draft named #{DraftRules.PublicOf(name ?? "")}.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", owner)) >= MaxPerPilot)
-            return Fail($"You already have {MaxPerPilot} arena requests waiting; withdraw one with ?withdrawrequest.");
-        if (OwnedCount(owner) >= MaxPerPilot)
-            return Fail($"You already own {MaxPerPilot} arenas.");
+        if (d is null || !SameAccount(d.Owner, owner)) return Fail($"You have no draft named #{DraftRules.PublicOf(name ?? "")}.");
+        if (OwnedCount(owner) >= ArenaLimitOf(owner))
+            return Fail(AtLimit(owner, you: true));
         if (d.Live) return Fail($"#{d.Name} is already public; use ?publish to update it.");
         if (d.Status == DraftStatus.Requested) return Fail($"#{d.Name} is already waiting for staff.");
         if (d.Status != DraftStatus.Active) return Fail($"#{d.Name} is {d.Status.ToString().ToLowerInvariant()}.");
@@ -105,8 +101,8 @@ public sealed partial class ArenaStore
             return Fail($"Arena '{arena}' is already taken.");
         if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' has a pending request; approve or decline it instead.");
-        if (OwnedCount(owner) >= MaxPerPilot)
-            return Fail($"{owner} already owns {MaxPerPilot} arenas.");
+        if (OwnedCount(owner) >= ArenaLimitOf(owner))
+            return Fail(AtLimit(owner, you: false));
         if (folderExists(arena) || folderExists(DraftRules.DraftOf(arena)))
             return Fail($"A folder named '{arena}' already exists on the server; cannot create.");
         var folderError = createFolder();
@@ -128,7 +124,7 @@ public sealed partial class ArenaStore
         arena = DraftRules.PublicOf((arena ?? "").Trim());
         var req = PendingRequest(arena, out var err);
         if (req is null) return Fail(err!.StartsWith("No request", StringComparison.Ordinal) ? $"You have no pending request for '{arena}'." : err);
-        if (!Same(req.Player, player)) return Fail($"You have no pending request for '{arena}'.");
+        if (!SameAccount(req.Player, player)) return Fail($"You have no pending request for '{arena}'.");
         Run("UPDATE requests SET status='Withdrawn', decided_by=$p WHERE id=$id", ("$p", player), ("$id", req.Id));
         if (IsDraftRequestId(req.Id))
             Run("UPDATE drafts SET status='Active' WHERE name=$a AND status='Requested'", ("$a", arena));
@@ -201,8 +197,6 @@ public sealed partial class ArenaStore
         var d = LoadDraft(name);
         if (d is null) return Fail($"No such draft '{DraftRules.DraftOf(name)}'.");
         if (d.Status != DraftStatus.Archived) return Fail($"#{d.Name} is not archived.");
-        if (DraftCount(d.Owner) >= MaxPerPilot)
-            return Fail($"{d.Owner} already has {MaxPerPilot} drafts.");
         var folderError = ensureFolder();
         if (folderError is not null) return Fail($"Can't revive #{d.Name}: {folderError}");
         var draft = DraftRules.DraftOf(d.Name);
@@ -272,7 +266,8 @@ public sealed partial class ArenaStore
         lock (_gate)
         {
             var names = new List<string>();
-            using (var cmd = Cmd("SELECT name FROM drafts WHERE owner = $p AND status <> 'Archived' ORDER BY name", ("$p", player)))
+            var ps = new List<(string, object)>();
+            using (var cmd = Cmd($"SELECT name FROM drafts WHERE {InAccount("owner", player, ps)} AND status <> 'Archived' ORDER BY name", [.. ps]))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) names.Add(r.GetString(0));
             return names.Select(n => LoadDraft(n)!).ToList();
@@ -285,7 +280,8 @@ public sealed partial class ArenaStore
         lock (_gate)
         {
             var names = new List<string>();
-            using (var cmd = Cmd("SELECT name FROM arenas WHERE owner = $p ORDER BY name", ("$p", player)))
+            var ps = new List<(string, object)>();
+            using (var cmd = Cmd($"SELECT name FROM arenas WHERE {InAccount("owner", player, ps)} ORDER BY name", [.. ps]))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) names.Add(r.GetString(0));
             return names.Select(n => Load(n)!).ToList();
@@ -302,8 +298,10 @@ public sealed partial class ArenaStore
     public bool IsInvited(string name, string player)
     {
         lock (_gate)
-            return Scalar("SELECT COUNT(*) FROM draft_invites WHERE name = $n AND player = $p",
-                ("$n", DraftRules.PublicOf(name)), ("$p", player)) > 0;
+        {
+            var ps = new List<(string, object)> { ("$n", DraftRules.PublicOf(name)) };
+            return Scalar($"SELECT COUNT(*) FROM draft_invites WHERE name = $n AND {InAccount("player", player, ps)}", [.. ps]) > 0;
+        }
     }
 
     /// <summary>The newest request for <paramref name="arena"/> came from a draft.</summary>
@@ -358,12 +356,12 @@ public sealed partial class ArenaStore
     private void ArchiveLiveDraft(string arena) =>
         Run("UPDATE drafts SET status='Archived' WHERE name=$a AND live=1", ("$a", arena));
 
-    // An archived draft keeps its name but frees its slot.
-    private long DraftCount(string player) =>
-        Scalar("SELECT COUNT(*) FROM drafts WHERE owner = $p AND status <> 'Archived'", ("$p", player));
-
-    private long OwnedCount(string player) =>
-        Scalar("SELECT COUNT(*) FROM arenas WHERE owner = $p AND status <> 'Archived'", ("$p", player));
+    /// <summary>Public arenas (not archived) of <paramref name="player"/>'s account, all its names together.</summary>
+    private long OwnedCount(string player)
+    {
+        var ps = new List<(string, object)>();
+        return Scalar($"SELECT COUNT(*) FROM arenas WHERE {InAccount("owner", player, ps)} AND status <> 'Archived'", [.. ps]);
+    }
 
     /// <summary>
     /// Databases from before drafts allowed one arena per owner (a UNIQUE column, which SQLite

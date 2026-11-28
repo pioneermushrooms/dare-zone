@@ -134,10 +134,35 @@ function route() {
   if (shown === "lvz") openLvz();
 }
 
+/**
+ * "Make an arena": open while the account owns fewer than its limit (all its names together,
+ * drafts named #... don't count); at the limit, "Request more arenas" asks staff for a higher one.
+ */
+function renderMake(body) {
+  const max = body.maxPerPilot || 10;
+  const owned = body.ownedCount ?? 0;
+  const full = owned >= max;
+  $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
+  $("makeinfo").textContent = full
+    ? "That's your limit, for all your pilot names together. Discard one, or ask staff for more."
+    : `It's yours at once. Your account owns ${owned} of ${max}.`;
+  $("requestform").hidden = full;
+  const lr = body.limitRequest || {};
+  $("morebox").hidden = !full;
+  $("moreform").hidden = !full || !!lr.pending;
+  $("morewanted").min = String(max + 1);
+  $("morewanted").max = String(lr.maxLimit || 200);
+  if (!$("morewanted").value) $("morewanted").value = String(max + 5);
+  $("morereason").maxLength = lr.maxReason || 300;
+  $("morestate").textContent = lr.pending
+    ? `You asked for up to ${lr.pending.wanted} on ${when(lr.pending.at)}. Staff will answer here and in game.`
+    : lr.last?.status === "Declined" ? `Staff declined your last request: ${lr.last.note || ""}`
+    : lr.last?.status === "Approved" ? `Staff raised your limit to ${lr.last.granted}.`
+    : "";
+}
+
 function renderNoArena(body) {
-  $("maketitle").textContent = "Make an arena";
-  $("makeinfo").textContent = "It's yours at once. Up to 3 per pilot.";
-  $("requestform").hidden = false;
+  renderMake(body);
   // an old request (from before arenas launched without approval): offer the same name
   if (body.pendingRequest && !$("reqname").value) {
     $("reqname").value = body.pendingRequest.arena;
@@ -165,15 +190,7 @@ function renderArena(body) {
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
-  // make: up to maxPerPilot public arenas per pilot (drafts, named #..., don't count)
-  const max = body.maxPerPilot || 3;
-  const owned = body.arenas.filter((a) => a.role === "owner" && !a.staff && !a.name.startsWith("#")).length;
-  const full = owned >= max;
-  $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
-  $("makeinfo").textContent = full
-    ? "That's the most per pilot. Discard one to make another."
-    : `It's yours at once. You own ${owned} of ${max}.`;
-  $("requestform").hidden = full;
+  renderMake(body);
 
   // owner: public/private switch and discard
   $("ownerbox").hidden = !owner;
@@ -1591,6 +1608,12 @@ function wireHub() {
     const { body } = await postJson("/request", { arena: $("reqname").value, pitch: $("reqpitch").value });
     msg($("reqmsg"), body.message, body.ok);
     if (body.ok) { location.hash = "#overview"; mePage(); }
+  });
+  $("moreform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const { body } = await postJson("/arenas/more", { wanted: Number($("morewanted").value), reason: $("morereason").value });
+    msg($("moremsg"), body.message, body.ok);
+    if (body.ok) mePage(current?.arena || undefined);
   });
   $("createform").addEventListener("submit", (e) => {
     e.preventDefault();

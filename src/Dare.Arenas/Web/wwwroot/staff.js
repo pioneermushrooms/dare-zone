@@ -62,6 +62,7 @@ async function load() {
   $("desk").hidden = false;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();
   $("createpanel").hidden = !body.can.create;
+  renderLimitRequests(body.limitRequests ?? []);
   const arenas = body.arenas ?? [];
   $("arenas").replaceChildren(...(arenas.length
     ? arenas.map((a) => el("tr", {},
@@ -73,6 +74,38 @@ async function load() {
         el("td", { textContent: String(a.players) }),
         el("td", {}, ...(body.can.admin ? arenaActions(a) : []))))
     : [el("tr", {}, el("td", { colSpan: 6, className: "dim", textContent: "No player-owned arenas yet." }))]));
+}
+
+// "Request more arenas": the account, its arenas and reason; a number box (what they asked for) and Approve / Decline.
+function renderLimitRequests(list) {
+  $("limitpanel").hidden = list.length === 0;
+  $("limitlist").replaceChildren(...list.map((r) => {
+    const max = el("input", { type: "number", min: "1", max: "200", step: "1", value: String(r.wanted), className: "narrow" });
+    max.setAttribute("aria-label", `New arena limit for ${r.player}`);
+    const approve = el("button", { type: "button", className: "small", textContent: "Approve" });
+    const decline = el("button", { type: "button", className: "small ghost", textContent: "Decline" });
+    approve.addEventListener("click", async () => {
+      approve.disabled = true;
+      const { body } = await call("/staff/limit", { id: r.id, action: "approve", max: Number(max.value) });
+      approve.disabled = false;
+      say($("limitmsg"), body);
+      if (body?.ok) load();
+    });
+    decline.addEventListener("click", async () => {
+      const note = await Dlg.prompt(`Why not? (${r.player} sees this)`, { title: "Decline request", ok: "Decline", danger: true, maxLength: 200 });
+      if (!note?.trim()) return;
+      const { body } = await call("/staff/limit", { id: r.id, action: "decline", note });
+      say($("limitmsg"), body);
+      if (body?.ok) load();
+    });
+    const names = r.names.length > 1 ? ` (also ${r.names.filter((n) => n.toLowerCase() !== r.player.toLowerCase()).join(", ")})` : "";
+    return el("li", { className: "limitreq" },
+      el("div", {}, el("a", { className: "pilotlink", href: "/pilot/" + encodeURIComponent(r.player), textContent: r.player }),
+        el("span", { className: "dim", textContent: `${names} · owns ${r.owned} of ${r.current} · asks for ${r.wanted} · ${when(r.at)}` })),
+      r.reason ? el("p", { textContent: r.reason }) : el("p", { className: "dim", textContent: "No reason given." }),
+      el("p", { className: "dim", textContent: "Arenas: " + (r.arenas.join(", ") || "none") }),
+      el("div", { className: "row" }, el("label", { className: "inline" }, "New limit ", max), approve, decline));
+  }));
 }
 
 // Staff (smod and up): suspend with a reason, revive, archive.

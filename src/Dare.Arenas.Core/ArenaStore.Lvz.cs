@@ -35,7 +35,7 @@ public sealed partial class ArenaStore
         var list = new List<PilotLvz>();
         lock (_gate)
         {
-            using var c = Cmd("SELECT id, name, length(data), updated FROM pilot_lvz WHERE owner = $o ORDER BY updated DESC, id DESC", ("$o", owner));
+            using var c = Cmd("SELECT id, name, length(data), updated FROM pilot_lvz WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o)) ORDER BY updated DESC, id DESC", ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             while (r.Read()) list.Add(new(r.GetInt64(0), r.GetString(1), r.GetInt32(2), Parse(r.GetString(3))));
         }
@@ -46,7 +46,7 @@ public sealed partial class ArenaStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT name, data FROM pilot_lvz WHERE id = $id AND owner = $o", ("$id", id), ("$o", owner));
+            using var c = Cmd("SELECT name, data FROM pilot_lvz WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", id), ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             return r.Read() ? (r.GetString(0), (byte[])r.GetValue(1)) : null;
         }
@@ -63,15 +63,15 @@ public sealed partial class ArenaStore
         {
             if (id is { } existing)
             {
-                if (Scalar("SELECT COUNT(*) FROM pilot_lvz WHERE id = $id AND owner = $o", ("$id", existing), ("$o", owner)) == 0)
+                if (Scalar("SELECT COUNT(*) FROM pilot_lvz WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", existing), ("$o", owner), ("$p", PersonParam(owner))) == 0)
                     return Fail("That .lvz isn't in your collection.");
                 Run("UPDATE pilot_lvz SET name = $n, data = $d, updated = $t WHERE id = $id", ("$n", file), ("$d", data), ("$t", Now()), ("$id", existing));
                 newId = existing;
                 return Ok($"Saved {file} to your LVZ.");
             }
-            if (Scalar("SELECT COUNT(*) FROM pilot_lvz WHERE owner = $o", ("$o", owner)) >= MaxPilotLvz)
+            if (Scalar("SELECT COUNT(*) FROM pilot_lvz WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$o", owner), ("$p", PersonParam(owner))) >= MaxPilotLvz)
                 return Fail($"You have {MaxPilotLvz} .lvz files; remove one to add another.");
-            Run("INSERT INTO pilot_lvz(owner, name, data, updated) VALUES($o,$n,$d,$t)", ("$o", owner), ("$n", file), ("$d", data), ("$t", Now()));
+            Run("INSERT INTO pilot_lvz(person_id, owner, name, data, updated) VALUES($p,$o,$n,$d,$t)", ("$o", owner), ("$p", PersonParam(owner)), ("$n", file), ("$d", data), ("$t", Now()));
             newId = Scalar("SELECT last_insert_rowid()");
             return Ok($"Added {file} to your LVZ.");
         });

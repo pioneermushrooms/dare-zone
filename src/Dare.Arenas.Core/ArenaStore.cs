@@ -15,7 +15,8 @@ public sealed partial class ArenaStore : IDisposable
 {
     public const int MaxCoMods = 5;
     /// <summary>Public arenas one pilot may own, drafts they may keep (not archived), and requests they may have waiting.</summary>
-    public const int MaxPerPilot = 3;
+    /// <summary>Public arenas one account may own (all its names together) unless staff raised its limit.</summary>
+    public const int MaxArenasPerAccount = 10;
 
     private readonly SqliteConnection _conn;
     private readonly Func<DateTimeOffset> _clock;
@@ -142,6 +143,8 @@ public sealed partial class ArenaStore : IDisposable
                 INSERT INTO store_markers(key) VALUES('bot_matches_migrated');
                 """);
         }
+        AddLibraryPersonColumns();
+        EnsureLimitTables();
     }
 
     public void Dispose()
@@ -155,16 +158,14 @@ public sealed partial class ArenaStore : IDisposable
     {
         if (string.IsNullOrWhiteSpace(player) || string.IsNullOrWhiteSpace(arena))
             return Fail("Player and arena name are required.");
-        if (OwnedCount(player) >= MaxPerPilot)
-            return Fail($"You already own {MaxPerPilot} arenas.");
-        if (Scalar("SELECT COUNT(*) FROM requests WHERE player = $p AND status = 'Pending'", ("$p", player)) >= MaxPerPilot)
-            return Fail($"You already have {MaxPerPilot} arena requests waiting; withdraw one with ?withdrawrequest.");
+        if (OwnedCount(player) >= ArenaLimitOf(player))
+            return Fail(AtLimit(player, you: true));
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
         if (Scalar("SELECT COUNT(*) FROM requests WHERE arena = $a AND status = 'Pending'", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' already has a pending request.");
         if (LoadDraft(arena) is { } d)
-            return Fail(Same(d.Owner, player)
+            return Fail(SameAccount(d.Owner, player)
                 ? $"That's your draft #{d.Name}; ask with ?requestpublic {d.Name} <what it's for>."
                 : $"Arena '{arena}' is already taken.");
         var now = Now();
@@ -188,8 +189,8 @@ public sealed partial class ArenaStore : IDisposable
         if (req is null) return Fail(err!);
         if (folderExists(arena))
             return Fail($"A folder named '{arena}' already exists on the server; cannot approve.");
-        if (OwnedCount(req.Player) >= MaxPerPilot)
-            return Fail($"{req.Player} already owns {MaxPerPilot} arenas.");
+        if (OwnedCount(req.Player) >= ArenaLimitOf(req.Player))
+            return Fail(AtLimit(req.Player, you: false));
         if (Scalar("SELECT COUNT(*) FROM arenas WHERE name = $a", ("$a", arena)) > 0)
             return Fail($"Arena '{arena}' is already taken.");
         var fromDraft = IsDraftRequestId(req.Id);
@@ -231,10 +232,10 @@ public sealed partial class ArenaStore : IDisposable
     {
         var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
-        if (!Same(a.Owner, owner)) return Fail("Only the arena owner can add co-mods.");
+        if (!SameAccount(a.Owner, owner)) return Fail("Only the arena owner can add co-mods.");
         if (string.IsNullOrWhiteSpace(player)) return Fail("Player name is required.");
-        if (Same(a.Owner, player)) return Fail("The owner cannot be their own co-mod.");
-        if (a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is already a co-mod.");
+        if (SameAccount(a.Owner, player)) return Fail("That's one of the owner's own names; it already has every owner power.");
+        if (a.CoMods.Any(c => SameAccount(c, player))) return Fail($"{player} is already a co-mod.");
         if (a.CoMods.Count >= MaxCoMods) return Fail($"An arena can have at most {MaxCoMods} co-mods.");
         Run("INSERT INTO comods(arena, player) VALUES($a,$p)", ("$a", arena), ("$p", player));
         if (MirrorOf(arena) is { } other)
@@ -247,7 +248,7 @@ public sealed partial class ArenaStore : IDisposable
     {
         var a = DraftRules.IsDraft(arena) ? LoadDraftAsArena(arena) : Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
-        if (!Same(a.Owner, owner)) return Fail("Only the arena owner can remove co-mods.");
+        if (!SameAccount(a.Owner, owner)) return Fail("Only the arena owner can remove co-mods.");
         if (!a.CoMods.Any(c => Same(c, player))) return Fail($"{player} is not a co-mod.");
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", player));
         if (MirrorOf(arena) is { } other)
@@ -279,8 +280,8 @@ public sealed partial class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (a.Status == ArenaStatus.Active) return Fail($"Arena '{arena}' is already active.");
-        if (a.Status == ArenaStatus.Archived && OwnedCount(a.Owner) >= MaxPerPilot)
-            return Fail($"{a.Owner} already owns {MaxPerPilot} other arenas; transfer or archive one first.");
+        if (a.Status == ArenaStatus.Archived && OwnedCount(a.Owner) >= ArenaLimitOf(a.Owner))
+            return Fail($"{a.Owner} already owns {ArenaLimitOf(a.Owner)} other arenas; transfer or archive one first, or raise their limit.");
         var folderError = ensureFolder();
         if (folderError is not null)
             return Fail($"Can't revive '{arena}': {folderError}");
@@ -298,10 +299,8 @@ public sealed partial class ArenaStore : IDisposable
         var a = Load(arena);
         if (a is null) return Fail($"No such arena '{arena}'.");
         if (string.IsNullOrWhiteSpace(newOwner)) return Fail("New owner is required.");
-        if (OwnedCount(newOwner) >= MaxPerPilot)
-            return Fail($"{newOwner} already owns {MaxPerPilot} arenas.");
-        if (LoadDraft(arena) is { Status: not DraftStatus.Archived } && DraftCount(newOwner) >= MaxPerPilot)
-            return Fail($"{newOwner} already has {MaxPerPilot} drafts.");
+        if (OwnedCount(newOwner) >= ArenaLimitOf(newOwner))
+            return Fail(AtLimit(newOwner, you: false));
         Run("DELETE FROM comods WHERE arena=$a AND player=$p", ("$a", arena), ("$p", newOwner));
         Run("UPDATE arenas SET owner=$o WHERE name=$a", ("$o", newOwner), ("$a", arena));
         // the draft goes with the arena; the old owner's invites go with the old owner
@@ -385,8 +384,8 @@ public sealed partial class ArenaStore : IDisposable
     {
         var a = DraftRules.IsDraft(arena) ? DraftAsArena(arena) : Get(arena);
         if (a is null || a.Status != ArenaStatus.Active) return null;
-        if (Same(a.Owner, player)) return "owner";
-        return a.CoMods.Any(c => Same(c, player)) ? "comod" : null;
+        if (SameAccount(a.Owner, player)) return "owner";
+        return a.CoMods.Any(c => SameAccount(c, player)) ? "comod" : null;
     }
 
     /// <summary>Active arenas where <paramref name="player"/> is owner or co-mod; owned arena first, then by name.</summary>
@@ -394,20 +393,25 @@ public sealed partial class ArenaStore : IDisposable
     {
         lock (_gate)
         {
-            using var cmd = Cmd("""
-                SELECT name, 'owner' AS role, 1 AS ord FROM arenas WHERE owner = $p AND status = 'Active'
+            // every name of the player's account counts (an arena appears once, under its best role)
+            var ps = new List<(string, object)>();
+            var names = NamesOfAccount(player);
+            var mine = string.Join(" UNION ALL ", names.Select((n, i) => { ps.Add(($"$m{i}", n)); return $"SELECT $m{i} AS n"; }));
+            using var cmd = Cmd("WITH mine(n) AS (" + mine + ") " + """
+                SELECT DISTINCT name, role, ord FROM (
+                SELECT name, 'owner' AS role, 1 AS ord FROM arenas WHERE owner IN (SELECT n FROM mine) AND status = 'Active'
                 UNION ALL
                 SELECT a.name, 'comod', 3 FROM comods c JOIN arenas a ON a.name = c.arena
-                  WHERE c.player = $p AND a.status = 'Active'
+                  WHERE c.player IN (SELECT n FROM mine) AND a.status = 'Active' AND a.owner NOT IN (SELECT n FROM mine)
                 UNION ALL
-                SELECT '#' || d.name, 'owner', 0 FROM drafts d WHERE d.owner = $p AND d.status <> 'Archived'
+                SELECT '#' || d.name, 'owner', 0 FROM drafts d WHERE d.owner IN (SELECT n FROM mine) AND d.status <> 'Archived'
                   AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
                 UNION ALL
                 SELECT '#' || d.name, 'comod', 2 FROM comods c JOIN drafts d ON c.arena = '#' || d.name
-                  WHERE c.player = $p AND d.status <> 'Archived'
+                  WHERE c.player IN (SELECT n FROM mine) AND d.status <> 'Archived' AND d.owner NOT IN (SELECT n FROM mine)
                   AND (d.live = 0 OR EXISTS (SELECT 1 FROM arenas a WHERE a.name = d.name AND a.status = 'Active'))
-                ORDER BY ord, name
-                """, ("$p", player));
+                ) ORDER BY ord, name
+                """, [.. ps]);
             using var r = cmd.ExecuteReader();
             var list = new List<(string, string)>();
             while (r.Read()) list.Add((r.GetString(0), r.GetString(1)));

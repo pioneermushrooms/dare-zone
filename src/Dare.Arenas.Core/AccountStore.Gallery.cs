@@ -30,6 +30,8 @@ public sealed record GalleryPage(IReadOnlyList<GalleryItem> Items, long Count, l
 public sealed partial class AccountStore
 {
     public const int MaxGalleryPerAccount = 60;
+    private const string GalleryCredit =
+        "COALESCE(a.name, (SELECT o.name FROM accounts o WHERE o.person_id = g.person_id AND o.status = 'active' ORDER BY o.name COLLATE NOCASE LIMIT 1))";
     public const int MaxGalleryItems = 20_000;
     public const int MaxGalleryImageBytes = 256 * 1024;
     public const int MaxGalleryKeywordsLength = 200;
@@ -154,11 +156,11 @@ public sealed partial class AccountStore
                 return Fail("Sign in again first.");
             if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE sha = $h", ("$h", sha)) > 0)
                 return Fail("That exact picture is already shared.");
-            if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE account_id = $a", ("$a", accountId)) >= MaxGalleryPerAccount)
+            if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE person_id = $p", ("$p", PersonKey(accountId))) >= MaxGalleryPerAccount)
                 return Fail($"You've shared {MaxGalleryPerAccount}, the most one pilot can. Take one down first.");
             if (Scalar("SELECT COUNT(*) FROM gallery_items") >= MaxGalleryItems)
                 return Fail("The gallery is full for now.");
-            Run("INSERT INTO gallery_items(account_id, kind, ship, name, keywords, prompt, source, png, sha, created) VALUES($a, $k, $s, $n, $w, $p, $src, $img, $h, $c)",
+            Run("INSERT INTO gallery_items(account_id, person_id, kind, ship, name, keywords, prompt, source, png, sha, created) VALUES($a, $who, $k, $s, $n, $w, $p, $src, $img, $h, $c)", ("$who", PersonKey(accountId)),
                 ("$a", accountId), ("$k", chosen), ("$s", ship), ("$n", clean), ("$w", words), ("$p", cleanPrompt), ("$src", source),
                 ("$img", image), ("$h", sha), ("$c", Now()));
             id = Scalar("SELECT last_insert_rowid()");
@@ -179,12 +181,12 @@ public sealed partial class AccountStore
         {
             var sql = from switch
             {
-                "armory" => "SELECT kind, name, prompt, png FROM armory_items WHERE id = $id AND account_id = $a",
-                "shipyard" => "SELECT 'ship', name, prompt, png FROM shipyard_ships WHERE id = $id AND account_id = $a",
+                "armory" => "SELECT kind, name, prompt, png FROM armory_items WHERE id = $id AND person_id = $a",
+                "shipyard" => "SELECT 'ship', name, prompt, png FROM shipyard_ships WHERE id = $id AND person_id = $a",
                 _ => null,
             };
             if (sql is null) return new(false, "Choose your armory or your shipyard.", 0, []);
-            using var c = Cmd(sql, ("$id", itemId), ("$a", accountId));
+            using var c = Cmd(sql, ("$id", itemId), ("$a", PersonKey(accountId)));
             using var r = c.ExecuteReader();
             if (!r.Read()) return new(false, $"That isn't in your {from}.", 0, []);
             (savedKind, savedName, prompt, image) = (r.GetString(0), r.GetString(1), r.GetString(2), (byte[])r.GetValue(3));
@@ -216,20 +218,22 @@ public sealed partial class AccountStore
             ps.Add(($"$q{n}", "% " + w.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%"));
             n++;
         }
-        if (!string.IsNullOrWhiteSpace(pilot)) { where.Add("a.name = $p COLLATE NOCASE"); ps.Add(("$p", pilot.Trim())); }
+        if (!string.IsNullOrWhiteSpace(pilot)) { where.Add(GalleryCredit + " = $p COLLATE NOCASE"); ps.Add(("$p", pilot.Trim())); }
         var filter = where.Count == 0 ? "" : " AND " + string.Join(" AND ", where);
-        const string from = " FROM gallery_items g JOIN accounts a ON a.id = g.account_id WHERE 1 = 1";
+        // credited to the name that shared it; once that name is deleted, to the account's first remaining name
+        const string from = " FROM gallery_items g LEFT JOIN accounts a ON a.id = g.account_id WHERE " + GalleryCredit + " IS NOT NULL";
         lock (_gate)
         {
+            var viewer = PersonKey(viewerId);
             var count = Scalar("SELECT COUNT(*)" + from + filter, [.. ps]);
             var items = new List<GalleryItem>();
             var page = filter + (before > 0 ? " AND g.id < $before" : "");
-            using (var c = Cmd("SELECT g.id, g.kind, g.ship, g.name, g.keywords, g.prompt, g.source, a.name, g.account_id, g.created, g.saves" + from + page +
+            using (var c = Cmd("SELECT g.id, g.kind, g.ship, g.name, g.keywords, g.prompt, g.source, " + GalleryCredit + ", g.person_id, g.created, g.saves" + from + page +
                        " ORDER BY g.id DESC LIMIT $limit", [.. ps, ("$before", before), ("$limit", limit + 1)]))
             using (var r = c.ExecuteReader())
                 while (r.Read())
                     items.Add(new GalleryItem(r.GetInt64(0), r.GetString(1), (int)r.GetInt64(2), r.GetString(3), r.GetString(4), r.GetString(5),
-                        r.GetString(6), r.GetString(7), r.GetInt64(8) == viewerId, r.GetString(9), r.GetInt64(10)));
+                        r.GetString(6), r.GetString(7), !r.IsDBNull(8) && r.GetInt64(8) == viewer, r.GetString(9), r.GetInt64(10)));
             var next = items.Count > limit ? items[limit - 1].Id : 0;
             if (items.Count > limit) items.RemoveAt(limit);
             return new GalleryPage(items, count, next);
@@ -250,9 +254,9 @@ public sealed partial class AccountStore
     /// <summary>Takes a design down: its contributor may, and so may staff (<paramref name="staff"/>).</summary>
     public Result RemoveGalleryItem(long accountId, long itemId, bool staff) => Tx(() =>
     {
-        var owner = Scalar("SELECT COALESCE((SELECT account_id FROM gallery_items WHERE id = $id), 0)", ("$id", itemId));
-        if (owner == 0) return Fail("That design isn't in the gallery.");
-        if (owner != accountId && !staff) return Fail("Only the pilot who shared it, or staff, can take it down.");
+        if (Scalar("SELECT COUNT(*) FROM gallery_items WHERE id = $id", ("$id", itemId)) == 0) return Fail("That design isn't in the gallery.");
+        var owner = Scalar("SELECT COALESCE((SELECT person_id FROM gallery_items WHERE id = $id), 0)", ("$id", itemId));
+        if (owner != PersonKey(accountId) && !staff) return Fail("Only the pilot who shared it, or staff, can take it down.");
         Run("DELETE FROM gallery_items WHERE id = $id", ("$id", itemId));
         return Ok("Taken down.");
     });
@@ -310,6 +314,7 @@ public sealed partial class AccountStore
             CREATE INDEX IF NOT EXISTS ix_gallery_account ON gallery_items(account_id);
             CREATE INDEX IF NOT EXISTS ix_gallery_kind ON gallery_items(kind, id);
             """);
+        // gallery_items.person_id (the account that owns it) is added by AddLibraryPersons
         // The prompt a saved sheet was drawn from (added later), so shared ones can be found by it.
         foreach (var table in new[] { "armory_items", "shipyard_ships" })
             if (Scalar($"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'prompt'") == 0)

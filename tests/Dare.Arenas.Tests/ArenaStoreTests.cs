@@ -88,25 +88,24 @@ public sealed class ArenaStoreTests : IDisposable
     }
 
     [Fact]
-    public void three_pending_requests_per_player()
+    public void pending_requests_have_no_limit_of_their_own()
     {
         var s = Open();
-        Assert.True(s.Request("chris", "one", "x").Ok);
-        Assert.True(s.Request("CHRIS", "two", "x").Ok);
-        Assert.True(s.Request("chris", "three", "x").Ok);
-        Assert.False(s.Request("chris", "four", "x").Ok);
+        foreach (var n in new[] { "one", "two", "three", "four" })
+            Assert.True(s.Request("chris", n, "x").Ok);
     }
 
     [Fact]
-    public void three_arenas_per_player_and_names_unique()
+    public void ten_arenas_per_player_and_names_unique()
     {
         var s = Owned("one", "chris");
-        Assert.True(s.Request("Chris", "alpha", "x").Ok);
-        Assert.True(s.Approve("alpha", "staff", NoFolder).Ok);
-        Assert.True(s.Request("Chris", "beta", "x").Ok);
-        Assert.True(s.Approve("beta", "staff", NoFolder).Ok);
-        Assert.False(s.Request("Chris", "two", "x").Ok); // owns three
-        Assert.Equal(3, s.OwnedArenas("chris").Count);
+        foreach (var n in Enumerable.Range(1, ArenaStore.MaxArenasPerAccount - 1).Select(i => $"more{(char)('a' + i)}"))
+        {
+            Assert.True(s.Request("Chris", n, "x").Ok);
+            Assert.True(s.Approve(n, "staff", NoFolder).Ok);
+        }
+        Assert.False(s.Request("Chris", "two", "x").Ok); // owns ten
+        Assert.Equal(10, s.OwnedArenas("chris").Count);
         Assert.False(s.Request("other", "ONE", "x").Ok);
         Assert.True(s.Request("other", "two", "x").Ok);
         Assert.False(s.Request("third", "two", "x").Ok); // pending name
@@ -269,8 +268,8 @@ public sealed class ArenaStoreTests : IDisposable
         Assert.Equal("M", s.Get("one")!.Owner);
         Assert.Empty(s.Get("one")!.CoMods);
 
-        // up to three arenas per owner: a fourth can't be transferred to them
-        foreach (var n in new[] { "mtwo", "mthree" })
+        // up to ten arenas per owner: an eleventh can't be transferred to them
+        foreach (var n in Enumerable.Range(2, ArenaStore.MaxArenasPerAccount - 1).Select(i => $"m{(char)('a' + i)}x"))
         {
             Assert.True(s.Request("m", n, "x").Ok);
             Assert.True(s.Approve(n, "staff", NoFolder).Ok);

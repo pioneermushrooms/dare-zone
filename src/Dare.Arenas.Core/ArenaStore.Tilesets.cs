@@ -71,7 +71,7 @@ public sealed partial class ArenaStore
         var list = new List<PilotTileset>();
         lock (_gate)
         {
-            using var c = Cmd("SELECT id, name, length(bmp), roles IS NOT NULL AND roles <> '', updated FROM pilot_tilesets WHERE owner = $o ORDER BY updated DESC, id DESC", ("$o", owner));
+            using var c = Cmd("SELECT id, name, length(bmp), roles IS NOT NULL AND roles <> '', updated FROM pilot_tilesets WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o)) ORDER BY updated DESC, id DESC", ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             while (r.Read()) list.Add(new(r.GetInt64(0), r.GetString(1), r.GetInt32(2), r.GetInt64(3) != 0, Parse(r.GetString(4))));
         }
@@ -83,7 +83,7 @@ public sealed partial class ArenaStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT name, bmp, roles FROM pilot_tilesets WHERE id = $id AND owner = $o", ("$id", id), ("$o", owner));
+            using var c = Cmd("SELECT name, bmp, roles FROM pilot_tilesets WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", id), ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             return r.Read() ? (r.GetString(0), (byte[])r.GetValue(1), r.IsDBNull(2) ? null : r.GetString(2)) : null;
         }
@@ -102,17 +102,17 @@ public sealed partial class ArenaStore
         {
             if (id is { } existing)
             {
-                if (Scalar("SELECT COUNT(*) FROM pilot_tilesets WHERE id = $id AND owner = $o", ("$id", existing), ("$o", owner)) == 0)
+                if (Scalar("SELECT COUNT(*) FROM pilot_tilesets WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", existing), ("$o", owner), ("$p", PersonParam(owner))) == 0)
                     return Fail("That tileset isn't in your collection.");
                 Run("UPDATE pilot_tilesets SET name = $n, bmp = $b, roles = $r, updated = $t WHERE id = $id",
                     ("$n", display), ("$b", bmp), ("$r", (object?)rolesOrNull ?? DBNull.Value), ("$t", Now()), ("$id", existing));
                 newId = existing;
                 return Ok($"Saved {display} to your tilesets.");
             }
-            if (Scalar("SELECT COUNT(*) FROM pilot_tilesets WHERE owner = $o", ("$o", owner)) >= MaxPilotTilesets)
+            if (Scalar("SELECT COUNT(*) FROM pilot_tilesets WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$o", owner), ("$p", PersonParam(owner))) >= MaxPilotTilesets)
                 return Fail($"You have {MaxPilotTilesets} tilesets; remove one to add another.");
-            Run("INSERT INTO pilot_tilesets(owner, name, bmp, roles, updated) VALUES($o,$n,$b,$r,$t)",
-                ("$o", owner), ("$n", display), ("$b", bmp), ("$r", (object?)rolesOrNull ?? DBNull.Value), ("$t", Now()));
+            Run("INSERT INTO pilot_tilesets(person_id, owner, name, bmp, roles, updated) VALUES($p,$o,$n,$b,$r,$t)",
+                ("$o", owner), ("$p", PersonParam(owner)), ("$n", display), ("$b", bmp), ("$r", (object?)rolesOrNull ?? DBNull.Value), ("$t", Now()));
             newId = Scalar("SELECT last_insert_rowid()");
             return Ok($"Added {display} to your tilesets.");
         });

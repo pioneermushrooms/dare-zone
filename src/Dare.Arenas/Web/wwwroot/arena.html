@@ -75,6 +75,17 @@
         <button type="submit" class="hot">Make it</button>
       </form>
       <p class="msg" id="reqmsg"></p>
+      <div id="morebox" hidden>
+        <h3>Request more arenas</h3>
+        <p class="dim" id="morestate"></p>
+        <form class="stack" id="moreform">
+          <label>How many in all? <input type="number" id="morewanted" min="11" max="200" step="1" required></label>
+          <label>What are they for? (optional) <input type="text" id="morereason" maxlength="300" autocomplete="off">
+            <span class="hint">Staff see this with your request.</span></label>
+          <button type="submit">Ask staff</button>
+        </form>
+        <p class="msg" id="moremsg"></p>
+      </div>
       <div id="staffcreate" hidden>
         <h3>Staff: make one for someone else</h3>
         <p class="dim">The owner needs a Foundation account.</p>
