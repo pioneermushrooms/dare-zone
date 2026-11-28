@@ -79,3 +79,10 @@ test("removed spawn labels reset their settings", () => {
   assert.equal(r["Soccer:SpawnX1"], "300"); assert.equal(r["Soccer:SpawnY2"], "310"); // stale balls point at ball 1
   assert.equal(r["Soccer:SpawnRadius7"], "2");
 });
+
+test("labels find the LVZ panel's place toggle by its class (it has no id)", () => {
+  // Bug: picking a Game label kept placing the last LVZ image, because the labeller looked for #lzp-edit.
+  const box = { checked: true };
+  const doc = { querySelector: (s) => (s === ".lzp-edit" ? box : null), getElementById: () => null };
+  assert.equal(L.lvzToggle(doc), box);
+});
