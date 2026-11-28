@@ -386,7 +386,9 @@ function signedIn() {
   // map's own prefix, so they're published, downloaded and kept in Your maps with it.
   if (window.GameLabels) GameLabels.mount($("labelspanel"), {
     get: () => ({ grid, prefix, arena }),
-    set: (p, note) => { prefix = p; setDirty(true); draw(); say(note, true); },
+    // Tile art's "Put the old tiles back" restores a whole earlier prefix: after a label change that would
+    // drop the labels, so it's forgotten (the tiles can still be repainted).
+    set: (p, note) => { prefix = p; if (tileArt) tileArt.forget(); setDirty(true); draw(); say(note, true); },
   });
 
   let dragRect = null;

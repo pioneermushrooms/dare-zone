@@ -41,10 +41,11 @@ test("decoder_rejects_short_data", () => {
   assert.equal(E.decodeTiles(Uint8Array.of(0x20)), null);              // double-byte sequence cut short
 });
 
+const BMP = { bmp: null };
 test("regions_round_trip_with_flags_and_meta", () => {
   const regs = [{ name: "Red base", tiles: E.rect(10, 10, 4, 4), base: true, noFlagDrops: true, meta: { v: 1, kind: "base", team: 0 } },
     { name: "Lobby", tiles: E.rect(500, 500, 10, 2), noWeapons: true, noAntiwarp: true }];
-  const back = E.regions(E.withRegions(null, regs));
+  const back = E.regions(E.withRegions(null, regs, { bmp: bmpStub() }));
   assert.equal(back.length, 2);
   assert.equal(back[0].name, "Red base"); assert.ok(back[0].base && back[0].noFlagDrops && !back[0].noWeapons);
   assert.deepEqual(back[0].meta, { v: 1, kind: "base", team: 0 });
@@ -59,11 +60,19 @@ test("untouched_prefix_is_identical", () => {
   assert.deepEqual([...out], [...p]);
 });
 
-test("adds_block_to_bare_map", () => {
-  const p = E.withRegions(null, [{ name: "A", tiles: setOf([1, 1]) }]);
-  assert.equal(String.fromCharCode(...p.slice(0, 4)), "elvl");
-  assert.equal(u32(p, 4), p.length); // tiles start right after the block
+test("a map without a tileset gets the given one, never a bare eLVL block", () => {
+  // The server reads a file that starts with "elvl" as a new-format lvl and finds no tiles after it,
+  // so regions must ride on a BMP: withRegions takes a fallback tileset and refuses without one.
+  assert.throws(() => E.withRegions(null, [{ name: "A", tiles: setOf([1, 1]) }]), /tileset/);
+  const p = E.withRegions(null, [{ name: "A", tiles: setOf([1, 1]) }], { bmp: bmpStub() });
+  assert.equal(p[0], 0x42); assert.equal(p[1], 0x4d);
+  const at = u32(p, 6);
+  assert.equal(String.fromCharCode(...p.slice(at, at + 4)), "elvl");
+  assert.equal(u32(p, 2), p.length); // tiles start right after the prefix
   assert.equal(E.regions(p)[0].name, "A");
+  const bare = block(chunk("ATTR", ascii("x")));                // an eLVL-only prefix: moved onto the tileset, its chunks kept
+  const q = E.withRegions(bare, [{ name: "B", tiles: setOf([2, 2]) }], { bmp: bmpStub() });
+  assert.equal(q[0], 0x42); assert.equal(E.regions(q)[0].name, "B");
 });
 
 test("bmp_offsets_fixed", () => {

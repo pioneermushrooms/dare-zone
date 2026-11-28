@@ -194,13 +194,24 @@
     return chunks(elvl, 12, Math.min(elvl.length, u32(elvl, 4))).filter((c) => c.type === "REGN").map(parseRegion);
   }
 
-  /** The prefix with these regions instead of its old ones (other chunks kept, in place). */
-  function withRegions(prefix, regs) {
-    const { bmp, elvl } = split(prefix);
+  /**
+   * The prefix with these regions instead of its old ones (other chunks kept, in place). Regions must ride
+   * on a tileset BMP: the server reads a file starting with "elvl" as a new-format lvl and finds no tiles
+   * after it. A map without one gets opts.bmp (the editor passes Continuum's classic tiles.bm2, so it looks
+   * the same); without opts.bmp this throws.
+   */
+  function withRegions(prefix, regs, opts) {
+    const parts0 = split(prefix);
+    const elvl = parts0.elvl;
+    let bmp = parts0.bmp;
     const old = elvl && elvl.length >= 12 ? chunks(elvl, 12, Math.min(elvl.length, u32(elvl, 4))) : [];
     const oldRegions = old.filter((c) => c.type === "REGN");
     if (prefix && regs.length === oldRegions.length && regs.every((r, i) => unchanged(r) && r.raw.length === oldRegions[i].raw.length
       && r.raw.every((v, k) => v === oldRegions[i].raw[k]))) return prefix; // nothing changed
+    if (!bmp) {
+      if (!opts || !opts.bmp) throw new Error("This map has no tileset to keep its regions in.");
+      bmp = LvlFile.split(opts.bmp).bmp; // just the BMP, even if the file carried more
+    }
     const newRegions = regs.map(regionChunk);
     const parts = [];
     let placed = false;

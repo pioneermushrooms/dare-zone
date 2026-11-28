@@ -4,6 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const L = require("../../src/Dare.Arenas/Web/wwwroot/labels-layer.js");
 const E = require("../../src/Dare.Arenas/Web/wwwroot/elvl.js");
+function bmpStub() {
+  const b = new Uint8Array(54 + 1024 + 4); b[0] = 0x42; b[1] = 0x4d; new DataView(b.buffer).setUint32(2, b.length, true);
+  new DataView(b.buffer).setUint32(10, 54 + 1024, true); return b;
+}
+const T = { bmp: bmpStub() };
 
 const all = [
   { kind: "spawn", name: "Red spawn", team: 0, x: 100, y: 500, r: 6 },
@@ -17,7 +22,7 @@ const all = [
 ];
 
 test("labels_regions_round_trip", () => {
-  const back = L.fromRegions(E.regions(E.withRegions(null, L.toRegions(all))));
+  const back = L.fromRegions(E.regions(E.withRegions(null, L.toRegions(all), T)));
   assert.equal(back.length, all.length);
   for (const [i, want] of all.entries()) {
     const got = back[i];
@@ -26,7 +31,7 @@ test("labels_regions_round_trip", () => {
 });
 
 test("base and area regions carry the server's properties", () => {
-  const regs = E.regions(E.withRegions(null, L.toRegions(all)));
+  const regs = E.regions(E.withRegions(null, L.toRegions(all), T));
   const base = regs.find((r) => r.name === "Red base"), lobby = regs.find((r) => r.name === "Lobby");
   assert.ok(base.base && base.noFlagDrops && !base.noWeapons);
   assert.equal(base.tiles.size, 40 * 60);
@@ -34,7 +39,7 @@ test("base and area regions carry the server's properties", () => {
 });
 
 test("foreign_regions_kept", () => {
-  const prefix = E.withRegions(null, [{ name: "Warp", tiles: E.rect(3, 3, 2, 2) }]);
+  const prefix = E.withRegions(null, [{ name: "Warp", tiles: E.rect(3, 3, 2, 2) }], T);
   const labels = L.fromRegions(E.regions(prefix));
   assert.equal(labels[0].kind, "foreign");
   assert.equal(E.withRegions(prefix, L.toRegions(labels)), prefix); // untouched: same bytes
@@ -60,6 +65,17 @@ test("ball spawns are numbered in order without gaps", () => {
 });
 
 test("same names are made unique for the server", () => {
-  const names = E.regions(E.withRegions(null, L.toRegions([{ kind: "area", name: "Zone", x: 1, y: 1, w: 2, h: 2 }, { kind: "area", name: "zone", x: 9, y: 9, w: 2, h: 2 }]))).map((r) => r.name);
+  const names = E.regions(E.withRegions(null, L.toRegions([{ kind: "area", name: "Zone", x: 1, y: 1, w: 2, h: 2 }, { kind: "area", name: "zone", x: 9, y: 9, w: 2, h: 2 }]), T)).map((r) => r.name);
   assert.deepEqual(names, ["Zone", "zone 2"]);
+});
+
+test("removed spawn labels reset their settings", () => {
+  // Blue spawn and the flag spawn area deleted, one of three balls left
+  const r = L.resetSettings([{ kind: "spawn", team: 0, x: 1, y: 1, r: 1 }, { kind: "ballspawn", index: 0, x: 300, y: 310, r: 2 }]);
+  assert.equal(r["Spawn:Team1-X"], "0"); assert.equal(r["Spawn:Team1-Radius"], "0");
+  assert.ok(!("Spawn:Team0-X" in r));                                     // still labelled
+  assert.equal(r["Flag:SpawnX"], "512"); assert.equal(r["Flag:SpawnRadius"], "50"); // server defaults
+  assert.ok(!("Soccer:SpawnX" in r));
+  assert.equal(r["Soccer:SpawnX1"], "300"); assert.equal(r["Soccer:SpawnY2"], "310"); // stale balls point at ball 1
+  assert.equal(r["Soccer:SpawnRadius7"], "2");
 });

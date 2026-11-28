@@ -82,6 +82,22 @@
     return out;
   }
 
+  /**
+   * Defaults for the spawn settings no label covers any more (a deleted label must not keep its spot):
+   * a team spawn 0 (unset), the flag spawn the server's 512/512/50, and ball spawns past the labelled ones
+   * the first ball's spot (the server can't unset them: it reads ball spawns until the first missing one).
+   */
+  function resetSettings(labels) {
+    const have = spawnSettings(labels), out = {};
+    const put = (k, v) => { if (!(k in have)) out[k] = String(v); };
+    for (let t = 0; t < 4; t++) for (const k of ["X", "Y", "Radius"]) put(`Spawn:Team${t}-${k}`, 0);
+    put("Flag:SpawnX", 512); put("Flag:SpawnY", 512); put("Flag:SpawnRadius", 50);
+    const bx = have["Soccer:SpawnX"] ?? 512, by = have["Soccer:SpawnY"] ?? 512, br = have["Soccer:SpawnRadius"] ?? 20;
+    put("Soccer:SpawnX", bx); put("Soccer:SpawnY", by); put("Soccer:SpawnRadius", br);
+    for (let k = 1; k < 8; k++) { put(`Soccer:SpawnX${k}`, bx); put(`Soccer:SpawnY${k}`, by); put(`Soccer:SpawnRadius${k}`, br); }
+    return out;
+  }
+
   const colorOf = (l) => l.kind === "spawn" || l.kind === "base" ? TEAM_COLORS[l.team ?? 0] : l.kind === "flagspawn" ? "#facc15"
     : l.kind === "ballspawn" ? "#c4b5fd" : l.kind === "area" ? "#4ade80" : l.kind === "flagspot" ? "#ffcf7a" : "#94a3b8";
 
@@ -96,11 +112,16 @@
       for (const c of kids) if (c != null) e.append(c);
       return e;
     };
-    let labels = [], sel = -1, armed = null, drag = null, lastPrefix;
+    let labels = [], sel = -1, armed = null, drag = null, lastPrefix, classic = null;
+    // A map with no tileset of its own keeps its regions on Continuum's classic tiles (it looks the same).
+    fetch("/arena/tiles.bm2", { credentials: "same-origin" }).then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((b) => { if (b) classic = new Uint8Array(b); }).catch(() => {});
     const load = () => { const p = hooks.get().prefix; lastPrefix = p; labels = fromRegions(Elvl.regions(p)); if (sel >= labels.length) sel = -1; };
     load();
     function save(note) {
-      const next = Elvl.withRegions(hooks.get().prefix, toRegions(labels));
+      let next;
+      try { next = Elvl.withRegions(hooks.get().prefix, toRegions(labels), { bmp: classic }); }
+      catch { load(); render(); mv.redraw(); hint.textContent = "This map has no tileset yet, so labels can't be kept in it. Try again in a moment, or pick tiles first."; return; }
       lastPrefix = next;
       hooks.set(next, note || "Labels changed. Publish to use them.");
       render();
@@ -155,7 +176,7 @@
       if (!labels.length) list.append(el("li", { class: "dim", text: "No labels yet." }));
       const k = armed && kindOf(armed);
       hint.textContent = k ? `${k.hint} ${k.shape === "rect" ? "Drag a rectangle on the map." : "Click the map to place it" + (k.shape === "point" ? ", then drag out its radius." : ".")} Esc to stop.`
-        : edit.checked ? "Drag a label to move it. Delete removes the selected one." : "";
+        : edit.checked ? "Drag a label to move it. The Delete key removes the selected one (no undo yet)." : "";
       renderForm();
       const g = hooks.get().grid;
       let flags = 0, goals = 0;
@@ -291,7 +312,7 @@
       if (!edit.checked || e.target.closest?.("input, select, textarea, dialog")) return;
       const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
       if (e.key === "Escape" && (armed || sel >= 0)) { stop(); armed = null; add.value = ""; sel = -1; render(); mv.redraw(); }
-      else if ((e.key === "Delete" || e.key === "Backspace") && sel >= 0) { stop(); remove(); }
+      else if (e.key === "Delete" && sel >= 0) { stop(); remove(); } // not Backspace: labels have no undo yet
     }, true);
 
     render();
@@ -302,12 +323,19 @@
   /** On Publish: write the spawn labels' settings into the arena; returns a sentence for the publish message. */
   async function publishSettings(arena) {
     if (!api) return "";
-    const settings = spawnSettings(api.labels());
-    const n = Object.keys(settings).length;
-    if (!n) return "";
+    const labelled = spawnSettings(api.labels()), resets = resetSettings(api.labels());
+    const post = (path, settings) => fetch("/arena/api/settings/" + path, { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "dare-arena" }, body: JSON.stringify({ arena, settings })});
     try {
-      const r = await fetch("/arena/api/settings/apply", { method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "dare-arena" }, body: JSON.stringify({ arena, settings }) });
+      // resets only for spawn settings the arena has (a removed label's), so an arena that never had them stays clean
+      const pv = await (await post("preview", { ...resets, ...labelled })).json().catch(() => null);
+      const settings = { ...labelled };
+      for (const row of pv?.rows || []) {
+        const k = `${row.section}:${row.key}`;
+        if (k in resets && row.status === "change" && row.old != null) settings[k] = resets[k];
+      }
+      if (!Object.keys(settings).length) return "";
+      const r = await post("apply", settings);
       const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
       if (!j.ok) return `Spawn settings not set: ${j.message}`;
       const skipped = (j.rows || []).filter((x) => x.status === "skipped");
@@ -317,5 +345,5 @@
     } catch { return "Spawn settings not set: the server didn't answer."; }
   }
 
-  return { KINDS, TEAMS, fromRegions, toRegions, spawnSettings, mount, publishSettings };
+  return { KINDS, TEAMS, fromRegions, toRegions, spawnSettings, resetSettings, mount, publishSettings };
 });
