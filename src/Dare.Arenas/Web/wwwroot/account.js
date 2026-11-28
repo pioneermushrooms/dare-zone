@@ -151,9 +151,19 @@ const pages = {
       location.href = "/account/login";
     });
     await pilots(me);
-    if (location.hash === "#pilots") { $("pilots").open = true; $("pilots").scrollIntoView(); }
+    // the pilot menu links straight to a section: /account/#pilots, #keys, #email, #password
+    const openSection = () => {
+      const fold = $(SECTIONS[location.hash.slice(1)]);
+      if (!fold || fold.hidden) return;
+      fold.open = true;
+      fold.scrollIntoView({ block: "start" });
+    };
+    openSection();
+    addEventListener("hashchange", openSection);
   },
 };
+
+const SECTIONS = { pilots: "pilots", keys: "keysbox", email: "emailbox", password: "pwbox" };
 
 // ---- pilot names on this email ------------------------------------------------------------------
 function el(tag, props, ...kids) {
@@ -178,12 +188,15 @@ async function pilots(me) {
   }
   $("pilotssum").textContent = `${data.pilots.length} name${data.pilots.length === 1 ? "" : "s"}${data.emailVerified ? " on your email" : ""} · signed in as ${data.current}`;
   if (!data.emailVerified)
-    $("pilotsnote").textContent = "Fly as any of them; each keeps its own keys and macros. They share one account (no email: their passwords can't be recovered).";
+    $("pilotsnote").textContent = "Fly as any of them. They're one account (no email: their passwords can't be recovered).";
   const names = data.pilots.map((p) => p.name);
+  currentName = data.current;
   $("pilotlist").replaceChildren(...data.pilots.map((p) => {
     const current = p.name === data.current;
     const owned = p.arenas.length + p.drafts.length;
     const actions = el("span", { className: "row" });
+    // each name has its own public profile (the others on this email are never shown there)
+    actions.append(el("a", { className: "small profilelink", href: "/pilot/" + encodeURIComponent(p.name), textContent: "Profile" }));
     if (current) actions.append(el("span", { className: "tag Active", textContent: "signed in" }));
     else {
       const fly = el("button", { type: "button", className: "small", textContent: "Switch to" });
@@ -206,24 +219,43 @@ async function pilots(me) {
     keysWired = true;
     wire($("addform"), $("pilotsmsg"), "/pilots/add", () => { $("addform").reset(); location.reload(); });
     await keysPanel(names, data.current);
+    loadoutPanel(names, data.current);
   }
 }
 let keysWired = false;
+let currentName = "";
+
+/** "Copy a setup between names": one name's equipped ships, armory, graphics and keys onto another. */
+function loadoutPanel(names, current) {
+  if (names.length < 2) return;
+  $("loadoutbox").hidden = false;
+  const from = $("loadfrom"), to = $("loadto");
+  from.replaceChildren(...names.map((n) => el("option", { value: n, textContent: n })));
+  to.replaceChildren(...names.map((n) => el("option", { value: n, textContent: n })));
+  to.value = current;
+  from.value = names.find((n) => n !== current) ?? names[0];
+  $("loadgo").addEventListener("click", async () => {
+    const parts = [...$("loadparts").querySelectorAll("input:checked")].map((c) => c.value);
+    if (from.value === to.value) { msg($("loadmsg"), "Pick two different names.", false); return; }
+    if (!parts.length) { msg($("loadmsg"), "Choose what to copy.", false); return; }
+    const { body } = await post("/pilots/loadout", { from: from.value, to: to.value, parts });
+    msg($("loadmsg"), body.message, body.ok);
+    if (body.ok && parts.includes("keys") && $("keysname").value === to.value) await loadKeys(to.value);
+  });
+}
 
 let deleting = null;
 function askDelete(p, others) {
   deleting = p;
   $("deletebox").hidden = false;
   $("deletetitle").textContent = `Delete ${p.name}?`;
-  $("deletenote").textContent = "The name is freed at once: anyone can claim it. This can't be undone."
-    + (p.arenas.length + p.drafts.length ? " Choose what happens to what it owns:" : "");
-  const rows = [...p.arenas.map((a) => [a, a]), ...p.drafts.map((d) => [d, "#" + d + " (draft)"])].map(([name, label]) => {
-    const pick = el("select", { name });
-    pick.append(el("option", { value: "", textContent: "Archive it (files kept)" }));
-    for (const o of others) pick.append(el("option", { value: o, textContent: `Keep it, owned by ${o}` }));
-    return el("label", { className: "arenachoice" }, el("b", { className: "name", textContent: label }), pick);
-  });
-  $("deletearenas").replaceChildren(...rows);
+  // its arenas stay the account's; they show the signed-in name (or, deleting that one, the next name)
+  const heir = p.name === currentName ? others[0] : currentName;
+  const owned = p.arenas.length + p.drafts.length;
+  $("deletenote").textContent = "The name is freed at once: anyone can claim it. This can't be undone. "
+    + "Your ships, armory, graphics, maps and other saved things stay with your account."
+    + (owned ? ` Its arenas stay yours too; they'll show ${heir} as owner.` : "");
+  $("deletearenas").replaceChildren();
   $("deleteconfirm").value = "";
   $("deleteconfirm").focus();
 }
@@ -238,10 +270,8 @@ document.addEventListener("DOMContentLoaded", () => {
       msg($("pilotsmsg"), `Type ${deleting.name} to confirm.`, false);
       return;
     }
-    const keep = {};
-    for (const s of $("deletearenas").querySelectorAll("select")) if (s.value) keep[s.name] = s.value;
     $("deletego").disabled = true;
-    const { body } = await post("/pilots/delete", { name: deleting.name, keep });
+    const { body } = await post("/pilots/delete", { name: deleting.name });
     $("deletego").disabled = false;
     msg($("pilotsmsg"), body.message, body.ok);
     if (body.ok) setTimeout(() => location.reload(), 1200);

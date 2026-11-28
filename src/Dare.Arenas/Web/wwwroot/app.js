@@ -131,12 +131,39 @@ function route() {
   if (shown === "map") loadLibrary();
   if (shown === "graphics") loadGraphics();
   if (shown === "tiles") openTiles();
+  if (shown === "lvz") openLvz();
+  if (shown === "gamemode" && typeof GameModeTab !== "undefined") GameModeTab.show();
+}
+
+/**
+ * "Make an arena": open while the account owns fewer than its limit (all its names together,
+ * drafts named #... don't count); at the limit, "Request more arenas" asks staff for a higher one.
+ */
+function renderMake(body) {
+  const max = body.maxPerPilot || 10;
+  const owned = body.ownedCount ?? 0;
+  const full = owned >= max;
+  $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
+  $("makeinfo").textContent = full
+    ? "That's your limit, for all your pilot names together. Discard one, or ask staff for more."
+    : `It's yours at once. Your account owns ${owned} of ${max}.`;
+  $("requestform").hidden = full;
+  const lr = body.limitRequest || {};
+  $("morebox").hidden = !full;
+  $("moreform").hidden = !full || !!lr.pending;
+  $("morewanted").min = String(max + 1);
+  $("morewanted").max = String(lr.maxLimit || 200);
+  if (!$("morewanted").value) $("morewanted").value = String(max + 5);
+  $("morereason").maxLength = lr.maxReason || 300;
+  $("morestate").textContent = lr.pending
+    ? `You asked for up to ${lr.pending.wanted} on ${when(lr.pending.at)}. Staff will answer here and in game.`
+    : lr.last?.status === "Declined" ? `Staff declined your last request: ${lr.last.note || ""}`
+    : lr.last?.status === "Approved" ? `Staff raised your limit to ${lr.last.granted}.`
+    : "";
 }
 
 function renderNoArena(body) {
-  $("maketitle").textContent = "Make an arena";
-  $("makeinfo").textContent = "It's yours at once. Up to 3 per pilot.";
-  $("requestform").hidden = false;
+  renderMake(body);
   // an old request (from before arenas launched without approval): offer the same name
   if (body.pendingRequest && !$("reqname").value) {
     $("reqname").value = body.pendingRequest.arena;
@@ -164,15 +191,7 @@ function renderArena(body) {
     if (a.name === body.arena) o.selected = true;
     return o;
   }));
-  // make: up to maxPerPilot public arenas per pilot (drafts, named #..., don't count)
-  const max = body.maxPerPilot || 3;
-  const owned = body.arenas.filter((a) => a.role === "owner" && !a.staff && !a.name.startsWith("#")).length;
-  const full = owned >= max;
-  $("maketitle").textContent = full ? `You own ${max} arenas` : "Make an arena";
-  $("makeinfo").textContent = full
-    ? "That's the most per pilot. Discard one to make another."
-    : `It's yours at once. You own ${owned} of ${max}.`;
-  $("requestform").hidden = full;
+  renderMake(body);
 
   // owner: public/private switch and discard
   $("ownerbox").hidden = !owner;
@@ -190,6 +209,7 @@ function renderArena(body) {
   // settings
   lastSettings = body.settings || [];
   renderSettings(lastSettings);
+  loadSettingSets();
   if (body.configMissing) msg($("setmsg"), "This arena's settings file is missing; ask staff.", false);
   // crew
   renderCrew(body.coMods, owner);
@@ -197,6 +217,16 @@ function renderArena(body) {
   $("openeditor").href = editor; $("viewmap").href = editor;
   drawThumb(body.arena);
   renderRestart(body);
+  editingForChat(body.arena);
+}
+
+// The docked chat (chat.js) follows the arena being edited: "" is the public arenas (arena 0); a draft has no
+// public chat, so the chat stays where it is.
+function editingForChat(arena) {
+  const name = arena === PUBLIC ? "" : arena.startsWith("#") ? null : arena;
+  if (name == null) delete document.documentElement.dataset.editingArena;
+  else document.documentElement.dataset.editingArena = name;
+  dispatchEvent(new CustomEvent("foundation:editing", { detail: { arena: name } }));
 }
 
 // ---- restart and enter: the top bar's buttons, the "not live yet" notes, the two dialogs ----------
@@ -534,12 +564,208 @@ const GEN_LABELS = { recolor: "Recolour", new: "New look", prompt: "From a descr
 const PROMPTED = new Set(["prompt", "ship-prompt"]);
 let gfxArena = "";
 
+// What you make here is also kept on your account, as in the game's Graphics overlay: weapons in
+// your armory, ships in your shipyard (/account/api/...), so you can wear it, download it, or put it
+// on another arena later. Other graphics are only the arena's.
+const ARMORY_KINDS = new Set(["bullets", "bombs", "mines", "shrapnel", "repel", "rocket"]);
+const ACCT = "/account/api";
+let saved = null; // { armory: items[], ships: ships[] } of the signed-in pilot, or null
+const isShipSlot = (name) => /^ship[1-8]$/.test(name);
+const keepsOnAccount = (slot) => ARMORY_KINDS.has(slot.name) || isShipSlot(slot.name);
+const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+async function loadSaved() {
+  const [a, y] = await Promise.all([getJson(ACCT + "/armory"), getJson(ACCT + "/shipyard")]);
+  saved = a.body?.ok || y.body?.ok ? { armory: a.body?.ok ? a.body.items : [], ships: y.body?.ok ? y.body.ships : [] } : null;
+}
+
+/** The pilot's saved items that fit `slot`: armory items of its kind, or any shipyard ship. */
+function savedFor(slot) {
+  if (!saved) return [];
+  if (ARMORY_KINDS.has(slot.name)) return saved.armory.filter((i) => i.kind === slot.name).map((i) => ({ ...i, url: `${ACCT}/armory/sheet?id=${i.id}` }));
+  if (isShipSlot(slot.name)) return saved.ships.map((s) => ({ ...s, url: `${ACCT}/shipyard/sheet?id=${s.id}` }));
+  return [];
+}
+
+function toBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** Adds a picture to the pilot's armory (weapons) or shipyard (ships); returns a note for the message. */
+async function keepOnAccount(slot, bytes, name, source, prompt = "") {
+  if (!keepsOnAccount(slot)) return "";
+  const ship = isShipSlot(slot.name);
+  const where = ship ? "shipyard" : "armory";
+  const payload = { name: (name || slot.label).slice(0, 40), source, sheet: toBase64(bytes) };
+  if (prompt) payload.prompt = prompt; // kept, so shared ones can be found by it
+  if (!ship) payload.kind = slot.name;
+  try {
+    const { status, body } = await post(`${ACCT}/${where}/add`, JSON.stringify(payload), "application/json");
+    if (status === 401) return ` Sign in to the site to keep it in your ${where} as well.`;
+    if (!body?.ok) return ` It wasn't added to your ${where}: ${body?.message || "try again"}`;
+    await loadSaved();
+    return ` Added to your ${where}.`;
+  } catch {
+    return ` It wasn't added to your ${where}.`;
+  }
+}
+
+/** Saves bytes as a file in the browser's downloads (PNG or BMP, by what they are). */
+function saveFile(bytes, stem) {
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const url = URL.createObjectURL(new Blob([bytes], { type: png ? "image/png" : "image/bmp" }));
+  const a = el("a", { href: url, download: `${stem}.${png ? "png" : "bmp"}` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The picture a card shows, as a file: a stock ship is cut out of the shared ships sheet. */
+async function downloadGraphic(arena, slot) {
+  try {
+    const r = await fetch(`${API}/graphics/image?arena=${encodeURIComponent(arena)}&name=${slot.name}`, { credentials: "same-origin" });
+    if (!r.ok) throw new Error();
+    const ship = /^ship([1-8])$/.exec(slot.name);
+    const stem = ship ? `${slug(slot.label) || slot.name}-rotations` : slot.name;
+    if (ship && r.headers.get("X-Graphic-Source") === "stock") {
+      const img = await createImageBitmap(await r.blob());
+      const h = img.height / 8, c = el("canvas", { width: String(img.width), height: String(h) });
+      c.getContext("2d").drawImage(img, 0, (Number(ship[1]) - 1) * h, img.width, h, 0, 0, img.width, h);
+      const blob = await new Promise((done) => c.toBlob(done, "image/png"));
+      saveFile(new Uint8Array(await blob.arrayBuffer()), stem);
+    } else {
+      saveFile(new Uint8Array(await r.arrayBuffer()), stem);
+    }
+  } catch {
+    msg($("gfxmsg"), `Couldn't download ${slot.label}.`, false);
+  }
+}
+
+// ---- animated icons: one frame of a sheet at a time, in a fixed box ----
+// How each sheet is cut (the stock layout, as the game and ships/graphics.py read it): columns,
+// rows, and what plays: "all" frames in order, "row" (row 0 only: level 1, the enemy's...) or
+// "sheet" (tiles and tables: the whole picture, still). A cell is the picture's size / cols × rows.
+const SPRITES = {
+  bullets: [4, 10, "row"], bombs: [10, 13, "row"], mines: [10, 8, "row"], shrapnel: [10, 6, "row"],
+  repel: [5, 2, "all"], rocket: [13, 2, "all"],
+  prizes: [10, 1, "all"], powerb: [10, 3, "row"], flag: [10, 2, "row"], goal: [9, 2, "row"],
+  explode0: [7, 1, "all"], explode1: [6, 6, "all"], explode2: [4, 11, "all"], empburst: [5, 2, "all"],
+  warp: [6, 3, "all"], warppnt: [10, 1, "all"], exhaust: [19, 2, "row"], shield: [10, 1, "all"], super: [10, 1, "all"],
+  over1: [15, 2, "all"], over2: [10, 3, "all"], over3: [15, 2, "all"], over4: [5, 2, "all"], over5: [4, 6, "all"],
+  wall: [10, 2, "sheet"], gradient: [1, 1, "sheet"],
+};
+// Ships: 40 headings in 10 columns and 4 rows, frame 0 nose-up, each next one 9° clockwise.
+const layoutOf = (name) => (isShipSlot(name) ? [10, 4, "all"] : SPRITES[name] ?? [1, 1, "sheet"]);
+
+const icons = new WeakMap(); // canvas -> { img, sx, sy, sw, sh, cols, n }
+const shown = new Set(); // icons on screen; only these are redrawn
+const observed = new Set();
+const stillMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let iconTick = 0, iconTimer = 0;
+const onScreen = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) shown.add(e.target); else shown.delete(e.target);
+  runIcons();
+}, { rootMargin: "64px" }) : null;
+
+/** A canvas for an icon `size` CSS pixels square, drawn at the screen's own pixel density. */
+function iconCanvas(size, label) {
+  const k = Math.min(3, Math.max(1, Math.round(globalThis.devicePixelRatio || 1)));
+  const c = el("canvas", { class: "icon", width: String(size * k), height: String(size * k), role: "img", "aria-label": label });
+  c.style.width = c.style.height = size + "px";
+  return c;
+}
+
+/** Shows `img` (the part `src` of it, if given) on `canvas` as graphic `name`'s animated icon. */
+function showIcon(canvas, img, name, src = null) {
+  const [cols, rows, mode] = layoutOf(name);
+  const r = src ?? { sx: 0, sy: 0, sw: img.width, sh: img.height };
+  const still = mode === "sheet";
+  icons.set(canvas, { img, ...r, cols: still ? 1 : cols, rows: still ? 1 : rows, n: still ? 1 : mode === "row" ? cols : cols * rows });
+  drawIcon(canvas, 0);
+  if (onScreen) { onScreen.observe(canvas); observed.add(canvas); } else shown.add(canvas);
+  runIcons();
+}
+
+function drawIcon(canvas, t) {
+  const p = icons.get(canvas);
+  if (!p) return;
+  const fw = p.sw / p.cols, fh = p.sh / p.rows, f = t % p.n;
+  const W = canvas.width, H = canvas.height;
+  // Whole-number scale where the frame fits (tiny sprites at about half the box), else shrink to fit.
+  let s = Math.min(W / fw, H / fh) * (fw <= 8 ? 0.55 : 1);
+  if (s >= 1) s = Math.floor(s);
+  const w = Math.round(fw * s), h = Math.round(fh * s);
+  const g = canvas.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, W, H);
+  g.drawImage(p.img, p.sx + (f % p.cols) * fw, p.sy + Math.floor(f / p.cols) * fh, fw, fh,
+    Math.floor((W - w) / 2), Math.floor((H - h) / 2), w, h);
+}
+
+/** Plays the icons on screen (one timer for all of them), or stops when none can move. */
+function runIcons() {
+  const move = !stillMotion.matches && !document.hidden && [...shown].some((c) => (icons.get(c)?.n ?? 1) > 1);
+  if (move && !iconTimer) {
+    iconTimer = setInterval(() => {
+      iconTick++;
+      for (const c of shown) if (c.isConnected) drawIcon(c, iconTick); else forgetIcon(c);
+    }, 70); // the overlay's own preview speed
+  } else if (!move && iconTimer) {
+    clearInterval(iconTimer);
+    iconTimer = 0;
+  }
+}
+
+function forgetIcon(c) { shown.delete(c); observed.delete(c); onScreen?.unobserve(c); }
+/** Lets go of icons whose cards were replaced. */
+function sweepIcons() { for (const c of [...observed, ...shown]) if (!c.isConnected) forgetIcon(c); }
+
+stillMotion.addEventListener?.("change", () => { for (const c of shown) drawIcon(c, 0); runIcons(); });
+document.addEventListener("visibilitychange", runIcons);
+
+/** The pilot's saved weapons (or ships) that fit this card: click one to use it here. */
+function savedList(arena, slot) {
+  const where = isShipSlot(slot.name) ? "shipyard" : "armory";
+  const mine = savedFor(slot);
+  const head = el("div", { class: "savedhead" }, el("span", { class: "title", text: `Your ${where}` }));
+  if (saved) head.append(el("span", { class: "count", text: String(mine.length) }));
+  const box = el("div", { class: "saved" }, head);
+  const list = el("ul", { class: "savedlist", "aria-label": `Your ${where}` });
+  if (!mine.length) {
+    list.append(el("li", { class: "empty", text: saved ? `Ones you make or upload land here.` : `Sign in to keep them in your ${where}.` }));
+    box.append(list);
+    return box;
+  }
+  for (const it of mine) {
+    const art = iconCanvas(40, it.name);
+    const img = new Image();
+    img.addEventListener("load", () => showIcon(art, img, slot.name));
+    img.src = it.url;
+    const b = el("button", { type: "button", class: "savedthumb", title: `${it.name}: use it for ${slot.label}` }, art, el("span", { class: "name", text: it.name }));
+    b.addEventListener("click", () => void useSaved(arena, slot, it));
+    list.append(el("li", null, b));
+  }
+  box.append(list);
+  return box;
+}
+
+/** Puts one of the pilot's saved items on the arena's `slot`. */
+async function useSaved(arena, slot, item) {
+  msg($("gfxmsg"), `Putting ${item.name} on ${slot.label}…`, true);
+  const r = await fetch(item.url, { credentials: "same-origin" });
+  if (!r.ok) return msg($("gfxmsg"), `Couldn't load ${item.name}.`, false);
+  await setGraphic(arena, slot, await r.blob());
+}
+
 async function loadGraphics() {
   const arena = current?.arena;
   if (!arena) return;
   const host = $("gfxgroups");
-  if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; }
-  const { body } = await getJson(API + "/graphics?arena=" + encodeURIComponent(arena));
+  if (gfxArena !== arena) { host.replaceChildren(el("p", { class: "dim", text: "Loading…" })); gfxArena = arena; sweepIcons(); }
+  const [{ body }] = await Promise.all([getJson(API + "/graphics?arena=" + encodeURIComponent(arena)), loadSaved()]);
   if (current?.arena !== arena) return;
   if (!body?.ok) { host.replaceChildren(el("p", { class: "msg bad", text: body?.message || "Couldn't load the graphics." })); return; }
   const owner = current.role === "owner";
@@ -550,10 +776,11 @@ async function loadGraphics() {
   }
   host.replaceChildren(...[...groups].map(([group, slots]) =>
     el("div", null, el("h3", { text: group }), el("div", { class: "gfxgrid" }, ...slots.map((s) => gfxCard(arena, s, owner))))));
+  sweepIcons();
 }
 
 function gfxCard(arena, slot, owner) {
-  const canvas = el("canvas", { width: "1", height: "1", "aria-label": slot.label + " now" });
+  const canvas = iconCanvas(88, slot.label + " now");
   const srcText = slot.source === "arena" ? "Yours" : slot.source === "lvz" ? "From " + slot.lvzFile : "Stock";
   const card = el("div", { class: "gfxcard" },
     el("div", { class: "head" }, el("b", { text: slot.label }), el("span", { class: "src " + slot.source, text: srcText })),
@@ -566,7 +793,7 @@ function gfxCard(arena, slot, owner) {
     up.addEventListener("click", () => file.click());
     file.addEventListener("change", async () => {
       const f = file.files[0]; file.value = "";
-      if (f) await setGraphic(arena, slot, f);
+      if (f) await setGraphic(arena, slot, f, { name: f.name.replace(/\.[^.]+$/, ""), source: "uploaded" });
     });
     const acts = el("div", { class: "acts" }, up, file);
     if (slot.generate.length) {
@@ -575,6 +802,7 @@ function gfxCard(arena, slot, owner) {
       gen.addEventListener("change", () => { const m = gen.value; gen.value = ""; if (m) openGenerator(arena, slot, m); });
       acts.append(gen);
     }
+    if (keepsOnAccount(slot)) card.append(savedList(arena, slot));
     if (slot.source === "arena") {
       const reset = el("button", { type: "button", class: "small danger", text: "Reset" });
       reset.addEventListener("click", async () => {
@@ -587,19 +815,21 @@ function gfxCard(arena, slot, owner) {
     }
     card.append(acts);
   }
+  const download = el("button", { type: "button", class: "small ghost", text: "Download", title: `Save ${slot.label} as a file` });
+  download.addEventListener("click", () => void downloadGraphic(arena, slot));
+  (card.querySelector(".acts") ?? card.appendChild(el("div", { class: "acts" }))).append(download);
   return card;
 }
 
-// The arena's current picture (or the stock one) onto a canvas; ships' stock pictures share one file.
+// The arena's current picture (or the stock one) as the card's icon; ships' stock pictures share one file.
 async function drawGraphic(canvas, arena, slot) {
   try {
     const r = await fetch(`${API}/graphics/image?arena=${encodeURIComponent(arena)}&name=${slot.name}`, { credentials: "same-origin" });
     if (!r.ok) return;
     const img = await createImageBitmap(await r.blob());
     const ship = /^ship([1-8])$/.exec(slot.name);
-    let sx = 0, sy = 0, sw = img.width, sh = img.height;
-    if (ship && r.headers.get("X-Graphic-Source") === "stock") { sh = img.height / 8; sy = (Number(ship[1]) - 1) * sh; }
-    paintSheet(canvas, img, sx, sy, sw, sh);
+    const h = img.height / 8; // a stock ship is one of the eight in the shared sheet
+    showIcon(canvas, img, slot.name, ship && r.headers.get("X-Graphic-Source") === "stock" ? { sx: 0, sy: (Number(ship[1]) - 1) * h, sw: img.width, sh: h } : null);
   } catch { /* leave it blank */ }
 }
 
@@ -612,10 +842,12 @@ function paintSheet(canvas, img, sx = 0, sy = 0, sw = img.width, sh = img.height
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw * k, sh * k);
 }
 
-async function setGraphic(arena, slot, blob) {
+/** Saves a picture to the arena; a new one (`keep`: { name, source }) is also kept on the pilot's account. */
+async function setGraphic(arena, slot, blob, keep = null) {
   msg($("gfxmsg"), `Saving ${slot.label}…`, true);
   const { body } = await post(`${API}/graphics/set?arena=${encodeURIComponent(arena)}&name=${slot.name}`, blob, "application/octet-stream");
-  msg($("gfxmsg"), webMessage(body?.message), body?.ok);
+  const note = body?.ok && keep ? await keepOnAccount(slot, new Uint8Array(await blob.arrayBuffer()), keep.name, keep.source, keep.prompt) : "";
+  msg($("gfxmsg"), webMessage(body?.message) + note, body?.ok);
   if (body?.ok) { loadGraphics(); refreshRestart(); }
   return !!body?.ok;
 }
@@ -642,9 +874,13 @@ async function runGenerator() {
   msg($("gfxdlgmsg"), "", true);
   const stopWait = waitingFor(run);
   try {
-    const { body } = await postJson("/graphics/generate", { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
+    // Again on a prompt continues its run (run.batch): the generator shows a take unlike the ones shown.
+    const { body } = await postJson("/graphics/generate", run.batch
+      ? { arena: run.arena, name: run.slot.name, mode: run.mode, batch: run.batch }
+      : { arena: run.arena, name: run.slot.name, mode: run.mode, prompt: run.prompt || null });
     if (gen !== run) return;
-    if (!body?.ok || !body.sheet) { msg($("gfxdlgmsg"), body?.message || "Couldn't draw that.", false); return; }
+    if (!body?.ok || !body.sheet) { run.batch = null; msg($("gfxdlgmsg"), body?.message || "Couldn't draw that.", false); return; }
+    run.batch = body.batch || null;
     run.png = Uint8Array.from(atob(body.sheet), (ch) => ch.charCodeAt(0));
     paintSheet($("gfxcanvas"), await createImageBitmap(new Blob([run.png], { type: "image/png" })));
     msg($("gfxdlgmsg"), "Use this, or try Again.", true);
@@ -681,6 +917,7 @@ function wireGraphics() {
     e.preventDefault();
     if (!gen) return;
     gen.prompt = $("gfxprompt").value.trim();
+    gen.batch = null; // Draw starts a new run of tries
     if (!gen.prompt) return msg($("gfxdlgmsg"), "Describe what to draw.", false);
     runGenerator();
   });
@@ -688,7 +925,8 @@ function wireGraphics() {
   $("gfxuse").addEventListener("click", async () => {
     if (!gen?.png) return;
     $("gfxuse").disabled = true;
-    if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }))) $("gfxdlg").close();
+    const keep = { name: gen.prompt ? gen.prompt.slice(0, 40) : `${GEN_LABELS[gen.mode].replace("…", "")} ${gen.slot.label.toLowerCase()}`, source: PROMPTED.has(gen.mode) ? "generated" : "random", prompt: PROMPTED.has(gen.mode) ? gen.prompt : "" };
+    if (await setGraphic(gen.arena, gen.slot, new Blob([gen.png], { type: "image/png" }), keep)) $("gfxdlg").close();
     else { msg($("gfxdlgmsg"), $("gfxmsg").textContent, false); $("gfxuse").disabled = false; }
   });
   $("gfxdlg").addEventListener("close", () => { gen = null; });
@@ -730,7 +968,8 @@ async function changeCoMod(action, name) {
   if (body.ok) { $("comodname").value = ""; mePage(current.arena); }
 }
 
-// ---- settings: grouped into tabs, with a switch for on/off settings and number boxes for numbers ----
+// ---- settings: grouped into tabs. Switches for on/off settings, a slider and number box for numbers with a
+// known range, a list for named choices, text otherwise. Each setting's help shows on hover, focus or tap. ----
 const SHIP_SECTIONS = ["All", "Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark", "LegalShip"];
 const SETTING_TABS = [
   { id: "ships", label: "Ships", sections: SHIP_SECTIONS },
@@ -744,43 +983,85 @@ const SETTING_TABS = [
 const isMessageKey = (section, key) => section.toLowerCase() === "misc" && /^(greetmessage|periodicmessage\d)$/i.test(key);
 const tabOf = (section) => SETTING_TABS.find((t) => t.sections.some((x) => x.toLowerCase() === section.toLowerCase()))?.id ?? "other";
 let settingTab = "all";
+const isInt = (v) => v != null && v !== "" && /^-?\d+$/.test(String(v).trim());
+const isTrue = (v) => /^(1|true|yes|on|-?[1-9]\d*)$/i.test(String(v ?? "").trim());
+const isBoolSetting = (st) => st.type === "bool" || /^(true|false)$/i.test(String(st.default ?? "")) || (String(st.min) === "0" && String(st.max) === "1");
+// the value a setting has, normalised so "True" and "1" compare equal
+const norm = (st, v) => (isBoolSetting(st) ? (isTrue(v) ? "1" : "0") : String(v ?? "").trim());
+const isChanged = (st) => st.value != null && st.default != null && norm(st, st.value) !== norm(st, st.default);
 
 async function saveSetting(section, key, value, node) {
   const { body } = await postJson("/settings", { arena: current.arena, section, key, value });
   msg(node, webMessage(body.message), body.ok);
   if (body.ok) {
-    const st = lastSettings.find((x) => x.section.toLowerCase() === section.toLowerCase())
-      ?.settings.find((x) => x.key.toLowerCase() === key.toLowerCase());
+    const st = findSetting(section, key);
     if (st) st.value = value;
   }
   if (body.ok && /recyclearena/.test(body.message || "")) refreshRestart();
   return body.ok;
 }
+const findSetting = (section, key) => lastSettings.find((x) => x.section.toLowerCase() === section.toLowerCase())
+  ?.settings.find((x) => x.key.toLowerCase() === key.toLowerCase());
 
-function settingInput(s, st, saveBtn) {
+function settingInput(s, st, saveBtn, row) {
   const label = `${s.section}:${st.key}`;
-  const num = (v) => v != null && v !== "" && /^-?\d+$/.test(String(v));
-  const isTrue = (v) => /^(1|true|yes|on|-?[1-9]\d*)$/i.test(String(v ?? "").trim());
-  if (/^(true|false)$/i.test(String(st.default ?? "")) || (String(st.min) === "0" && String(st.max) === "1")) {
+  const shown = st.value != null && st.value.trim() !== "" ? st.value : st.default;
+  if (isBoolSetting(st)) {
     const box = el("input", { type: "checkbox", role: "switch", "aria-label": label });
-    box.checked = isTrue(st.value != null && st.value.trim() !== "" ? st.value : st.default);
+    box.checked = isTrue(shown);
     const wrap = el("label", { class: "switch bot-switch" }, box, el("span", { class: "track", "aria-hidden": "true" }));
     box.addEventListener("change", async () => {
       box.disabled = true;
       if (!await saveSetting(s.section, st.key, box.checked ? "1" : "0", $("setmsg"))) box.checked = !box.checked;
       box.disabled = false;
+      row.classList.toggle("changed", isChanged(st));
     });
     saveBtn.hidden = true;
     return { node: wrap, value: () => (box.checked ? "1" : "0") };
   }
-  const numeric = num(st.min) || num(st.max) || (num(st.default) && (st.value == null || num(st.value)));
+  const dirty = (v) => { saveBtn.disabled = v === (st.value ?? ""); };
+  const onEnter = (e) => { if (e.key === "Enter" && !saveBtn.disabled) { e.preventDefault(); saveBtn.click(); } };
+  if (st.choices && st.choices.length) {
+    const sel = el("select", { "aria-label": label });
+    const opts = [...st.choices];
+    if (shown && !opts.some((c) => c.toLowerCase() === String(shown).toLowerCase())) opts.unshift(shown);
+    for (const c of opts) sel.append(el("option", { value: c, text: c }));
+    sel.value = opts.find((c) => c.toLowerCase() === String(shown ?? "").toLowerCase()) ?? opts[0];
+    sel.addEventListener("change", () => dirty(sel.value));
+    sel.addEventListener("keydown", onEnter);
+    saveBtn.disabled = true;
+    return { node: sel, value: () => sel.value };
+  }
+  const numeric = st.type === "int" || isInt(st.min) || isInt(st.max) || (isInt(st.default) && (st.value == null || isInt(st.value)));
   const input = el("input", { type: numeric ? "number" : "text", value: st.value ?? "", maxlength: "64", "aria-label": label,
     placeholder: st.default != null ? String(st.default) : "" });
-  if (numeric) { input.step = "1"; if (num(st.min)) input.min = st.min; if (num(st.max)) input.max = st.max; }
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") saveBtn.click(); });
-  input.addEventListener("input", () => { saveBtn.disabled = input.value === (st.value ?? ""); });
+  input.addEventListener("keydown", onEnter);
+  input.addEventListener("input", () => dirty(input.value));
   saveBtn.disabled = true;
-  return { node: input, value: () => input.value };
+  if (!numeric) { input.className = "textval"; return { node: input, value: () => input.value }; }
+  input.step = "1";
+  if (isInt(st.min)) input.min = st.min;
+  if (isInt(st.max)) input.max = st.max;
+  input.className = "numval";
+  if (!(isInt(st.min) && isInt(st.max) && +st.max > +st.min)) return { node: input, value: () => input.value };
+  // a known range: a slider next to the number box, kept in step with it
+  const slider = el("input", { type: "range", min: st.min, max: st.max, step: "1", "aria-label": label + " slider", tabindex: "-1" });
+  const toSlider = () => { const v = isInt(input.value) ? input.value : isInt(shown) ? shown : st.min; slider.value = v; };
+  toSlider();
+  slider.addEventListener("input", () => { input.value = slider.value; dirty(input.value); });
+  input.addEventListener("input", toSlider);
+  return { node: el("span", { class: "rangeval" }, slider, input), value: () => input.value };
+}
+
+let tipSeq = 0;
+function settingTip(s, st) {
+  const range = st.min != null || st.max != null ? `${st.min ?? ""}–${st.max ?? ""}` : st.range || "";
+  const parts = [range && `Range ${range}`, st.default != null && st.default !== "" ? `Default ${st.default}` : "",
+    st.choices?.length ? `Choices: ${st.choices.join(", ")}` : ""].filter(Boolean);
+  return el("span", { class: "tip", role: "tooltip", id: "tip" + (++tipSeq) },
+    el("span", { class: "tipname", text: `${s.section}:${st.key}` }),
+    el("span", { text: st.description || "No description from the server." }),
+    parts.length ? el("span", { class: "tipmeta", text: parts.join(" · ") }) : null);
 }
 
 function renderSettings(sections) {
@@ -788,27 +1069,40 @@ function renderSettings(sections) {
   sections = sections.map((s) => ({ ...s, settings: s.settings.filter((st) => !isMessageKey(s.section, st.key)) }))
     .filter((s) => s.settings.length);
   const host = $("settings");
+  const open = new Set([...host.querySelectorAll("details.section[open]")].map((d) => d.dataset.section));
   host.replaceChildren(...sections.map((s) => {
-    const d = el("details", { class: "section", "data-tab": tabOf(s.section) }, el("summary", { text: `${s.section} (${s.settings.length})` }));
+    const d = el("details", { class: "section", "data-tab": tabOf(s.section), "data-section": s.section },
+      el("summary", { text: `${s.section} (${s.settings.length})` }));
+    const grid = el("div", { class: "setgrid" });
     for (const st of s.settings) {
-      const save = el("button", { type: "button", class: "small", text: "Save" });
-      const input = settingInput(s, st, save);
-      const range = [st.min != null || st.max != null ? `range ${st.min ?? ""}–${st.max ?? ""}` : st.range ? `range ${st.range}` : "",
-                     st.default != null ? `default ${st.default}` : ""].filter(Boolean).join(" · ");
-      const row = el("div", { class: "setting", "data-search": `${s.section} ${st.key} ${st.description || ""}`.toLowerCase() },
-        el("span", { class: "key", text: st.key }), input.node, save,
-        el("span", { class: "help", text: (st.description || "") + (range ? ` (${range})` : "") }));
+      const save = el("button", { type: "button", class: "small setsave", text: "Save", "aria-label": `Save ${s.section}:${st.key}` });
+      const row = el("div", { class: "setting" + (isChanged(st) ? " changed" : ""),
+        "data-search": `${s.section} ${st.key} ${st.description || ""}`.toLowerCase(), "data-key": `${s.section}:${st.key}` });
+      const input = settingInput(s, st, save, row);
+      const tip = settingTip(s, st);
+      const key = el("button", { type: "button", class: "key", "aria-describedby": tip.id, "aria-expanded": "false" },
+        el("span", { class: "keyname", text: st.key }), el("span", { class: "i", "aria-hidden": "true", text: "i" }));
+      // tap (touch) or click pins the help open; hover and keyboard focus show it too (CSS)
+      key.addEventListener("click", () => {
+        const on = !row.classList.contains("tipopen");
+        for (const r of host.querySelectorAll(".setting.tipopen")) { r.classList.remove("tipopen"); r.querySelector(".key").setAttribute("aria-expanded", "false"); }
+        row.classList.toggle("tipopen", on); key.setAttribute("aria-expanded", String(on));
+      });
+      key.addEventListener("keydown", (e) => { if (e.key === "Escape" && row.classList.contains("tipopen")) { e.stopPropagation(); key.click(); } });
+      row.append(key, input.node, save, tip);
       save.addEventListener("click", async () => {
         save.disabled = true;
-        if (await saveSetting(s.section, st.key, input.value(), $("setmsg"))) st.value = input.value();
+        if (await saveSetting(s.section, st.key, input.value(), $("setmsg"))) { st.value = input.value(); row.classList.toggle("changed", isChanged(st)); }
         else save.disabled = false;
       });
-      d.append(row);
+      grid.append(row);
     }
+    d.append(grid);
     return d;
   }));
   renderSettingTabs(sections);
   applyFilter();
+  for (const d of host.querySelectorAll("details.section")) if (open.has(d.dataset.section) && !d.hidden) d.open = true; // a redraw keeps what was open
 }
 
 function renderSettingTabs(sections) {
@@ -835,6 +1129,224 @@ function applyFilter() {
     d.hidden = !any;
     d.open = (q.length > 0 || settingTab !== "all") && any;
   }
+}
+
+// ---- settings sets (saved to the pilot's account) and settings files ------------------------------
+let settingSets = [];
+
+async function loadSettingSets(selectId) {
+  const { body } = await getJson(API + "/settingsets");
+  if (!body?.ok) return;
+  settingSets = body.sets || [];
+  const list = $("setlist");
+  const keep = selectId != null ? String(selectId) : list.value;
+  list.replaceChildren(...(settingSets.length
+    ? settingSets.map((s) => el("option", { value: String(s.id), text: `${s.name} (${s.count})` }))
+    : [el("option", { value: "", text: "No sets yet" })]));
+  if (settingSets.some((s) => String(s.id) === keep)) list.value = keep;
+  for (const id of ["setapply", "setrename", "setdelete"]) $(id).disabled = !settingSets.length;
+}
+const pickedSet = () => settingSets.find((s) => String(s.id) === $("setlist").value);
+
+// settings the page shows as Section:Key -> value, for "Save as a set"
+function currentSettings(which) {
+  const out = {};
+  for (const s of lastSettings) for (const st of s.settings) {
+    if (st.value == null) continue;
+    if (which === "changed" && !isChanged(st)) continue;
+    if (which === "shown") {
+      const row = document.querySelector(`.setting[data-key="${CSS.escape(`${s.section}:${st.key}`)}"]`);
+      if (!row || row.hidden || row.closest("details").hidden) continue;
+    }
+    out[`${s.section}:${st.key}`] = st.value;
+  }
+  return out;
+}
+
+function openSaveSet(fixed) {
+  const dlg = $("savesetdlg");
+  const counts = { changed: Object.keys(currentSettings("changed")).length, shown: Object.keys(currentSettings("shown")).length,
+    all: Object.keys(currentSettings("all")).length };
+  $("savesetwhich").hidden = !!fixed;
+  if (fixed) $("savesetsub").textContent = `${Object.keys(fixed).length} settings from ${$("diffsub").dataset.source || "the file"}.`;
+  else {
+    $("savesetsub").textContent = `From ${current.arena}.`;
+    for (const k of Object.keys(counts)) $("savesetcount-" + k).textContent = String(counts[k]);
+    if (!counts.changed) document.querySelector('input[name="savesetwhich"][value="all"]').checked = true;
+  }
+  const replace = $("savesetreplace");
+  replace.replaceChildren(el("option", { value: "", text: "A new set" }),
+    ...settingSets.map((s) => el("option", { value: String(s.id), text: `Replace ${s.name}` })));
+  $("savesetname").value = fixed ? ($("diffsub").dataset.name || "") : current.arena + " settings";
+  msg($("savesetmsg"), "", true);
+  dlg._fixed = fixed || null;
+  dlg.showModal();
+  $("savesetname").select();
+}
+
+async function saveSetSubmit(e) {
+  e.preventDefault();
+  const dlg = $("savesetdlg");
+  const which = document.querySelector('input[name="savesetwhich"]:checked')?.value || "changed";
+  const settings = dlg._fixed || currentSettings(which);
+  if (!Object.keys(settings).length) { msg($("savesetmsg"), "There are no settings to save in that choice.", false); return; }
+  const replace = $("savesetreplace").value;
+  if (replace && !await Dlg.confirm(`Replace ${settingSets.find((s) => String(s.id) === replace)?.name} with these ${Object.keys(settings).length} settings?`,
+    { title: "Replace set", ok: "Replace", danger: true })) return;
+  const { body } = await postJson("/settingsets/save", { name: $("savesetname").value, settings, id: replace || undefined });
+  if (!body.ok) { msg($("savesetmsg"), body.message, false); return; }
+  dlg.close();
+  msg($("setsmsg"), body.message, true);
+  if ($("diffdlg").open) msg($("diffmsg"), body.message, true); // saved from a file: say so where the pilot is looking
+  await loadSettingSets(body.id);
+}
+
+// The diff dialog: what a set, a file or a list of settings would change, applied to the chosen arena.
+const diff = { source: null, rows: [], fileSkipped: [], out: null };
+
+// outNode: where messages go when the dialog isn't open (the Settings tab's by default).
+async function openDiff(source, title, name, outNode) {
+  diff.source = source;
+  diff.out = outNode || null;
+  $("difftitle").textContent = title;
+  $("diffsub").dataset.source = title.replace(/^Apply /, "");
+  $("diffsub").dataset.name = name || "";
+  const target = $("difftarget");
+  target.replaceChildren(...current.arenas.map((a) => el("option", { value: a.name, text: a.name + (a.name === current.arena ? " (this arena)" : "") })));
+  target.value = current.arena;
+  msg($("diffmsg"), "", true);
+  if (!await previewDiff()) return;
+  if (!$("diffdlg").open) $("diffdlg").showModal();
+}
+
+async function previewDiff() {
+  const dlg = $("diffdlg");
+  dlg.classList.add("busy");
+  const { body } = await postJson("/settings/preview", { arena: $("difftarget").value, ...diff.source });
+  dlg.classList.remove("busy");
+  if (!body?.ok) {
+    if (dlg.open) msg($("diffmsg"), body?.message || "That didn't work.", false);
+    else msg(diff.out || $("setsmsg"), body?.message || "That didn't work.", false);
+    return false;
+  }
+  diff.rows = body.rows; diff.fileSkipped = body.fileSkipped || [];
+  msg($("diffmsg"), "", true);
+  renderDiff();
+  return true;
+}
+
+function renderDiff() {
+  const changes = diff.rows.filter((r) => r.status === "change");
+  const same = diff.rows.filter((r) => r.status === "same");
+  const skipped = diff.rows.filter((r) => r.status === "skipped");
+  const show = (v) => (v == null ? "(unset)" : v === "" ? "(off)" : v);
+  $("diffrows").replaceChildren(...(changes.length ? changes.map((r) => {
+    const box = el("input", { type: "checkbox", "aria-label": `Apply ${r.section}:${r.key}` });
+    box.checked = true; box.dataset.key = `${r.section}:${r.key}`;
+    box.addEventListener("change", diffCount);
+    return el("tr", null, el("td", null, box), el("td", { class: "dkey", text: `${r.section}:${r.key}` }),
+      el("td", { class: "dold", text: show(r.old) }), el("td", { class: "dnew", text: show(r.value) }));
+  }) : [el("tr", null, el("td", { colspan: "4", class: "dim", text: "Nothing would change: the arena already has every one of these values." }))]));
+  $("diffall").checked = true;
+  $("diffall").disabled = !changes.length;
+  $("diffsame").hidden = !same.length;
+  $("diffsamesum").textContent = `${same.length} already the same`;
+  $("diffsamelist").replaceChildren(...same.map((r) => el("li", { text: `${r.section}:${r.key} = ${show(r.value)}` })));
+  const skipName = (r) => (r.key ? `${r.section}:${r.key}` : r.section);
+  const skips = [...skipped.map((r) => (r.reason.startsWith(skipName(r)) ? r.reason : `${skipName(r)}: ${r.reason}`)),
+    ...diff.fileSkipped.map((s) => `Line ${s.line}, ${s.text}: ${s.reason}`)];
+  $("diffskipped").hidden = !skips.length;
+  $("diffskipsum").textContent = `${skips.length} skipped`;
+  $("diffskiplist").replaceChildren(...skips.map((t) => el("li", { text: t })));
+  $("diffsub").textContent = [`${changes.length} would change`, same.length && `${same.length} already the same`,
+    skips.length && `${skips.length} skipped`].filter(Boolean).join(", ") + (changes.length > 1 ? ". Untick any you want to leave as they are." : ".");
+  $("diffsaveset").hidden = !("text" in diff.source); // a set is already saved; a file can become one
+  diffCount();
+}
+
+function diffChecked() {
+  const keys = new Set([...$("diffrows").querySelectorAll("input[type=checkbox]:checked")].map((b) => b.dataset.key));
+  return diff.rows.filter((r) => r.status === "change" && keys.has(`${r.section}:${r.key}`));
+}
+function diffCount() {
+  const n = diffChecked().length;
+  const total = diff.rows.filter((r) => r.status === "change").length;
+  $("diffall").checked = n === total && total > 0;
+  $("diffall").indeterminate = n > 0 && n < total;
+  $("diffapply").disabled = n === 0;
+  $("diffapply").textContent = n === 0 ? "Apply" : `Apply ${n} change${n === 1 ? "" : "s"}`;
+}
+
+async function applyDiff(e) {
+  e.preventDefault();
+  const rows = diffChecked();
+  if (!rows.length) return;
+  const arena = $("difftarget").value;
+  const settings = Object.fromEntries(rows.map((r) => [`${r.section}:${r.key}`, r.value]));
+  $("diffapply").disabled = true;
+  const { body } = await postJson("/settings/apply", { arena, settings });
+  if (!body.ok) { msg($("diffmsg"), webMessage(body.message), false); diffCount(); return; }
+  $("diffdlg").close();
+  msg(diff.out || $("setsmsg"), webMessage(body.message), true);
+  if (arena === current.arena) {
+    for (const r of body.rows || []) if (r.status === "change") { const st = findSetting(r.section, r.key); if (st) st.value = r.value; }
+    renderSettings(lastSettings);
+    refreshRestart();
+  }
+}
+
+async function readSettingsFile(file) {
+  if (!file) return;
+  if (!/\.(conf|cfg|ini|set|txt)$/i.test(file.name)) { msg($("setsmsg"), "Drop a settings file: .conf, .cfg, .ini or .set.", false); return; }
+  if (file.size > 256 * 1024) { msg($("setsmsg"), "A settings file must be 256 KB or smaller.", false); return; }
+  const text = await file.text();
+  if (text.includes("\u0000")) { msg($("setsmsg"), "That file isn't text; a settings file has [Section] and Key=Value lines.", false); return; }
+  msg($("setsmsg"), "", true);
+  await openDiff({ text }, `Apply ${file.name}`, file.name.replace(/\.[^.]+$/, ""));
+}
+
+function wireSettingSets() {
+  const drop = $("setdrop"), input = $("setfile");
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); readSettingsFile(e.dataTransfer.files[0]); });
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { readSettingsFile(input.files[0]); input.value = ""; });
+  $("setsave").addEventListener("click", () => openSaveSet(null));
+  $("savesetform").addEventListener("submit", saveSetSubmit);
+  $("setapply").addEventListener("click", () => { const s = pickedSet(); if (s) openDiff({ set: s.id }, `Apply ${s.name}`, s.name); });
+  $("setrename").addEventListener("click", async () => {
+    const s = pickedSet(); if (!s) return;
+    const name = await Dlg.prompt(`New name for ${s.name}:`, { title: "Rename set", ok: "Rename", value: s.name, maxLength: 40 });
+    if (name == null || !name.trim()) return;
+    const { body } = await postJson("/settingsets/rename", { id: s.id, name });
+    msg($("setsmsg"), body.message, body.ok);
+    if (body.ok) loadSettingSets(s.id);
+  });
+  $("setdelete").addEventListener("click", async () => {
+    const s = pickedSet(); if (!s) return;
+    if (!await Dlg.confirm(`Delete ${s.name} (${s.count} settings) from your sets? Arenas keep the settings they have.`, { title: "Delete set", ok: "Delete", danger: true })) return;
+    const { body } = await postJson("/settingsets/remove", { id: s.id });
+    msg($("setsmsg"), body.message, body.ok);
+    if (body.ok) loadSettingSets();
+  });
+  $("difftarget").addEventListener("change", previewDiff);
+  $("diffall").addEventListener("change", () => {
+    for (const b of $("diffrows").querySelectorAll("input[type=checkbox]")) b.checked = $("diffall").checked;
+    diffCount();
+  });
+  $("diffform").addEventListener("submit", applyDiff);
+  $("diffsaveset").addEventListener("click", () => {
+    // what the file sets that this zone lets owners change: the checked changes and the ones already the same
+    const rows = [...diffChecked(), ...diff.rows.filter((r) => r.status === "same")];
+    if (!rows.length) { msg($("diffmsg"), "None of the file's settings can be saved: every one was skipped.", false); return; }
+    openSaveSet(Object.fromEntries(rows.map((r) => [`${r.section}:${r.key}`, r.value])));
+  });
+  // a tapped-open help closes when tapping elsewhere
+  document.addEventListener("click", (e) => {
+    if (e.target.closest?.(".setting .key")) return;
+    for (const r of document.querySelectorAll(".setting.tipopen")) { r.classList.remove("tipopen"); r.querySelector(".key").setAttribute("aria-expanded", "false"); }
+  });
 }
 
 // ---- messages: Misc:GreetMessage and Misc:PeriodicMessage0-9 ("<every> <first after> <text>", minutes) ----
@@ -930,6 +1442,17 @@ function openTiles() {
   if (!studio) studio = TileStudio.mount($("tilestudio"), { arena: current.arena, onMapSaved: () => loadLibrary() });
   $("tilespage").href = "/arena/tiles?arena=" + encodeURIComponent(current.arena);
   studio.setArena(current.arena, { open: true });
+}
+
+// ---- LVZ tab: the LVZ editor (lvz-studio.js), mounted on the first visit ----------------------------
+let lvzStudio = null;
+function openLvz() {
+  if (!window.LvzStudio || !current?.arena) return;
+  if (!lvzStudio) lvzStudio = LvzStudio.mount($("lvzstudio"), {
+    arena: current.arena, owner: current.role === "owner", levelFiles: current.levelFiles,
+    onPublished: async () => { await mePage(current.arena); startRestart(false); }, // nobody inside: restarts at once
+  });
+  lvzStudio.setArena(current.arena, { owner: current.role === "owner", levelFiles: current.levelFiles });
 }
 
 // ---- your maps: a dropped .lvl goes to the pilot's collection and opens as a draft in the editor ----
@@ -1089,6 +1612,12 @@ function wireHub() {
     msg($("reqmsg"), body.message, body.ok);
     if (body.ok) { location.hash = "#overview"; mePage(); }
   });
+  $("moreform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const { body } = await postJson("/arenas/more", { wanted: Number($("morewanted").value), reason: $("morereason").value });
+    msg($("moremsg"), body.message, body.ok);
+    if (body.ok) mePage(current?.arena || undefined);
+  });
   $("createform").addEventListener("submit", (e) => {
     e.preventDefault();
     createArena(e.target, $("crname"), $("crowner"), $("crmsg"), () => mePage());
@@ -1098,6 +1627,6 @@ function wireHub() {
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
   // /arena/me?arena=%23name (from the builder page) opens that arena, e.g. your draft
-  if (page === "me") { wireBots(); wireHub(); wireRestart(); wireGraphics(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
+  if (page === "me") { wireBots(); wireHub(); wireRestart(); wireGraphics(); wireSettingSets(); mePage(new URLSearchParams(location.search).get("arena") || undefined); }
   else publicPage();
 });

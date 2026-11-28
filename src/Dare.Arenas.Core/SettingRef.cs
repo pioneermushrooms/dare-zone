@@ -5,7 +5,8 @@ public static class SettingRef
 {
     /// <summary>
     /// Trims <paramref name="text"/>; requires exactly one ':' with non-empty parts made only of
-    /// ASCII letters, digits and '_'. On failure both outputs are empty.
+    /// ASCII letters, digits and '_'; the key may also have '-' after its first character (the server's
+    /// Spawn:Team0-X keys). On failure both outputs are empty.
     /// </summary>
     public static bool TryParse(string text, out string section, out string key)
     {
@@ -19,19 +20,22 @@ public static class SettingRef
 
         var s = t[..colon];
         var k = t[(colon + 1)..];
-        if (!IsWord(s) || !IsWord(k)) return false;
+        if (!IsWord(s, dash: false) || !IsWord(k, dash: true)) return false;
 
         section = s;
         key = k;
         return true;
     }
 
-    private static bool IsWord(string s)
+    private static bool IsWord(string s, bool dash)
     {
         if (s.Length == 0) return false;
-        foreach (var c in s)
-            if (!(char.IsAsciiLetterOrDigit(c) || c == '_'))
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (!(char.IsAsciiLetterOrDigit(c) || c == '_' || (dash && c == '-' && i > 0)))
                 return false;
+        }
         return true;
     }
 }

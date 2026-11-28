@@ -4,50 +4,45 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--ink); font: 1rem/1.55 Inter, system-ui, sans-serif; }
 body.playing { overflow: hidden; }
+html:has(body.playing) { scrollbar-gutter: auto; } /* the game fills the whole window */
 a { color: var(--cyan); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 
 /* The game's canvas fills the window once Play starts it. */
 body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100vh !important; display: block; outline: none; touch-action: none; }
 
-#entry { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: clamp(16px, 3vw, 36px);
+#entry { --pad: clamp(16px, 3vw, 36px); --dock-default-w: clamp(580px, 58vw, 800px); min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: var(--pad);
   background: linear-gradient(90deg, #060b14f5 0%, #060b14c8 42%, #060b1420 80%), linear-gradient(0deg, #060b14 0%, transparent 40%),
     url(/jump.webp) 62% 45% / cover no-repeat, var(--bg); }
 #entry[hidden] { display: none; }
 
-.bar { display: flex; justify-content: space-between; align-items: center; }
-.brand { text-decoration: none; }
+/* the same height and place as every other page's top bar (header.css), so nothing jumps between pages */
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: calc(clamp(12px, 2.4vw, 22px) - var(--pad)); }
+/* the mark and the name (header.css styles the name the same on every page) */
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
 .brand .logo { color: var(--cyan); font-size: 2rem; line-height: 1; }
-.topright { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.toplinks { display: flex; gap: 8px; }
-.toplinks a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 14px; font: 700 .82rem Inter, system-ui, sans-serif;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--ink); text-decoration: none; border: 1px solid #4a6179; border-radius: 3px;
-  background: #091221cc; backdrop-filter: blur(6px); }
-.toplinks a:hover { border-color: var(--cyan); color: var(--cyan); }
-.pilotbox { position: relative; }
-.pilot { display: inline-flex; align-items: center; gap: 10px; font: 600 .95rem Inter, system-ui, sans-serif; color: var(--ink); cursor: pointer;
-  padding: 8px 14px; min-height: 44px; border: 1px solid #4a6179; border-radius: 3px; background: #091221cc; backdrop-filter: blur(6px); }
-.pilot:hover, .pilot[aria-expanded="true"] { border-color: var(--cyan); }
-.pilot-label { color: var(--cyan); font-size: .68rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.pilot-name { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.caret { color: var(--muted); font-size: .8rem; }
-.pilotmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 15rem; padding: 8px; display: grid; gap: 2px;
-  background: #0d1624f5; border: 1px solid var(--line); border-top-color: #537a92; border-radius: 4px; box-shadow: 0 12px 30px #0008; }
-.pilotmenu[hidden] { display: none; }
-.pilotmenu .menuhead { margin: 4px 10px 4px; color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-.pilotmenu a, .pilotmenu button { display: flex; justify-content: space-between; gap: 10px; text-align: left; font: 500 .92rem Inter, system-ui, sans-serif;
-  color: var(--ink); text-decoration: none; background: transparent; border: 0; border-radius: 3px; padding: 9px 10px; cursor: pointer; }
-.pilotmenu a:hover, .pilotmenu button:hover { background: #16243a; }
-.pilotmenu button.current { color: var(--cyan); cursor: default; }
-.pilotmenu button.current::after { content: "✓"; }
-#pilotlist { display: grid; gap: 2px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-
-.launch { align-self: center; width: min(560px, 100%); }
-h1 { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase; line-height: .92; margin: 0 0 32px;
-  font-size: clamp(3.4rem, 9vw, 6.4rem); letter-spacing: .01em; }
+/* the links and the pilot button: one row, evenly spaced (the same gap as between the links), ending at the chat panel's
+   right edge and staying there when it's resized or moved */
+.topright { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;
+  width: var(--dock-default-w); }
+/* left of the dock: never under it, whatever size the dock is (chat.js sets --dock-w and --dock-right) */
+.launch { align-self: center; width: min(440px, 100%, calc(100vw - var(--dock-w, 0px) - var(--dock-right, 0px) - var(--pad) - 24px)); }
+h1 { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase; letter-spacing: .01em; }
 h1 em { font-style: normal; color: var(--cyan); }
 
+/* Next stop: the arena picked in the list, and Enter. */
+.dest { position: relative; display: grid; gap: 4px; padding: 22px 24px 24px; background: #08111ee6; border: 1px solid var(--line);
+  border-top-color: #537a92; border-left: 3px solid var(--cyan); border-radius: 4px; backdrop-filter: blur(8px); box-shadow: 0 18px 40px #0007; }
+.dest .kicker { margin: 0; color: var(--cyan); font-size: .72rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+.destname { margin: 0; font: 800 clamp(2.6rem, 5vw, 3.6rem)/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase;
+  letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.destmeta { margin: 2px 0 16px; color: var(--muted); font-size: .9rem; }
+.destmeta.live::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #5ee08f;
+  box-shadow: 0 0 8px #5ee08f; vertical-align: 1px; }
+.dest .controls #start { width: 100%; }
+
 .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
+.arena[hidden] { display: none; }
 .arena { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 14px; min-height: 60px; border: 1px solid #344762; border-radius: 3px; background: #08111ee8; }
 .arena span { color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 /* a fixed width (an arena name is at most 15 characters, plus its count), so a long one can't crowd Enter */
@@ -55,8 +50,8 @@ h1 em { font-style: normal; color: var(--cyan); }
   width: 12.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums; }
 .arena select option { background: #0b1422; color: var(--ink); }
 
-#start { --p: 0%; font: 700 1.2rem Inter, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 14px; min-height: 60px;
-  min-width: 11.5rem; padding: 10px 28px 10px 10px; border-radius: 3px; cursor: pointer; color: #07131e; border: 1px solid var(--cyan);
+#start { --p: 0%; font: 700 1.2rem Inter, system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; display: inline-flex;
+  align-items: center; gap: 14px; min-height: 64px; min-width: 11.5rem; padding: 10px 28px 10px 12px; border-radius: 3px; cursor: pointer; color: #07131e; border: 1px solid var(--cyan);
   background: var(--cyan); font-variant-numeric: tabular-nums; }
 /* downloading: dark, with a progress line along the bottom; still pressable */
 #start.downloading { color: var(--ink); border-color: #4a6179;
@@ -104,6 +99,7 @@ dialog .guest[hidden] { display: none; }
 @media (max-width: 760px) { .cards { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) {
   #entry { background-position: center, center, 55% center, center; }
+  .bar { flex-wrap: wrap; }
   .controls { flex-direction: column; }
   .arena select { max-width: none; flex: 1; }
   #start { justify-content: flex-start; }
@@ -111,65 +107,65 @@ dialog .guest[hidden] { display: none; }
 @media (max-width: 380px) { .cards { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { #start { transition: none; } }
 
-/* the chat panel: the chosen arena's live chat, over the right side of the home page */
-.chat { position: fixed; z-index: 3; right: clamp(16px, 3vw, 36px); top: 88px; bottom: 36px; width: min(560px, 46vw);
-  display: flex; flex-direction: column; background: #070d18c7; border: 1px solid var(--line); border-top-color: #537a92;
-  border-radius: 4px; backdrop-filter: blur(8px); }
-.chat.folded { bottom: auto; }
+/* the chat panel: chat.css styles it (one file with the arena editor's); here only how the home page lays it out:
+   floating over the right side, the arena list attached on its left */
+.chat { position: fixed; z-index: 3; right: var(--pad); top: 88px; bottom: 36px; width: var(--dock-default-w);
+  display: grid; grid-template-columns: 200px minmax(0, 1fr); }
+/* the arena and player columns keep their width; resizing the panel grows or shrinks only the chat itself */
+.chat .chatbody { grid-template-columns: 140px minmax(0, 1fr); }
+.chat .players button.player, .chat .players .ship { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* nothing slides out when it's narrow: the head's name gives way first, buttons keep their size */
+.chat .chathead > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat .chathead .ghostbtn, .chat .sayrow button, .chat .join button, .chat .say .leave { flex: none; }
+.chat .join { flex-wrap: wrap; }
+/* the input gives way, never Send: a grid column that can shrink, and an input with no intrinsic width */
+.chat .say { grid-template-columns: minmax(0, 1fr); }
+.chat .sayrow input { width: 0; }
+.sortby button { white-space: nowrap; }
+.arenashead { padding-left: 12px; }
+.chat .join .dim { min-width: 0; }
+.chatcol { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* folded: the chat goes to a slim tab on the right; the arena list stays */
+.chat.folded { width: auto !important; grid-template-columns: 200px 44px; }
 .chat.folded .chatbody { display: none; }
-.chathead { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
-.chathead b { color: var(--cyan); font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; }
-.chat .dim { color: var(--muted); font-size: .8rem; }
+.chat.folded .chathead { flex: 1 1 auto; flex-direction: column-reverse; justify-content: flex-end; padding: 10px 6px; border-bottom: 0; }
+.chat.folded .chathead > span { writing-mode: vertical-rl; }
+.chat.folded .chathead .dim { display: none; }
+
+/* the arena list, attached to the chat's left */
+.arenas { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #050a13c4; border-radius: 4px 0 0 4px; }
+.arenashead { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); }
+.arenashead h3 { margin: 0; color: var(--cyan); font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; }
+.sortby { display: flex; border: 1px solid #344762; border-radius: 3px; overflow: hidden; }
+.sortby button { font: 600 .7rem Inter, system-ui, sans-serif; letter-spacing: .04em; color: var(--muted); background: transparent; border: 0; padding: 3px 8px; cursor: pointer; }
+.sortby button + button { border-left: 1px solid #344762; }
+.sortby button:hover { color: var(--ink); }
+.sortby button[aria-pressed="true"] { color: #07131e; background: var(--cyan); }
+.arenalist { list-style: none; margin: 0; padding: 6px 0; flex: 1 1 auto; min-height: 0; overflow-y: auto; outline: none; }
+.arenalist:focus-visible { box-shadow: inset 0 0 0 2px var(--cyan); }
+.arenalist li[role=option] { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 12px 7px 14px;
+  cursor: pointer; font-size: .92rem; font-weight: 500; user-select: none; border-left: 3px solid transparent; }
+.arenalist li[role=option]:hover { background: #111d30; }
+.arenalist li.current { background: #12223a; border-left-color: var(--cyan); }
+.arenalist li.current .aname { color: var(--cyan); font-weight: 700; }
+.aname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acount { flex: none; min-width: 1.9em; text-align: center; font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: #6f819a; padding: 1px 6px; border-radius: 10px; }
+.acount.live { color: #07131e; background: #5ee08f; }
+.arenalist li.group { padding: 12px 14px 4px; color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .ghostbtn { font: 600 .8rem Inter, system-ui, sans-serif; color: var(--muted); background: transparent; border: 1px solid #344762; border-radius: 3px; padding: 4px 10px; cursor: pointer; }
 .ghostbtn:hover { color: var(--ink); border-color: var(--cyan); }
-.chatbody { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr); }
-.chatmain { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.players { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #050a13a8; }
-.players h3 { margin: 0; padding: 8px 12px; color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
-.players ul { list-style: none; margin: 0; padding: 4px 6px 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.players li.freq { color: var(--muted); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; padding: 6px 6px 2px; }
-.players button.player { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; font: 500 .88rem Inter, system-ui, sans-serif;
-  color: var(--ink); background: transparent; border: 0; border-radius: 3px; padding: 4px 6px; cursor: pointer; }
-.players button.player:hover, .players button.player.picked { background: #16243a; }
-.players button.player.picked { outline: 1px solid var(--cyan); }
-.players .ship { color: var(--muted); font-size: .75rem; }
-.lines { list-style: none; margin: 0; padding: 8px 12px; flex: 1 1 auto; min-height: 80px; overflow-y: auto; font-size: .88rem; line-height: 1.4; }
-.lines .line { padding: 2px 0; overflow-wrap: anywhere; }
-.lines time { color: #6f819a; font-size: .72rem; margin-right: 6px; font-variant-numeric: tabular-nums; }
-.lines .from { color: var(--cyan); margin-right: 6px; cursor: pointer; }
-.lines .from:hover { text-decoration: underline; }
-.lines .k-arena .text { color: #8ef0b2; }
-.lines .k-priv .from, .lines .k-priv .text { color: #ffcf7a; }
-.lines .k-freq .from, .lines .k-freq .text { color: #ffd98a; }
-.lines .k-error .text { color: var(--warn); }
-.say { padding: 8px 10px 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
-.say .to { margin: 0; display: flex; justify-content: space-between; align-items: center; color: #ffcf7a; font-size: .8rem; }
-.sayrow { display: flex; gap: 6px; }
-.sayrow input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: .9rem; color: var(--ink); background: #09111d; border: 1px solid #344762; border-radius: 3px; padding: 8px 10px; }
-.sayrow input:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
-.sayrow button, .join button { font: 700 .9rem Inter, system-ui, sans-serif; color: #07131e; background: var(--cyan); border: 1px solid var(--cyan); border-radius: 3px; padding: 8px 14px; cursor: pointer; }
-.sayrow button:hover, .join button:hover:not(:disabled) { background: var(--cyan-hi); }
-.say .leave { justify-self: start; }
-.join { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid var(--line); }
-.join[hidden], .say[hidden] { display: none; }
-/* resize handles on every side and corner (chat.js adds them; the size is remembered) */
-.chat .grip { position: absolute; z-index: 2; touch-action: none; }
-.chat .grip-n, .chat .grip-s { left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
-.chat .grip-e, .chat .grip-w { top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
-.chat .grip-n { top: -4px; } .chat .grip-s { bottom: -4px; } .chat .grip-w { left: -4px; } .chat .grip-e { right: -4px; }
-.chat .grip-nw, .chat .grip-ne, .chat .grip-sw, .chat .grip-se { width: 16px; height: 16px; }
-.chat .grip-nw { top: -5px; left: -5px; cursor: nwse-resize; } .chat .grip-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
-.chat .grip-ne { top: -5px; right: -5px; cursor: nesw-resize; } .chat .grip-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
-/* a faint corner mark so it reads as resizable */
-.chat .grip-sw::after { content: ""; position: absolute; left: 7px; bottom: 7px; width: 8px; height: 8px;
-  border-left: 2px solid #537a92; border-bottom: 2px solid #537a92; opacity: .7; }
-.chat:hover .grip-sw::after { border-color: var(--cyan); opacity: 1; }
-.chat.resizing { user-select: none; border-color: var(--cyan); }
-.chat.folded { height: auto !important; }
-.chat.folded .grip-n, .chat.folded .grip-s, .chat.folded .grip-nw, .chat.folded .grip-ne, .chat.folded .grip-sw, .chat.folded .grip-se { display: none; }
+.chatbody { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(110px, 30%) minmax(0, 1fr); }
+.chat.folded .grip { display: none; }
 @media (max-width: 860px) {
-  .chat { position: static; width: auto; max-height: 70vh; }
-  .chatbody { grid-template-columns: minmax(100px, 32%) minmax(0, 1fr); }
+  .topright { width: auto; margin-right: 0; justify-content: flex-end; }
+  .chat { position: static; width: auto; max-height: none; grid-template-columns: minmax(0, 1fr); }
+  .arenas { border-right: 0; border-bottom: 1px solid var(--line); border-radius: 4px 4px 0 0; }
+  .arenalist { max-height: 210px; }
+  .chat.folded { grid-template-columns: minmax(0, 1fr); }
+  .chat.folded .chathead { flex-direction: row; justify-content: space-between; padding: 10px 14px; }
+  .chat.folded .chathead > span { writing-mode: horizontal-tb; }
+  .chat .chatbody { grid-template-columns: 120px minmax(0, 1fr); }
   .chat .lines { max-height: 40vh; }
   .chat .grip { display: none; }
 }
@@ -230,7 +226,10 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 .yardlist .on { position: absolute; left: 4px; top: 4px; font-size: .62rem; font-weight: 700; color: #07131e; background: var(--cyan); border-radius: 2px; padding: 0 3px; }
 .gfx .yardlist .remove { position: absolute; right: 2px; top: 2px; min-height: 0; padding: 0 5px; font-size: .7rem; line-height: 1.4; color: var(--muted); background: #070d18cc; border: 0; }
 .gfx .yardlist .remove:hover:not(:disabled) { color: var(--warn); background: #070d18; }
+.gfx .yardlist .download { position: absolute; right: 2px; top: 22px; min-height: 0; padding: 0 5px; font-size: .7rem; line-height: 1.4; color: var(--muted); background: #070d18cc; border: 0; }
+.gfx .yardlist .download:hover:not(:disabled) { color: var(--cyan); background: #070d18; }
 @media (max-width: 760px) {
+  .topright { gap: 6px; } /* header.css narrows the links' gap to 6px here too */
   .gfxbody { grid-template-columns: minmax(0, 1fr); }
   .gfxyard { border-left: 0; border-top: 1px solid var(--line); }
   .yardlist { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
@@ -301,26 +300,20 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 
 /* the top bar: brand, links and the pilot button */
 .brand .logo { text-shadow:0 0 8px #71e4fa40; }
-.toplinks a, .pilot, .ghostbtn, dialog button.ghost, .gfx .shiplist button, .gfxtabs .tab, .gfx .slotlist button, .gfx .yardlist .thumb {
+.ghostbtn, dialog button.ghost, .gfx .shiplist button, .gfxtabs .tab, .gfx .slotlist button, .gfx .yardlist .thumb {
   color:var(--ink); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320; border-radius:5px;
   background:linear-gradient(180deg, #22344f, #172539); backdrop-filter:none;
   box-shadow:inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000;
   transition:transform .08s, box-shadow .15s, background .15s, border-color .15s, color .15s; }
-.toplinks a:hover, .pilot:hover, .pilot[aria-expanded="true"], .ghostbtn:hover, dialog button.ghost:hover:not(:disabled),
+.ghostbtn:hover, dialog button.ghost:hover:not(:disabled),
 .gfx .shiplist button:hover:not(:disabled), .gfxtabs .tab:hover, .gfx .slotlist button:hover, .gfx .yardlist .thumb:hover:not(:disabled) {
   color:#fff; border-color:#4f7298; border-bottom-color:#0a1320; background:linear-gradient(180deg, #2a4062, #1b2c44); }
-.toplinks a, .ghostbtn, .gfxtabs .tab { font:700 1rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
-.toplinks a { min-height:44px; padding:8px 16px; }
-.pilot-label { font:700 .78rem/1 var(--label); letter-spacing:.2em; }
-.pilot-name { font-weight:600; }
+.ghostbtn, .gfxtabs .tab { font:700 1rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
 .ghostbtn { padding:6px 12px; font-size:.88rem; letter-spacing:.08em; }
 /* chosen: pressed in, lit cyan */
 .gfxtabs .tab[aria-current="page"], .gfx .shiplist button[aria-pressed="true"], .gfx .slotlist button[aria-pressed="true"] {
   color:var(--cyan); background:linear-gradient(180deg, #0c1a2a, #12243a); border-color:#3f6a8c; border-top-color:#05090f;
   box-shadow:inset 0 2px 6px #000c, inset 0 -2px 0 var(--cyan); }
-.pilotmenu { background:linear-gradient(180deg, #13203a, #0b1422); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
-  box-shadow:inset 0 1px 0 #ffffff12, 0 24px 50px -18px #000e; }
-.pilotmenu .menuhead { font:700 .8rem/1.2 var(--label); letter-spacing:.2em; }
 
 /* the title */
 h1 { font-weight:800; background:linear-gradient(180deg, #fff 30%, #a9bdd4); -webkit-background-clip:text; background-clip:text;
@@ -353,34 +346,26 @@ h1 em { color:var(--cyan); -webkit-text-fill-color:var(--cyan); }
   background:linear-gradient(var(--cyan), var(--cyan)) left bottom / var(--p) 4px no-repeat, linear-gradient(180deg, #2a4062, #1b2c44); }
 #start:disabled { color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
 
-/* the chat panel */
-.chat { background:linear-gradient(180deg, #13203ae6, #0b1422d9 160px); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
-  box-shadow:inset 0 1px 0 #ffffff12, 0 1px 0 #000, 0 24px 50px -18px #000e; }
-.chathead { border-bottom-color:#000; box-shadow:0 1px 0 #ffffff0d; }
-.chathead b { font:700 1rem/1 var(--label); letter-spacing:.2em; }
-.players { background:#050a13b0; border-right-color:#000; box-shadow:1px 0 0 #ffffff0a, inset 0 2px 6px #0008; }
-.players h3, .players li.freq { font-family:var(--label); font-size:.82rem; letter-spacing:.18em; }
-.say, .join { border-top-color:#000; box-shadow:inset 0 1px 0 #ffffff0d; }
-.sayrow input, dialog input, .gfxprompt textarea { color:#fff; background:#060b15; border:1px solid #22324a; border-top-color:#05090f; border-radius:5px;
+dialog input, .gfxprompt textarea { color:#fff; background:#060b15; border:1px solid #22324a; border-top-color:#05090f; border-radius:5px;
   box-shadow:inset 0 2px 5px #000c, 0 1px 0 #ffffff0d; }
-.sayrow input:focus, dialog input:focus, .gfxprompt textarea:focus { outline:0; border-color:var(--cyan); box-shadow:inset 0 2px 5px #000c, 0 0 0 3px #71e4fa33; }
+dialog input:focus, .gfxprompt textarea:focus { outline:0; border-color:var(--cyan); box-shadow:inset 0 2px 5px #000c, 0 0 0 3px #71e4fa33; }
 
-/* cyan buttons: Send, Chat, and the dialogs' main actions */
-.sayrow button, .join button, dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove)) {
+/* cyan buttons: the dialogs' main actions (Send and Chat: chat.css) */
+dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove, .download)) {
   font:700 1.02rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; border-radius:5px;
   color:#03222c; text-shadow:0 1px 0 #ffffff60; border:1px solid #9cf0ff; border-bottom-color:#1f8aa3;
   background:linear-gradient(180deg, #93e8f8, #5fd3ec 55%, #48c1dd);
   box-shadow:inset 0 1px 0 #ffffff80, inset 0 -2px 0 #2ea6c4, 0 2px 0 #0b4a5c, 0 8px 16px -8px #000;
   transition:transform .08s, box-shadow .15s, background .15s; }
-.sayrow button:hover, .join button:hover:not(:disabled), dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove)):hover:not(:disabled) {
+dialog button:where(:not(.ghost, .ghostbtn, .tab, .thumb, .remove, .download)):hover:not(:disabled) {
   background:linear-gradient(180deg, #adf2fa, #72dbf1 55%, #55c9e4); border-color:#adf2fa; border-bottom-color:#1f8aa3; }
 dialog button.ghost { font:700 1.02rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
 /* the graphics overlay's list buttons keep normal case: they are ship and picture names */
 .gfx .shiplist button, .gfx .slotlist button { font:600 .85rem Inter, system-ui, sans-serif; text-transform:none; letter-spacing:0; }
 .gfx .yardlist .thumb { box-shadow:inset 0 1px 0 #ffffff12, 0 2px 0 #04080e; }
-.gfx .yardlist .remove { box-shadow:none; text-shadow:none; }
+.gfx .yardlist .remove, .gfx .yardlist .download { box-shadow:none; text-shadow:none; }
 /* pressed */
-.toplinks a:active, .pilot:active, .ghostbtn:active, .sayrow button:active, .join button:active:not(:disabled), dialog button:active:not(:disabled) {
+.ghostbtn:active, dialog button:active:not(:disabled) {
   transform:translateY(2px); box-shadow:inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
 dialog button:disabled { opacity:1; color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
 
@@ -397,7 +382,28 @@ dialog label input, dialog label textarea { font:500 1rem Inter, system-ui, sans
 .gfxreview, .genchoice { background:var(--well); border-color:var(--well-line); box-shadow:inset 0 2px 6px #000a; }
 .card { background:linear-gradient(180deg, #13203ae6, #0b1422e6); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
   box-shadow:inset 0 1px 0 #ffffff12, 0 18px 40px -18px #000e; }
-@media (prefers-reduced-motion:reduce) { #start, .toplinks a, .pilot, .ghostbtn, .sayrow button, .join button, dialog button { transition:none; } }
+@media (prefers-reduced-motion:reduce) { #start, .ghostbtn, dialog button { transition:none; } }
 /* Armory: which ship a weapon sheet is for; a ship with its own shows a dot */
 .gfx .shiplist.forship button { font-size: .78rem; min-height: 30px; padding: 4px 8px; }
 .gfx .shiplist.forship button.has::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--cyan); vertical-align: 1px; }
+
+/* HANGAR: the title in the top bar, the Next stop card, and the arena list attached to the chat */
+.dest { background:linear-gradient(180deg, #13203ae6, #0b1422e0 140px); border-color:#22324a; border-top-color:#3a5576; border-left:3px solid var(--cyan);
+  border-radius:8px; box-shadow:inset 0 1px 0 #ffffff12, 0 1px 0 #000, 0 24px 50px -18px #000e; }
+.dest .kicker { font:700 .9rem/1 var(--label); letter-spacing:.24em; }
+.destname { color:transparent; background:linear-gradient(180deg, #fff 30%, #a9bdd4); -webkit-background-clip:text; background-clip:text;
+  filter:drop-shadow(0 2px 0 #000); padding-bottom:2px; }
+.arenas { background:var(--well); border-right-color:#000; border-radius:8px 0 0 8px; box-shadow:1px 0 0 #ffffff0a, inset 0 2px 8px #000a; }
+.arenashead { border-bottom-color:#000; box-shadow:0 1px 0 #ffffff0d; }
+.arenashead h3 { font:700 1rem/1 var(--label); letter-spacing:.2em; }
+.sortby { border-color:#22324a; border-top-color:#05090f; border-radius:5px; background:#060b15; box-shadow:inset 0 2px 4px #000c; }
+.sortby button { font:700 .8rem/1 var(--label); letter-spacing:.12em; text-transform:uppercase; padding:5px 9px; }
+.sortby button + button { border-left-color:#000; }
+.sortby button[aria-pressed="true"] { color:var(--cyan); background:linear-gradient(180deg, #0c1a2a, #12243a); box-shadow:inset 0 -2px 0 var(--cyan); }
+.arenalist li[role=option] { font-weight:600; }
+.arenalist li[role=option]:hover { background:#0f1a2c; }
+/* picked: pressed in, lit cyan */
+.arenalist li.current { background:linear-gradient(90deg, #12243a, #0c1a2a); box-shadow:inset 0 2px 6px #0009; }
+.arenalist li.group { font:700 .8rem/1.2 var(--label); letter-spacing:.2em; }
+.acount.live { box-shadow:0 0 8px #5ee08f66; }
+@media (max-width:860px) { .arenas { border-radius:8px 8px 0 0; } }

@@ -84,7 +84,8 @@ internal sealed partial class WebServer
         return ResultReply(_m.Accounts.SetPilotGraphic(cur.Account.Id, req.QueryString["slot"], image));
     }
 
-    /// <summary>{"slot", "mode", "prompt"?}: a new picture from the ship service, not saved.</summary>
+    /// <summary>{"slot", "mode", "prompt"? | "batch"?}: a new picture from the ship service, not saved.
+    /// "batch" (from an earlier prompted answer) is Try again: a take unlike the ones shown.</summary>
     private async Task<Reply> PilotGraphicGenerateAsync(HttpListenerRequest req, long accountId, JsonElement? body)
     {
         if (GameGraphics.Find(Str(body, "slot")) is not { } slot || GameGraphics.ShipIndex(slot.Name) > 0)
@@ -92,7 +93,12 @@ internal sealed partial class WebServer
         var mode = Str(body, "mode") ?? "";
         if (!slot.Generate.Contains(mode)) return Bad($"{slot.Label} can't be generated that way.");
         var prompt = (Str(body, "prompt") ?? "").Trim();
-        if (mode == "prompt")
+        var batch = mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } b ? b : null;
+        if (batch is not null)
+        {
+            if (!_m.ShipRandomPerAccount.TryTake("gfx:random:pilot:" + accountId)) return Bad(TooMany, 429);
+        }
+        else if (mode == "prompt")
         {
             if (prompt.Length == 0) return Bad("Describe what you want.");
             if (prompt.Length > 500) return Bad("Keep the description under 501 characters.");
@@ -106,12 +112,12 @@ internal sealed partial class WebServer
         if (template is null) return Bad("There's no picture to start from.");
         try
         {
-            using var content = JsonContent(new { kind = slot.Name, mode, prompt = mode == "prompt" ? prompt : null, template = Convert.ToBase64String(template) });
+            using var content = JsonContent(new { kind = slot.Name, mode, prompt = mode == "prompt" && batch is null ? prompt : null, batch, template = Convert.ToBase64String(template) });
             using var res = await ShipService.PostAsync(ShipServiceUrl + "/graphic", content).ConfigureAwait(false);
             var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var status = (int)res.StatusCode;
             _m.Log(status == 200 ? LogLevel.Info : LogLevel.Warn, $"Pilot graphic {slot.Name} {mode} for account {accountId}: {status}.");
-            return JsonBytes(status == 200 ? 200 : status is 400 or 429 or 503 ? status : 502, bytes);
+            return JsonBytes(status == 200 ? 200 : status is 400 or 410 or 429 or 503 ? status : 502, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {

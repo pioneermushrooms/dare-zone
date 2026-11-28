@@ -1,4 +1,4 @@
-// The Admin page: decide waiting arena requests, create arenas, see every owned arena, look up server commands.
+// The Admin page: create arenas, see every owned arena, look up server commands.
 "use strict";
 
 // Sign-in that comes back here: /account/login?next=<this page>, plus a short-lived dare_next
@@ -47,41 +47,6 @@ function say(target, body) {
   target.className = "msg " + (body?.ok ? "ok" : "bad");
 }
 
-function requestRow(r, can, maxReason) {
-  const msg = el("p", { className: "msg", role: "status" });
-  const actions = el("div", { className: "row" });
-  if (r.fromDraft) actions.append(el("a", { href: "/?arena=" + encodeURIComponent("#" + r.arena), textContent: "Fly in #" + r.arena }));
-  if (can.approve) {
-    const approve = el("button", { type: "button", textContent: "Approve" });
-    approve.addEventListener("click", async () => {
-      approve.disabled = true;
-      const { body } = await call("/staff/approve", { arena: r.arena, player: r.player });
-      approve.disabled = false;
-      say(msg, body);
-      if (body?.ok) setTimeout(load, 1200);
-    });
-    actions.append(approve);
-  }
-  if (can.decline) {
-    const reason = el("input", { type: "text", placeholder: "reason to decline", maxLength: maxReason, autocomplete: "off" });
-    reason.setAttribute("aria-label", "Reason to decline " + r.arena);
-    const decline = el("button", { type: "button", className: "hot", textContent: "Decline" });
-    decline.addEventListener("click", async () => {
-      decline.disabled = true;
-      const { body } = await call("/staff/decline", { arena: r.arena, reason: reason.value, player: r.player });
-      decline.disabled = false;
-      say(msg, body);
-      if (body?.ok) setTimeout(load, 1200);
-    });
-    actions.append(reason, decline);
-  }
-  return el("div", { className: "req" },
-    el("div", {}, el("b", { className: "name", textContent: r.arena }), r.fromDraft ? " (from a draft)" : ""),
-    el("div", { className: "who", textContent: `${r.player} · ${when(r.at)}` }),
-    el("div", { textContent: r.pitch }),
-    actions, msg);
-}
-
 async function load() {
   const { status, body } = await call("/staff");
   if (status !== 200 || !body) {
@@ -96,20 +61,51 @@ async function load() {
   $("gate").hidden = true;
   $("desk").hidden = false;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();
-  const pending = body.pending ?? [];
-  $("pendingpanel").hidden = pending.length === 0;
-  $("pending").replaceChildren(...pending.map((r) => requestRow(r, body.can, body.maxReason ?? 120)));
   $("createpanel").hidden = !body.can.create;
+  renderLimitRequests(body.limitRequests ?? []);
   const arenas = body.arenas ?? [];
   $("arenas").replaceChildren(...(arenas.length
     ? arenas.map((a) => el("tr", {},
         el("td", {}, el("b", { className: "name", textContent: a.name })),
-        el("td", { textContent: a.owner.startsWith("~deleted:") ? "(name deleted)" : a.owner }),
+        a.owner.startsWith("~deleted:") ? el("td", { textContent: "(name deleted)" })
+          : el("td", {}, el("a", { className: "pilotlink", href: "/pilot/" + encodeURIComponent(a.owner), textContent: a.owner })),
         el("td", {}, el("span", { className: "tag " + a.status, textContent: a.status })),
         el("td", { className: "dim", textContent: a.status === "Active" ? (a.private ? "private" : "public") : "" }),
         el("td", { textContent: String(a.players) }),
         el("td", {}, ...(body.can.admin ? arenaActions(a) : []))))
     : [el("tr", {}, el("td", { colSpan: 6, className: "dim", textContent: "No player-owned arenas yet." }))]));
+}
+
+// "Request more arenas": the account, its arenas and reason; a number box (what they asked for) and Approve / Decline.
+function renderLimitRequests(list) {
+  $("limitpanel").hidden = list.length === 0;
+  $("limitlist").replaceChildren(...list.map((r) => {
+    const max = el("input", { type: "number", min: "1", max: "200", step: "1", value: String(r.wanted), className: "narrow" });
+    max.setAttribute("aria-label", `New arena limit for ${r.player}`);
+    const approve = el("button", { type: "button", className: "small", textContent: "Approve" });
+    const decline = el("button", { type: "button", className: "small ghost", textContent: "Decline" });
+    approve.addEventListener("click", async () => {
+      approve.disabled = true;
+      const { body } = await call("/staff/limit", { id: r.id, action: "approve", max: Number(max.value) });
+      approve.disabled = false;
+      say($("limitmsg"), body);
+      if (body?.ok) load();
+    });
+    decline.addEventListener("click", async () => {
+      const note = await Dlg.prompt(`Why not? (${r.player} sees this)`, { title: "Decline request", ok: "Decline", danger: true, maxLength: 200 });
+      if (!note?.trim()) return;
+      const { body } = await call("/staff/limit", { id: r.id, action: "decline", note });
+      say($("limitmsg"), body);
+      if (body?.ok) load();
+    });
+    const names = r.names.length > 1 ? ` (also ${r.names.filter((n) => n.toLowerCase() !== r.player.toLowerCase()).join(", ")})` : "";
+    return el("li", { className: "limitreq" },
+      el("div", {}, el("a", { className: "pilotlink", href: "/pilot/" + encodeURIComponent(r.player), textContent: r.player }),
+        el("span", { className: "dim", textContent: `${names} · owns ${r.owned} of ${r.current} · asks for ${r.wanted} · ${when(r.at)}` })),
+      r.reason ? el("p", { textContent: r.reason }) : el("p", { className: "dim", textContent: "No reason given." }),
+      el("p", { className: "dim", textContent: "Arenas: " + (r.arenas.join(", ") || "none") }),
+      el("div", { className: "row" }, el("label", { className: "inline" }, "New limit ", max), approve, decline));
+  }));
 }
 
 // Staff (smod and up): suspend with a reason, revive, archive.

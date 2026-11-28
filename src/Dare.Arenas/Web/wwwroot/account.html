@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your account — SubSpace Foundation</title>
 <link rel="stylesheet" href="/account/style.css">
+<link rel="stylesheet" href="/account/header.css">
 <script src="/account/account.js" defer></script>
 </head>
 <body data-page="profile">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+  <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/account/header.js"></script>
 <main class="panel narrow" id="loading"><p class="dim">Loading…</p></main>
 
 <main class="acct" id="acct">
@@ -19,13 +22,13 @@
     <dt>Recovery email</dt><dd id="email"></dd>
     <dt>Linked ISOJ name</dt><dd id="isoj"></dd>
   </dl>
-  <p class="links"><a href="/arena/me">Your arena</a> · <button type="button" class="small" id="signout">Sign out</button></p>
+  <p class="links"><a class="btn ghost profilebtn" href="/account/profile">Public profile</a><button type="button" class="small" id="signout">Sign out</button></p>
 </section>
 
 <details class="panel fold" name="acctfold" id="pilots" hidden>
   <summary><h2>Pilot names</h2><span class="dim" id="pilotssum">Every name on your recovery email.</span></summary>
   <div class="foldbody">
-  <p class="dim" id="pilotsnote">Fly as any of them; each keeps its own keys and macros.</p>
+  <p class="dim" id="pilotsnote">Fly as any of them. They are one account: the same saved ships, armory, graphics, maps and arenas. Each name keeps its own keys, macros and what it has equipped.</p>
   <ul class="list" id="pilotlist"></ul>
   <div id="deletebox" hidden>
     <h3 id="deletetitle"></h3>
@@ -86,6 +89,22 @@
   <div class="row"><button type="button" class="small" id="macroadd">Add a macro</button></div>
   <div class="row gap"><button type="button" id="keyssave">Save</button><button type="button" class="ghost" id="keysdefault">Back to defaults</button></div>
   <p class="msg" id="keysmsg"></p>
+  </div>
+</details>
+<details class="panel fold" name="acctfold" id="loadoutbox" hidden>
+  <summary><h2>Copy a setup between names</h2><span class="dim">Each name keeps its own setup; copy one name's onto another.</span></summary>
+  <div class="foldbody">
+  <p class="dim">Your ships, armory and graphics belong to your account, so every name can use them. What each name has equipped, and its keys and macros, is its own. Copying replaces what the other name had.</p>
+  <div class="row gap"><label class="inline">From <select id="loadfrom" aria-label="Copy from"></select></label>
+    <label class="inline">onto <select id="loadto" aria-label="Copy onto"></select></label></div>
+  <div class="row gap" id="loadparts">
+    <label class="inline"><input type="checkbox" value="ships" checked> Ships in slots</label>
+    <label class="inline"><input type="checkbox" value="armory" checked> Armory equipped</label>
+    <label class="inline"><input type="checkbox" value="graphics" checked> Own graphics</label>
+    <label class="inline"><input type="checkbox" value="keys" checked> Keys and macros</label>
+  </div>
+  <div class="row"><button type="button" id="loadgo">Copy</button></div>
+  <p class="msg" id="loadmsg"></p>
   </div>
 </details>
 </main>

@@ -119,7 +119,7 @@ internal sealed partial class WebServer
     }
 
     /// <summary>
-    /// {"arena", "name", "mode", "prompt"?}: a new picture from the ship service, not saved. Ships use the
+    /// {"arena", "name", "mode", "prompt"? | "batch"?}: a new picture from the ship service, not saved. Ships use the
     /// ship generator ("ship" = random, "ship-prompt"); other graphics send the arena's current picture as
     /// the template the generator keeps the size and frame layout of ("recolor", "new", "prompt").
     /// </summary>
@@ -134,7 +134,13 @@ internal sealed partial class WebServer
         if (!slot.Generate.Contains(mode)) return Bad($"{slot.Label} can't be generated that way.");
         var prompt = (Str(body, "prompt") ?? "").Trim();
         var prompted = mode is "prompt" or "ship-prompt";
-        if (prompted)
+        // Try again on a prompt: the run of tries the first answer started (a take unlike those shown).
+        var batch = prompted && Str(body, "batch") is { Length: > 0 and <= 64 } b ? b : null;
+        if (batch is not null)
+        {
+            if (!_m.ShipRandomPerAccount.TryTake("gfx:random:" + player)) return Bad(TooMany, 429);
+        }
+        else if (prompted)
         {
             if (prompt.Length == 0) return Bad("Describe what you want.");
             if (prompt.Length > 500) return Bad("Keep the description under 501 characters.");
@@ -148,14 +154,15 @@ internal sealed partial class WebServer
         if (GameGraphics.ShipIndex(slot.Name) > 0)
         {
             endpoint = "/generate";
-            request = prompted ? new { mode = "prompt", prompt, creative = false, variation = false } : new { mode = "random" };
+            request = batch is not null ? new { mode = "prompt", batch }
+                : prompted ? new { mode = "prompt", prompt, creative = false, variation = false } : (object)new { mode = "random" };
         }
         else
         {
             var current = await WithConfigAsync(arena, cfg => _m.GraphicImage(cfg, arena, slot.Name)).ConfigureAwait(false) ?? Stock(slot.Name);
             if (current is null) return Bad("There's no picture to start from.");
             endpoint = "/graphic";
-            request = new { kind = slot.Name, mode, prompt = prompted ? prompt : null, template = Convert.ToBase64String(current) };
+            request = new { kind = slot.Name, mode, prompt = prompted && batch is null ? prompt : null, batch, template = Convert.ToBase64String(current) };
         }
 
         try
@@ -165,7 +172,7 @@ internal sealed partial class WebServer
             var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var status = (int)res.StatusCode;
             _m.Log(status == 200 ? LogLevel.Info : LogLevel.Warn, $"Graphic {slot.Name} {mode} for {player} in [{arena}]: {status}.");
-            return JsonBytes(status == 200 ? 200 : status is 400 or 429 or 503 ? status : 502, bytes);
+            return JsonBytes(status == 200 ? 200 : status is 400 or 410 or 429 or 503 ? status : 502, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {

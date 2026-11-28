@@ -7,22 +7,18 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/play.css?v=19">
+<link rel="stylesheet" href="/header.css?v=3">
+<link rel="stylesheet" href="/chat.css?v=2">
+<link rel="stylesheet" href="/play.css?v=26">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
      Raise ?v= with every client deploy: the script passes it on to every game file it loads. -->
 <script type="module" src="/play/start.mjs?v=17"></script>
-<script type="module" src="/chat.js?v=17"></script>
-<script type="module" src="/graphics.js?v=16"></script>
+<script type="module" src="/chat.js?v=21"></script>
+<script type="module" src="/arena-list.js?v=1"></script>
+<script type="module" src="/graphics.js?v=18"></script>
 <script type="module" src="/loading.js?v=16"></script>
-<script type="module" src="/graphics-other.js?v=17"></script>
-<script type="module" src="/graphics-armory.js?v=17"></script>
-<script>
-// zone staff see an Admin link (the server says who is staff; the page itself checks again)
-fetch("/arena/api/staff/can", { credentials: "same-origin", cache: "no-store" })
-  .then((r) => r.ok ? r.json() : null)
-  .then((b) => { if (b && b.staff) document.getElementById("adminlink").style.display = ""; })
-  .catch(() => {});
-</script>
+<script type="module" src="/graphics-other.js?v=18"></script>
+<script type="module" src="/graphics-armory.js?v=21"></script>
 <script>
 // If the page script never starts (an old cached copy, a blocked script), say so instead of a grey button.
 // Once it has started (it sets foundationSignIn first thing), a slow game download is not a failure.
@@ -51,11 +47,13 @@ setTimeout(function () {
 <body>
 <div id="entry">
   <header class="bar">
-    <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span></a>
+    <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span>
+      <h1 class="word"><span>SubSpace</span> <em>Foundation</em></h1></a>
     <div class="topright">
     <nav class="toplinks" aria-label="Site">
+      <a href="/" aria-current="page" title="The home page: pick an arena, chat, and fly">Home</a>
+      <a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a>
       <a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a>
-      <a href="/account/#pilots" title="Your names, keys and macros, password and email">Pilot account</a>
       <a href="/arena/staff" id="adminlink" title="Zone staff: arenas, server commands, how-tos" style="display:none">Admin</a>
     </nav>
     <div class="pilotbox">
@@ -65,27 +63,43 @@ setTimeout(function () {
       <div class="pilotmenu" id="pilotmenu" role="menu" hidden>
         <p class="menuhead">Fly as</p>
         <div id="pilotlist"></div>
-        <a role="menuitem" href="/account/#pilots">Names, keys and macros</a>
-        <button type="button" role="menuitem" id="signout">Sign out</button>
+        <a role="menuitem" class="acctbtn" href="/account/">Account</a>
+        <button type="button" role="menuitem" class="signout" id="signout">Sign out</button>
       </div>
     </div>
     </div>
   </header>
+  <script src="/header.js?v=2"></script>
 
   <main class="launch">
-    <h1>SubSpace<br><em>Foundation</em></h1>
-    <div class="controls">
-      <label class="arena" for="arena"><span>Arena</span>
-        <select id="arena" title="Remembered for next time"><option value="">public</option></select>
-      </label>
-      <button id="start" type="button" disabled><span class="play-icon" aria-hidden="true"></span><span id="start-label">Enter</span></button>
-    </div>
+    <!-- the arena you'll enter: picked in the arena list beside the chat -->
+    <section class="dest" aria-labelledby="destname">
+      <p class="kicker">Next stop</p>
+      <h2 class="destname" id="destname">public</h2>
+      <p class="destmeta" id="destmeta">&nbsp;</p>
+      <div class="controls">
+        <label class="arena" for="arena" hidden><span>Arena</span>
+          <select id="arena" title="Remembered for next time"><option value="">public</option></select>
+        </label>
+        <button id="start" type="button" disabled><span class="play-icon" aria-hidden="true"></span><span id="start-label">Enter</span></button>
+      </div>
+    </section>
     <p role="status" id="status"></p>
     <p class="newhere" id="newhere" hidden>New here? <a href="/account/signup">Claim a pilot name</a> (email optional), or press Enter and fly as a guest.</p>
   </main>
 
 
-  <aside class="chat" id="chat" aria-label="Arena chat">
+  <aside class="chat" id="chat" aria-label="Arenas and chat">
+    <section class="arenas" aria-labelledby="arenashead">
+      <header class="arenashead">
+        <h3 id="arenashead">Arenas</h3>
+        <div class="sortby" role="group" aria-label="Sort arenas">
+          <button type="button" data-sort="players" aria-pressed="true" title="Busiest first">Players</button><button type="button" data-sort="name" aria-pressed="false" title="Alphabetical">A–Z</button>
+        </div>
+      </header>
+      <ul class="arenalist" id="arenalist" role="listbox" aria-label="Arena" tabindex="0"></ul>
+    </section>
+    <div class="chatcol">
     <header class="chathead">
       <span><b id="chatarena">public</b> <span class="dim" id="chatcount"></span></span>
       <button type="button" class="ghostbtn" id="chatfold" aria-expanded="true" aria-controls="chatbody">Hide</button>
@@ -102,6 +116,7 @@ setTimeout(function () {
       </form>
       <div class="join" id="chatjoin"><button type="button" id="chatgo">Chat</button><span class="dim" id="chatnote">Read along, or join to talk.</span></div>
       </div>
+    </div>
     </div>
   </aside>
 
@@ -164,6 +179,7 @@ setTimeout(function () {
       </div>
       <div class="gfxactions" id="gfx-actions">
         <button type="button" class="ghost" id="gfx-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-download" disabled title="Save this ship's 40 rotations as a PNG">Download</button>
         <button type="button" class="ghost" id="gfx-upload">Upload…</button>
         <button type="button" id="gfx-generate" aria-controls="gfx-genchoice">Generate</button>
         <input type="file" id="gfx-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>
@@ -218,6 +234,7 @@ setTimeout(function () {
       </div>
       <div class="gfxactions" id="gfx-a-actions">
         <button type="button" class="ghost" id="gfx-a-restore" disabled>Restore default</button>
+        <button type="button" class="ghost" id="gfx-a-download" disabled title="Save this sheet as a PNG">Download</button>
         <button type="button" class="ghost" id="gfx-a-upload">Upload…</button>
         <button type="button" id="gfx-a-generate" aria-controls="gfx-a-genchoice">Generate</button>
         <input type="file" id="gfx-a-file" accept="image/png,image/bmp,image/gif,.png,.bmp,.bm2,.gif" hidden>

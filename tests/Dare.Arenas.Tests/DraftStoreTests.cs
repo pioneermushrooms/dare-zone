@@ -82,15 +82,13 @@ public sealed class DraftStoreTests : IDisposable
     }
 
     [Fact]
-    public void three_drafts_per_pilot()
+    public void drafts_have_no_limit_of_their_own()
     {
         var s = WithDraft();
         Assert.True(s.CreateDraft("pilot", "second", NoFolder, Made).Ok);
         Assert.True(s.CreateDraft("pilot", "third", NoFolder, Made).Ok);
-        var fourth = s.CreateDraft("pilot", "fourth", NoFolder, Made);
-        Assert.False(fourth.Ok);
-        Assert.Contains("3", fourth.Message);
-        Assert.Equal(new[] { "second", "skyrace", "third" }, s.DraftsOwnedBy("pilot").Select(d => d.Name));
+        Assert.True(s.CreateDraft("pilot", "fourth", NoFolder, Made).Ok);
+        Assert.Equal(new[] { "fourth", "second", "skyrace", "third" }, s.DraftsOwnedBy("pilot").Select(d => d.Name));
     }
 
     [Fact]
@@ -398,10 +396,10 @@ public sealed class DraftStoreTests : IDisposable
     }
 
     [Fact]
-    public void reviving_an_arena_respects_the_limit_of_three()
+    public void reviving_an_arena_respects_the_limit_of_ten()
     {
         var s = Open();
-        foreach (var n in new[] { "aaa", "bbb", "ccc" })
+        foreach (var n in new[] { "aaa", "bbb", "ccc", "ccd", "cce", "ccf", "ccg", "cch", "cci", "ccj" })
         {
             Assert.True(s.Request("Pilot", n, "p").Ok);
             Assert.True(s.Approve(n, "staff", NoFolder).Ok);
@@ -411,7 +409,7 @@ public sealed class DraftStoreTests : IDisposable
         Assert.True(s.Approve("ddd", "staff", NoFolder).Ok);
         var revive = s.Revive("aaa", "staff");
         Assert.False(revive.Ok);
-        Assert.Contains("3", revive.Message);
+        Assert.Contains("10", revive.Message);
     }
 
     [Fact]

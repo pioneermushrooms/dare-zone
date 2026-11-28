@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <None Include="..\..\voice\phrases.json" Link="phrases.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Dare.Arenas\Web\gfx\*.bm2" Link="gfx\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

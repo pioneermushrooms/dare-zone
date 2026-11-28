@@ -1,12 +1,23 @@
-// The home page's chat panel: the chosen arena's live chat and who is in it, for anyone; a
-// signed-in pilot presses Chat to join the arena as a chat client and talk (public, private to
-// a selected player, // team, ? commands). Everything is inserted with textContent.
+// The arena chat panel: the chosen arena's live chat and who is in it, for anyone; a signed-in pilot
+// presses Chat to join the arena as a chat client and talk (public, private to a selected player,
+// // team, ? commands). Everything is inserted with textContent.
+//
+// One file for every page that shows it: the home page (site/, as /chat.js; beside the arena list,
+// arena-list.js) and the arena editor
+// (Dare.Arenas embeds this file and serves it as /arena/chat.js). Both are on the same origin, so the
+// API below and the dare_session cookie are the same from either. The panel's data attributes say how
+// the page uses it:
+//   data-picker="<id>"  the <select> that chooses the arena (default "arena", the home page's picker)
+//   data-arenas="fill"  this script fills that select with the zone's arenas
+//   data-dock="right"   docked on the right edge, opened and closed with #chatopen (the arena editor);
+//                       it follows the arena being edited (the page sends "foundation:editing")
 const API = "/arena/api";
 const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
 const $ = (id) => document.getElementById(id);
 
 const panel = $("chat");
-const picker = $("arena");
+const picker = $(panel.dataset.picker || "arena");
+const docked = panel.dataset.dock === "right";
 const lines = $("chatlines");
 const form = $("chatform");
 const input = $("chatinput");
@@ -70,8 +81,12 @@ function renderPlayers(players) {
       b.title = `${SHIPS[p.ship] ?? ""} · click to message privately`;
       b.append(el("span", "ship", p.ship ? SHIPS[p.ship] : ""));
       b.addEventListener("click", () => pickTarget(p.name));
+      const prof = el("a", "prof", "↗");
+      prof.href = "/pilot/" + encodeURIComponent(p.name);
+      prof.title = `${p.name}'s profile`;
+      prof.setAttribute("aria-label", `${p.name}'s profile`);
       const li = el("li");
-      li.append(b);
+      li.append(b, prof);
       items.push(li);
     }
   }
@@ -85,8 +100,26 @@ function pickTarget(name) {
   if (joined) input.focus();
 }
 
-async function poll() {
-  if ($("entry").hidden) return; // in the game: the panel rests
+// One poll at a time. A poll asks for the lines after `after`, and `after` only moves when its answer
+// comes back; two polls in flight at once (the 2-second timer and the one right after Send, with a
+// poll taking a second or more) both got the same new lines and showed them twice. A poll asked for
+// while one is running runs once more when it ends, so nothing waits a whole interval.
+let inflight = null, again = false;
+function poll() {
+  if (inflight) { again = true; return inflight; }
+  inflight = (async () => {
+    try {
+      do { again = false; await pollOnce(); } while (again);
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
+}
+
+async function pollOnce() {
+  if ($("entry")?.hidden) return; // in the game: the panel rests
+  if (docked && panel.hidden) return; // closed: nothing to show
   if (arena !== wanted()) reset();
   const at = arena;
   try {
@@ -101,7 +134,7 @@ async function poll() {
     const chat = data.chat;
     joined = !!chat && chat.state !== "closed" && data.mine;
     if (data.mine && data.last < after) after = 0; // a new chat session
-    for (const m of data.messages) addLine(m);
+    for (const m of data.messages) if (!(m.id <= after)) addLine(m); // never a line already shown
     after = Math.max(after, data.last);
     renderPlayers(data.players);
     form.hidden = !joined;
@@ -117,10 +150,14 @@ async function join() {
   const go = $("chatgo");
   go.disabled = true;
   try {
-    const me = await globalThis.foundationSignIn?.();
-    if (!me) return;
+    // the home page signs in through the game's dialog; elsewhere the account session is the sign-in
+    if (globalThis.foundationSignIn && !(await globalThis.foundationSignIn())) return;
     const r = await fetch(`${API}/chat/join`, { method: "POST", credentials: "same-origin", headers: HEADERS, body: JSON.stringify({ arena: wanted() }) });
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401 && !globalThis.foundationSignIn) {
+      location.href = "/account/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+      return;
+    }
     if (!r.ok || !data.ok) { $("chatnote").textContent = data.message || "Couldn't join the chat."; return; }
     $("chatnote").textContent = "Joining…";
     reset();
@@ -153,16 +190,22 @@ $("chatgo").addEventListener("click", join);
 $("chatleave").addEventListener("click", leave);
 $("chattoclear").addEventListener("click", () => pickTarget(target));
 picker.addEventListener("change", () => { if (joined) void leave(); else { reset(); void poll(); } });
-$("chatfold").addEventListener("click", () => {
+// Hide folds the chat away to a slim tab; the arena list stays, so you can still pick where to fly.
+// (Docked, Hide closes the panel instead: below.)
+if (!docked) $("chatfold").addEventListener("click", () => {
+  const before = panel.getBoundingClientRect();
   const open = panel.classList.toggle("folded") === false;
   $("chatfold").textContent = open ? "Hide" : "Chat";
   $("chatfold").setAttribute("aria-expanded", String(open));
+  if (open) applySaved();
+  else if (panel.style.left) panel.style.left = before.right - panel.getBoundingClientRect().width + "px"; // keep the right edge
+  dockEdges();
 });
 
 // Resizing: drag any side or corner. The first drag pins the panel by left/top/width/height; the size is
 // remembered (per browser) and kept inside the window. Double-click a handle for the original size.
 const SIZE_KEY = "foundation.chatSize";
-const MIN_W = 320, MIN_H = 220, EDGE = 8;
+const MIN_W = 580, MIN_H = 260, EDGE = 8; // arena list 200 + players 140 + room for the chat and Send
 const wide = matchMedia("(min-width: 861px)");
 
 function clampBox(b) {
@@ -184,9 +227,18 @@ function savedBox() {
 function applySaved() {
   const b = wide.matches ? savedBox() : null;
   if (b) placePanel(clampBox(b)); else unplacePanel();
+  dockEdges();
+}
+// Where the panel is, for the page to keep the Next stop card clear of it (the header's buttons stay put).
+function dockEdges() {
+  const r = panel.getBoundingClientRect(), root = document.documentElement.style;
+  if (!wide.matches) { root.removeProperty("--dock-w"); root.removeProperty("--dock-right"); return; }
+  if (panel.classList.contains("folded")) root.removeProperty("--dock-w"); // too narrow to hold them: just share the right edge
+  else root.setProperty("--dock-w", Math.round(r.width) + "px");
+  root.setProperty("--dock-right", Math.round(innerWidth - r.right) + "px");
 }
 
-for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
+if (!docked) for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
   const grip = el("div", `grip grip-${dir}`);
   grip.setAttribute("aria-hidden", "true");
   grip.addEventListener("pointerdown", (event) => {
@@ -203,6 +255,7 @@ for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
       if (dir.includes("w")) { b.w = Math.max(MIN_W, start.w - dx); b.x = start.x + start.w - b.w; }
       if (dir.includes("n")) { b.h = Math.max(MIN_H, start.h - dy); b.y = start.y + start.h - b.h; }
       placePanel(clampBox(b));
+      dockEdges();
     };
     const end = () => {
       grip.removeEventListener("pointermove", move);
@@ -217,12 +270,219 @@ for (const dir of ["n", "s", "e", "w", "nw", "ne", "sw", "se"]) {
   grip.addEventListener("dblclick", () => {
     try { localStorage.removeItem(SIZE_KEY); } catch {}
     unplacePanel();
+    dockEdges();
   });
   panel.append(grip);
 }
-applySaved();
-addEventListener("resize", applySaved);
-wide.addEventListener("change", applySaved);
+if (!docked) {
+  applySaved();
+  addEventListener("resize", applySaved);
+  wide.addEventListener("change", applySaved);
+}
+
+// ---- docked (the arena editor): a column on the right edge that the page makes room for -------------
+// #chatopen opens it, Hide (#chatfold) closes it; open or closed and the width are remembered. The width
+// is dragged from the left edge (double-click it for the original width). The page's CSS reads the
+// width from --chat-dock-w on <html> and the class chat-docked-open on <html>.
+const DOCK_OPEN_KEY = "foundation.chatDockOpen", DOCK_W_KEY = "foundation.chatDockWidth";
+const DOCK_MIN = 300, DOCK_MAX = 720, DOCK_DEFAULT = 400;
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch {} },
+};
+
+function dockWidth(w) {
+  const max = Math.min(DOCK_MAX, Math.round(innerWidth * 0.5));
+  const px = Math.round(Math.min(Math.max(w, DOCK_MIN), Math.max(DOCK_MIN, max)));
+  document.documentElement.style.setProperty("--chat-dock-w", px + "px");
+  return px;
+}
+function setDockOpen(open, focus) {
+  panel.hidden = !open;
+  document.documentElement.classList.toggle("chat-docked-open", open);
+  const opener = $("chatopen");
+  if (opener) { opener.setAttribute("aria-expanded", String(open)); opener.hidden = open; }
+  $("chatfold").setAttribute("aria-expanded", String(open));
+  store.set(DOCK_OPEN_KEY, open ? "1" : null);
+  if (open) { void poll(); if (focus) $("chatfold").focus(); }
+  else if (focus && opener) opener.focus();
+}
+
+// The arenas to choose from: the zone's arenas (public is "", arena 0), plus whatever the page asks to show.
+let fillTimer = 0;
+async function fillArenas() {
+  try {
+    const r = await fetch(`${API}/arenas`, { credentials: "same-origin", cache: "no-store" });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) return;
+    const keep = picker.value;
+    const opts = [el("option", null, "public")];
+    opts[0].value = "";
+    for (const a of data.arenas) {
+      if (a.name === "0") { opts[0].textContent = a.players ? `public · ${a.players}` : "public"; continue; }
+      const o = el("option", null, a.players ? `${a.name} · ${a.players}` : a.name);
+      o.value = a.name;
+      opts.push(o);
+    }
+    // the arena being edited stays choosable even when it isn't running
+    if (editing && !opts.some((o) => o.value === editing)) { const o = el("option", null, editing); o.value = editing; opts.splice(1, 0, o); }
+    picker.replaceChildren(...opts);
+    picker.value = opts.some((o) => o.value === keep) ? keep : "";
+  } catch {}
+}
+
+// The arena editor says which arena is being edited ("" for the public arenas, null for a draft, which has
+// no public chat). The chat follows it until the pilot picks another arena by hand.
+let editing = null, following = true;
+function followEditing(name) {
+  editing = name;
+  if (!following || name == null || joined) return;
+  if (![...picker.options].some((o) => o.value === name)) { const o = el("option", null, name || "public"); o.value = name; picker.append(o); }
+  if (picker.value !== name) { picker.value = name; reset(); void poll(); }
+}
+
+// The arena picker in the head (data-picker inside the panel: the arena editor's): a dropdown that looks like the home
+// page's arena list (pilot counts, busiest first or A–Z, the same remembered sort) over the hidden <select>, which
+// stays the source of truth: choosing sets it and fires "change", as before.
+const PICK_SORT_KEY = "foundation.arenaSort";
+function arenaPick() {
+  const wrap = picker.closest(".chatpick");
+  if (!wrap || !panel.contains(wrap)) return;
+  let sort = store.get(PICK_SORT_KEY) === "name" ? "name" : "players";
+  picker.hidden = true;
+  picker.tabIndex = -1;
+  const btn = el("button", "apick");
+  btn.type = "button";
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  btn.title = "Which arena's chat";
+  const bName = el("span", "apick-name"), bCount = el("span", "acount"), bChev = el("span", "apick-chev");
+  bChev.setAttribute("aria-hidden", "true");
+  btn.append(bName, bCount, bChev);
+  const menu = el("div", "apick-menu");
+  menu.hidden = true;
+  const head = el("div", "apick-head");
+  head.append(el("span", null, "Arenas"));
+  const sorts = el("div", "apick-sort");
+  sorts.setAttribute("role", "group");
+  sorts.setAttribute("aria-label", "Sort arenas");
+  for (const [key, label, title] of [["players", "Players", "Busiest first"], ["name", "A–Z", "Alphabetical"]]) {
+    const b = el("button", null, label);
+    b.type = "button";
+    b.dataset.sort = key;
+    b.title = title;
+    b.addEventListener("click", () => { sort = key; store.set(PICK_SORT_KEY, key); render(); });
+    sorts.append(b);
+  }
+  head.append(sorts);
+  const list = el("ul", "apick-list");
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "Arena");
+  list.tabIndex = -1;
+  menu.append(head, list);
+  wrap.append(btn, menu);
+
+  const read = () => [...picker.options].map((o) => {
+    const [name, count] = o.textContent.split(" · ");
+    return { value: o.value, name: (name || "public").trim(), players: Number.parseInt(count, 10) || 0 };
+  });
+  const byName = (a, b) => a.value === "" ? -1 : b.value === "" ? 1 : a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+  function render() {
+    const all = read();
+    const cur = all.find((a) => a.value === picker.value) ?? { name: "public", players: 0 };
+    bName.textContent = cur.name;
+    bCount.textContent = String(cur.players);
+    bCount.className = "acount" + (cur.players ? " live" : "");
+    bCount.title = cur.players === 1 ? "1 pilot here" : `${cur.players} pilots here`;
+    all.sort(sort === "name" ? byName : (a, b) => b.players - a.players || byName(a, b));
+    list.replaceChildren(...all.map((a) => {
+      const li = el("li");
+      li.setAttribute("role", "option");
+      li.dataset.value = a.value;
+      const sel = a.value === picker.value;
+      li.setAttribute("aria-selected", String(sel));
+      if (sel) li.className = "current";
+      li.append(el("span", "aname", a.name));
+      if (editing != null && a.value === editing) li.append(el("span", "atag", "editing"));
+      const c = el("span", "acount" + (a.players ? " live" : ""), String(a.players));
+      li.append(c);
+      return li;
+    }));
+    for (const b of sorts.children) b.setAttribute("aria-pressed", String(b.dataset.sort === sort));
+  }
+  function open(show) {
+    menu.hidden = !show;
+    btn.setAttribute("aria-expanded", String(show));
+    if (show) { render(); list.querySelector("li.current")?.scrollIntoView({ block: "nearest" }); list.focus(); }
+  }
+  function choose(value) {
+    open(false);
+    btn.focus();
+    if (picker.value === value) return;
+    picker.value = value;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  btn.addEventListener("click", () => open(menu.hidden));
+  btn.addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); open(true); } });
+  list.addEventListener("click", (e) => { const li = e.target.closest("li[role=option]"); if (li) choose(li.dataset.value); });
+  list.addEventListener("keydown", (e) => {
+    const opts = [...list.children];
+    let i = opts.findIndex((li) => li.classList.contains("active"));
+    if (i < 0) i = opts.findIndex((li) => li.classList.contains("current"));
+    if (e.key === "Escape") { e.preventDefault(); open(false); btn.focus(); return; }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (opts[i]) choose(opts[i].dataset.value); return; }
+    const next = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? opts.length - 1 : null;
+    if (next == null) return;
+    e.preventDefault();
+    const n = Math.max(0, Math.min(opts.length - 1, next));
+    for (const li of opts) li.classList.toggle("active", li === opts[n]);
+    opts[n]?.scrollIntoView({ block: "nearest" });
+  });
+  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !wrap.contains(e.target)) open(false); });
+  new MutationObserver(render).observe(picker, { childList: true, subtree: true, characterData: true });
+  picker.addEventListener("change", render);
+  addEventListener("foundation:editing", () => queueMicrotask(render));
+  render();
+}
+
+if (docked) {
+  dockWidth(Number(store.get(DOCK_W_KEY)) || DOCK_DEFAULT);
+  addEventListener("resize", () => dockWidth(Number(store.get(DOCK_W_KEY)) || DOCK_DEFAULT));
+  $("chatfold").textContent = "Hide";
+  $("chatfold").addEventListener("click", () => setDockOpen(false, true));
+  $("chatopen")?.addEventListener("click", () => setDockOpen(true, true));
+  picker.addEventListener("change", () => { following = picker.value === editing; });
+  addEventListener("foundation:editing", (e) => followEditing(e.detail?.arena ?? null));
+  if (document.documentElement.dataset.editingArena !== undefined) followEditing(document.documentElement.dataset.editingArena || "");
+  arenaPick();
+
+  const grip = el("div", "grip grip-w");
+  grip.setAttribute("aria-hidden", "true");
+  grip.title = "Drag to resize; double-click for the original width";
+  grip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    const startW = panel.getBoundingClientRect().width, px = event.clientX;
+    panel.classList.add("resizing");
+    const move = (e) => dockWidth(startW + (px - e.clientX));
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      panel.classList.remove("resizing");
+      store.set(DOCK_W_KEY, String(Math.round(panel.getBoundingClientRect().width)));
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end, { once: true });
+    grip.addEventListener("pointercancel", end, { once: true });
+  });
+  grip.addEventListener("dblclick", () => { store.set(DOCK_W_KEY, null); dockWidth(DOCK_DEFAULT); });
+  panel.append(grip);
+  setDockOpen(store.get(DOCK_OPEN_KEY) === "1", false);
+}
+if (panel.dataset.arenas === "fill") {
+  void fillArenas();
+  fillTimer = setInterval(() => { if (!document.hidden && !panel.hidden) void fillArenas(); }, 30000);
+}
 
 // Entering the game leaves the chat first: the same name can't be in the zone twice.
 globalThis.foundationChatLeave = async () => { if (joined) await leave(); };

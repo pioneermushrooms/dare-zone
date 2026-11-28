@@ -15,8 +15,12 @@ public class GameGraphicsTests
         Assert.Equal(0, GameGraphics.ShipIndex("ships"));
         Assert.Contains("prompt", GameGraphics.Find("bombs")!.Generate);
         Assert.Contains("new", GameGraphics.Find("rocket")!.Generate);
-        Assert.DoesNotContain("prompt", GameGraphics.Find("exhaust")!.Generate);
-        Assert.Equal(["recolor"], GameGraphics.Find("goal")!.Generate);
+        // Every picture takes a description; only the colour gradient (a table) is recolour-only.
+        foreach (var s in GameGraphics.Slots.Where(s => s.Name != "gradient" && GameGraphics.ShipIndex(s.Name) == 0))
+            Assert.Contains("prompt", s.Generate);
+        Assert.Contains("prompt", GameGraphics.Find("explode1")!.Generate);
+        Assert.Equal(["recolor", "prompt"], GameGraphics.Find("over4")!.Generate);
+        Assert.Equal(["recolor"], GameGraphics.Find("gradient")!.Generate);
     }
 
     [Fact]

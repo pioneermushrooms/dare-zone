@@ -1,14 +1,15 @@
 namespace Dare.Arenas.Core;
 
 /// <summary>One weapon sheet in a pilot's armory (its image is fetched separately).</summary>
-public sealed record ArmoryItem(long Id, string Kind, string Name, string Source, string Created);
+public sealed record ArmoryItem(long Id, string Kind, string Name, string Source, string Created, string Prompt = "");
 
 /// <summary>
 /// A weapon graphic the armory holds: the game's sheet of that name, its exact size (the game
 /// reads frames at fixed cells, so a replacement keeps the stock layout), and whether it can be
 /// set for one ship's shots (projectiles know their ship; repel and rocket effects don't).
+/// <see cref="Generate"/> is false for kinds the ship service doesn't make (banners).
 /// </summary>
-public sealed record ArmoryKind(string Name, string Label, int Width, int Height, bool PerShip, bool Prompt, string Hint);
+public sealed record ArmoryKind(string Name, string Label, int Width, int Height, bool PerShip, bool Prompt, string Hint, bool Generate = true);
 
 /// <summary>
 /// Each pilot name's armory: weapon sheets (bullets, bombs, mines, shrapnel, repel, rocket) they
@@ -27,8 +28,11 @@ public sealed partial class AccountStore
         new("bombs", "Bombs", 160, 208, true, true, "16×16 frames, 10 to a row. Rows: levels 1–4, EMP 1–4, bouncing 1–4, then thor."),
         new("mines", "Mines", 160, 128, true, true, "16×16 frames, 10 to a row. Rows: levels 1–4 (tumbling), then EMP 1–4."),
         new("shrapnel", "Shrapnel", 80, 48, true, true, "8×8 frames, 10 to a row. Rows: levels 1–3, then bouncing 1–3."),
-        new("repel", "Repel", 480, 192, false, false, "96×96 frames: the repel's ring, growing frame by frame. Every ship's repel looks the same."),
-        new("rocket", "Rocket", 312, 48, false, false, "24×24 frames: the rocket's trail, a flash, a glow, then smoke. Every ship's rocket looks the same."),
+        new("repel", "Repel", 480, 192, false, true, "96×96 frames: the repel's ring, growing frame by frame. Every ship's repel looks the same."),
+        new("rocket", "Rocket", 312, 48, false, true, "24×24 frames: the rocket's trail, a flash, a glow, then smoke. Every ship's rocket looks the same."),
+        // Not a weapon: the pilot's banner, shown beside their name. Its slot (every ship) is the banner the zone shows.
+        new("banner", "Banner", BannerFile.Width, BannerFile.Height, false, false,
+            "12×8 pixels in the game's 256 colours, shown beside your name in the game. A banner you set in Continuum itself wins over this one.", false),
     ];
 
     public static ArmoryKind? FindArmoryKind(string? name) =>
@@ -40,9 +44,9 @@ public sealed partial class AccountStore
         lock (_gate)
         {
             var items = new List<ArmoryItem>();
-            using (var c = Cmd("SELECT id, kind, name, source, created FROM armory_items WHERE account_id = $a ORDER BY id", ("$a", accountId)))
+            using (var c = Cmd("SELECT id, kind, name, source, created, prompt FROM armory_items WHERE person_id = $p ORDER BY id", ("$p", PersonKey(accountId))))
             using (var r = c.ExecuteReader())
-                while (r.Read()) items.Add(new ArmoryItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4)));
+                while (r.Read()) items.Add(new ArmoryItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5)));
             var slots = ArmoryKinds.ToDictionary(k => k.Name, _ => new long[ShipSlots + 1]);
             using (var c = Cmd("SELECT kind, ship, item_id FROM armory_slots WHERE account_id = $a", ("$a", accountId)))
             using (var r = c.ExecuteReader())
@@ -60,28 +64,29 @@ public sealed partial class AccountStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT png FROM armory_items WHERE id = $id AND account_id = $a", ("$id", itemId), ("$a", accountId));
+            using var c = Cmd("SELECT png FROM armory_items WHERE id = $id AND person_id = $p", ("$id", itemId), ("$p", PersonKey(accountId)));
             return c.ExecuteScalar() as byte[];
         }
     }
 
-    /// <summary>Adds a weapon sheet to the armory; <paramref name="itemId"/> is its id.</summary>
-    public Result AddArmoryItem(long accountId, string? kind, string? name, string source, byte[] image, out long itemId)
+    /// <summary>Adds a weapon sheet to the armory; <paramref name="itemId"/> is its id. <paramref name="prompt"/> is what it was drawn from, if anything.</summary>
+    public Result AddArmoryItem(long accountId, string? kind, string? name, string source, byte[] image, out long itemId, string? prompt = null)
     {
         itemId = 0;
         if (FindArmoryKind(kind) is not { } k) return Fail("That isn't one of the weapons.");
         if (!ShipSources.Contains(source)) return Fail("Unknown source.");
         if (!IsArmorySheet(k, image, out var why)) return Fail(why);
+        if (k.Name == "banner") image = BannerFile.Normalise(image); // the game's own 8-bit file, whatever it came as
         var clean = CleanShipName(string.IsNullOrWhiteSpace(name) ? k.Label : name);
         long id = 0;
         var r = Tx(() =>
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id AND status = 'active'", ("$id", accountId)) == 0)
                 return Fail("Sign in again first.");
-            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE account_id = $a", ("$a", accountId)) >= MaxArmoryItems)
+            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE person_id = $p", ("$p", PersonKey(accountId))) >= MaxArmoryItems)
                 return Fail($"Your armory is full ({MaxArmoryItems}). Remove one first.");
-            Run("INSERT INTO armory_items(account_id, kind, name, source, png, created) VALUES($a, $k, $n, $s, $p, $c)",
-                ("$a", accountId), ("$k", k.Name), ("$n", clean), ("$s", source), ("$p", image), ("$c", Now()));
+            Run("INSERT INTO armory_items(account_id, person_id, kind, name, source, png, created, prompt) VALUES($a, $who, $k, $n, $s, $p, $c, $pr)", ("$who", PersonKey(accountId)),
+                ("$a", accountId), ("$k", k.Name), ("$n", clean), ("$s", source), ("$p", image), ("$c", Now()), ("$pr", CleanPrompt(prompt)));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok("Added to your armory.");
         });
@@ -92,9 +97,9 @@ public sealed partial class AccountStore
     /// <summary>Removes an item; any weapon wearing it goes back to the arena's.</summary>
     public Result RemoveArmoryItem(long accountId, long itemId) => Tx(() =>
     {
-        if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND account_id = $a", ("$id", itemId), ("$a", accountId)) == 0)
+        if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND person_id = $p", ("$id", itemId), ("$p", PersonKey(accountId))) == 0)
             return Fail("That isn't in your armory.");
-        Run("DELETE FROM armory_slots WHERE account_id = $a AND item_id = $id", ("$a", accountId), ("$id", itemId));
+        Run("DELETE FROM armory_slots WHERE item_id = $id", ("$id", itemId)); // every name of the account that had it equipped
         Run("DELETE FROM armory_items WHERE id = $id", ("$id", itemId));
         return Ok("Removed from your armory.");
     });
@@ -116,8 +121,8 @@ public sealed partial class AccountStore
                 Run("DELETE FROM armory_slots WHERE account_id = $a AND kind = $k AND ship = $s", ("$a", accountId), ("$k", k.Name), ("$s", ship));
                 return Ok($"{k.Label} on {where}: back to the default.");
             }
-            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND account_id = $a AND kind = $k",
-                    ("$id", itemId), ("$a", accountId), ("$k", k.Name)) == 0)
+            if (Scalar("SELECT COUNT(*) FROM armory_items WHERE id = $id AND person_id = $p AND kind = $k",
+                    ("$id", itemId), ("$p", PersonKey(accountId)), ("$k", k.Name)) == 0)
                 return Fail($"That isn't {k.Label.ToLowerInvariant()} in your armory.");
             Run("INSERT OR REPLACE INTO armory_slots(account_id, kind, ship, item_id) VALUES($a, $k, $s, $id)",
                 ("$a", accountId), ("$k", k.Name), ("$s", ship), ("$id", itemId));
@@ -132,6 +137,7 @@ public sealed partial class AccountStore
     public static bool IsArmorySheet(ArmoryKind kind, ReadOnlySpan<byte> image, out string error)
     {
         if (image.Length > MaxArmoryImageBytes) { error = $"That sheet is over {MaxArmoryImageBytes / 1024} KB."; return false; }
+        if (kind.Name == "banner") { error = BannerFile.Check(image) ?? ""; return error.Length == 0; }
         if (!GameGraphics.TryCheckImage(image, out _, out var w, out var h, out error)) return false;
         if (w != kind.Width || h != kind.Height)
         {

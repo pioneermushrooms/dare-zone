@@ -16,8 +16,9 @@ public static class GameGraphics
     private static readonly string[] ShipNames = ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
     private static readonly string[] ShipModes = ["ship", "ship-prompt"];
     private static readonly string[] SpriteModes = ["recolor", "new", "prompt"];
-    private static readonly string[] BurstModes = ["recolor", "new"];
-    private static readonly string[] RecolorOnly = ["recolor"];
+    private static readonly string[] BurstModes = ["recolor", "new", "prompt"];
+    private static readonly string[] DrawnModes = ["recolor", "prompt"]; // no procedural look of their own
+    private static readonly string[] RecolorOnly = ["recolor"]; // the colour gradient: a table, not a picture
 
     public static readonly IReadOnlyList<GraphicSlot> Slots =
     [
@@ -32,7 +33,7 @@ public static class GameGraphics
         new("prizes", "Items (greens)", "Items", "16×16 frames, 10 to a row: the prize tumbling like a coin.", SpriteModes),
         new("powerb", "Powerball", "Items", "16×16 frames: normal, phased and trail (burning out), a row each.", SpriteModes),
         new("flag", "Flag", "Items", "16×16 frames, 10 to a row, tumbling: the enemy's row, then yours.", SpriteModes),
-        new("goal", "Goal", "Items", "16×16 frames: yours and the enemy's.", RecolorOnly),
+        new("goal", "Goal", "Items", "16×16 frames, 9 to a row: the enemy's goal, then yours.", DrawnModes),
         new("explode0", "Bullet hit", "Effects", "The small explosion.", BurstModes),
         new("explode1", "Explosion", "Effects", "Bomb and ship explosion.", BurstModes),
         new("explode2", "Big explosion", "Effects", "The large ship explosion.", BurstModes),
@@ -42,12 +43,12 @@ public static class GameGraphics
         new("exhaust", "Exhaust", "Effects", "Thruster puffs, played once along each row.", BurstModes),
         new("shield", "Shield", "Effects", "The shields effect, tumbling like a coin.", SpriteModes),
         new("super", "Super", "Effects", "The super effect, spinning flat.", SpriteModes),
-        new("over1", "Overlay 1", "Screen", "Ship overlays (cloak, stealth and so on).", RecolorOnly),
-        new("over2", "Overlay 2", "Screen", "Ship overlays.", RecolorOnly),
-        new("over3", "Overlay 3", "Screen", "Ship overlays.", RecolorOnly),
-        new("over4", "Overlay 4", "Screen", "Ship overlays.", RecolorOnly),
-        new("over5", "Overlay 5", "Screen", "Ship overlays.", RecolorOnly),
-        new("wall", "Wall", "Screen", "Wall shading.", RecolorOnly),
+        new("over1", "Small asteroid", "Map", "16×16 frames: one small asteroid turning through all 30.", DrawnModes),
+        new("over2", "Large asteroid", "Map", "32×32 frames: one large asteroid turning through all 30.", DrawnModes),
+        new("over3", "Small asteroid 2", "Map", "16×16 frames: the other small asteroid, turning through all 30.", DrawnModes),
+        new("over4", "Space station", "Map", "96×96 frames: the space station turning through all 10.", DrawnModes),
+        new("over5", "Wormhole", "Map", "80×80 frames: the wormhole swirling through all 24.", DrawnModes),
+        new("wall", "Bricks", "Map", "16×16 tiles, 10 to a row: the enemy's bricks, then your team's.", DrawnModes),
         new("gradient", "Gradient", "Screen", "Colour gradient.", RecolorOnly),
     ];
 

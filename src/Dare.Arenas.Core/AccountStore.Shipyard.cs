@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace Dare.Arenas.Core;
 
 /// <summary>One ship in a pilot's shipyard (its sheet is fetched separately).</summary>
-public sealed record ShipyardShip(long Id, string Name, string Source, string Created);
+public sealed record ShipyardShip(long Id, string Name, string Source, string Created, string Prompt = "");
 
 /// <summary>
 /// Each pilot name's shipyard: ship rotation sheets they generated or uploaded, and which of the
@@ -26,9 +26,9 @@ public sealed partial class AccountStore
         lock (_gate)
         {
             var ships = new List<ShipyardShip>();
-            using (var c = Cmd("SELECT id, name, source, created FROM shipyard_ships WHERE account_id = $a ORDER BY id", ("$a", accountId)))
+            using (var c = Cmd("SELECT id, name, source, created, prompt FROM shipyard_ships WHERE person_id = $p ORDER BY id", ("$p", PersonKey(accountId))))
             using (var r = c.ExecuteReader())
-                while (r.Read()) ships.Add(new ShipyardShip(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3)));
+                while (r.Read()) ships.Add(new ShipyardShip(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4)));
             var slots = new long[ShipSlots];
             using (var c = Cmd("SELECT slot, ship_id FROM shipyard_slots WHERE account_id = $a", ("$a", accountId)))
             using (var r = c.ExecuteReader())
@@ -46,13 +46,13 @@ public sealed partial class AccountStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT png FROM shipyard_ships WHERE id = $id AND account_id = $a", ("$id", shipId), ("$a", accountId));
+            using var c = Cmd("SELECT png FROM shipyard_ships WHERE id = $id AND person_id = $p", ("$id", shipId), ("$p", PersonKey(accountId)));
             return c.ExecuteScalar() as byte[];
         }
     }
 
-    /// <summary>Adds a sheet to the shipyard; <paramref name="shipId"/> is its id.</summary>
-    public Result AddShipyardShip(long accountId, string? name, string source, byte[] png, out long shipId)
+    /// <summary>Adds a sheet to the shipyard; <paramref name="shipId"/> is its id. <paramref name="prompt"/> is what it was drawn from, if anything.</summary>
+    public Result AddShipyardShip(long accountId, string? name, string source, byte[] png, out long shipId, string? prompt = null)
     {
         shipId = 0;
         if (!ShipSources.Contains(source)) return Fail("Unknown ship source.");
@@ -63,10 +63,10 @@ public sealed partial class AccountStore
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id AND status = 'active'", ("$id", accountId)) == 0)
                 return Fail("Sign in again first.");
-            if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE account_id = $a", ("$a", accountId)) >= MaxShipyardShips)
+            if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE person_id = $p", ("$p", PersonKey(accountId))) >= MaxShipyardShips)
                 return Fail($"Your shipyard is full ({MaxShipyardShips} ships). Remove one first.");
-            Run("INSERT INTO shipyard_ships(account_id, name, source, png, created) VALUES($a, $n, $s, $p, $c)",
-                ("$a", accountId), ("$n", clean), ("$s", source), ("$p", png), ("$c", Now()));
+            Run("INSERT INTO shipyard_ships(account_id, person_id, name, source, png, created, prompt) VALUES($a, $who, $n, $s, $p, $c, $pr)", ("$who", PersonKey(accountId)),
+                ("$a", accountId), ("$n", clean), ("$s", source), ("$p", png), ("$c", Now()), ("$pr", CleanPrompt(prompt)));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok("Added to your shipyard.");
         });
@@ -77,9 +77,9 @@ public sealed partial class AccountStore
     /// <summary>Removes a ship; any slot it was on goes back to the game's own ship.</summary>
     public Result RemoveShipyardShip(long accountId, long shipId) => Tx(() =>
     {
-        if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $id AND account_id = $a", ("$id", shipId), ("$a", accountId)) == 0)
+        if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $id AND person_id = $p", ("$id", shipId), ("$p", PersonKey(accountId))) == 0)
             return Fail("That ship isn't in your shipyard.");
-        Run("DELETE FROM shipyard_slots WHERE account_id = $a AND ship_id = $id", ("$a", accountId), ("$id", shipId));
+        Run("DELETE FROM shipyard_slots WHERE ship_id = $id", ("$id", shipId)); // every name of the account that had it in a slot
         Run("DELETE FROM shipyard_ships WHERE id = $id", ("$id", shipId));
         return Ok("Removed from your shipyard.");
     });
@@ -95,12 +95,19 @@ public sealed partial class AccountStore
                 Run("DELETE FROM shipyard_slots WHERE account_id = $a AND slot = $s", ("$a", accountId), ("$s", slot));
                 return Ok($"Ship {slot} is back to the default.");
             }
-            if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $id AND account_id = $a", ("$id", shipId), ("$a", accountId)) == 0)
+            if (Scalar("SELECT COUNT(*) FROM shipyard_ships WHERE id = $id AND person_id = $p", ("$id", shipId), ("$p", PersonKey(accountId))) == 0)
                 return Fail("That ship isn't in your shipyard.");
             Run("INSERT OR REPLACE INTO shipyard_slots(account_id, slot, ship_id) VALUES($a, $s, $id)",
                 ("$a", accountId), ("$s", slot), ("$id", shipId));
             return Ok($"Applied to ship {slot}.");
         });
+    }
+
+    /// <summary>A generation prompt as kept: printable, trimmed, at most 500 characters.</summary>
+    public static string CleanPrompt(string? prompt)
+    {
+        var kept = new string((prompt ?? "").Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+        return kept.Length > 500 ? kept[..500] : kept;
     }
 
     /// <summary>Printable, trimmed, at most <see cref="MaxShipNameLength"/> characters; "Ship" when nothing is left.</summary>

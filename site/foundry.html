@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="The Foundry: ships, weapons, effects, banners, maps and tilesets pilots designed for the Foundation zone. Browse, keep a copy, or share your own.">
+<title>The Foundry — SubSpace Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/foundry.css?v=8">
+<link rel="stylesheet" href="/header.css?v=3">
+<script src="/arena/lvl.js" defer></script>
+<script type="module" src="/foundry-banners.js?v=1"></script>
+<script type="module" src="/foundry.js?v=7"></script>
+</head>
+<body>
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+  <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" aria-current="page" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/header.js?v=2"></script>
+
+<main>
+  <section class="hero">
+    <h1>The Foundry</h1>
+    <p class="intro">Ships, weapons, effects, banners, maps and tilesets pilots designed for everyone. Keep a copy in your own Shipyard, Armory or maps, download it, or share one of yours.</p>
+  </section>
+
+  <section class="tools" aria-label="Find designs">
+    <form id="filters" class="filters" role="search">
+      <label class="field grow"><span>Keywords</span><input type="search" id="q" placeholder="e.g. plasma, green, wasp" autocomplete="off" maxlength="120"></label>
+      <label class="field"><span>Kind</span><select id="kind"><option value="">Everything</option></select></label>
+      <button type="button" class="btn primary" id="contribute">Share a design</button>
+    </form>
+    <p class="chips" id="active" hidden></p>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section aria-label="Designs">
+    <ul class="grid" id="grid"></ul>
+    <p class="more"><button type="button" class="btn" id="more" hidden>Show more</button></p>
+  </section>
+
+  <section class="emporium" id="emporium" aria-labelledby="emporium-title" hidden>
+    <header class="emphead">
+      <div>
+        <h2 id="emporium-title">From the SubSpace Banner Emporium</h2>
+        <p class="credit">Banners pilots have made for SubSpace since 2004, from the <a href="https://www.trenchwars.org/SSBE/" rel="noopener">SubSpace Banner Emporium</a>, each credited to the pilot who added it there. Keep one in your Armory, or wear it as your banner.</p>
+      </div>
+      <label class="field"><span>Order</span><select id="bsort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="popular">Most used</option></select></label>
+    </header>
+    <p class="chips" id="bchips" hidden></p>
+    <p class="status" id="bstatus" role="status" aria-live="polite"></p>
+    <ul class="bgrid" id="bgrid" aria-label="Emporium banners"></ul>
+    <p class="more" id="bmore" hidden><button type="button" class="btn" id="bmorebtn">Show more banners</button></p>
+  </section>
+</main>
+
+
+<dialog id="share" aria-labelledby="share-title">
+  <form method="dialog" class="dlg" id="shareform">
+    <header class="dlghead"><h2 id="share-title">Share a design</h2><button type="button" class="ghost" id="share-close" aria-label="Close">✕</button></header>
+    <div class="pick" role="group" aria-label="Where it comes from">
+      <button type="button" class="tab" id="pick-file" aria-pressed="true">From my computer</button>
+      <button type="button" class="tab" id="pick-saved" aria-pressed="false">From my Shipyard or Armory</button>
+    </div>
+    <div id="from-file" class="from">
+      <label class="drop" id="drop"><input type="file" id="file" accept="image/png,image/bmp,.png,.bmp,.bm2,.lvl"><span>Choose a PNG or BMP (.bm2) sheet, a 12×8 banner, a tileset or a map (.lvl), or drop it here</span></label>
+    </div>
+    <div id="from-saved" class="from" hidden>
+      <div class="savedlist" id="savedlist" aria-label="Your saved designs, by kind"></div>
+    </div>
+    <div class="chosen" id="chosen" hidden>
+      <canvas id="chosen-icon" class="icon big" role="img" aria-label="Preview"></canvas>
+      <div class="chosen-info">
+        <p class="detect" id="detect"></p>
+        <fieldset class="kinds" id="kinds" hidden><legend>It fits more than one kind. Which is it?</legend><div id="kindchoices"></div></fieldset>
+        <label class="field"><span>Name</span><input id="name" maxlength="40" required></label>
+        <label class="field"><span>Keywords <small>(optional)</small></span><input id="keywords" maxlength="200" placeholder="what it looks like: colours, shapes, theme"></label>
+        <p class="hint" id="prompthint" hidden></p>
+      </div>
+    </div>
+    <p class="status" id="share-status" role="status" aria-live="polite"></p>
+    <footer class="dlgfoot"><button type="button" class="btn" id="share-cancel">Cancel</button><button type="submit" class="btn primary" id="share-go" disabled>Share it</button></footer>
+  </form>
+</dialog>
+
+<dialog id="zoom" aria-labelledby="zoom-title" class="zoombox">
+  <div class="dlg">
+    <header class="dlghead"><h2 id="zoom-title"></h2><button type="button" class="ghost" id="zoom-close" aria-label="Close">✕</button></header>
+    <div id="zoom-art" class="zoomart"></div>
+  </div>
+</dialog>
+<dialog id="bdetail" aria-labelledby="bwho" class="bannerbox">
+  <div class="dlg">
+    <header class="dlghead"><h2 id="bwho"></h2><button type="button" class="ghost" id="bclose" aria-label="Close">✕</button></header>
+    <div class="bannerview"><canvas id="bbig" class="bbig" role="img" width="192" height="128"></canvas></div>
+    <p class="bmeta"><span id="bwhen"></span> <span id="bplayers"></span></p>
+    <p class="bmeta">From the <a id="bsource" rel="noopener" target="_blank">SubSpace Banner Emporium ↗</a> <button type="button" class="seeall" id="bbyauthor"></button></p>
+    <p class="status" id="bdstatus" role="status" aria-live="polite"></p>
+    <footer class="dlgfoot">
+      <button type="button" class="btn danger" id="bremove" hidden>Take down (staff)</button>
+      <a class="btn" id="bdownload" download>Download</a>
+      <button type="button" class="btn" id="bkeep">Keep in my Armory</button>
+      <button type="button" class="btn primary" id="buse">Use as my banner</button>
+    </footer>
+  </div>
+</dialog>
+</body>
+</html>

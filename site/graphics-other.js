@@ -176,14 +176,22 @@ function showReview(next) {
 
 async function generate(request) {
   if (busy || !list) return;
-  setBusy(true, request.mode === "prompt" ? "Painting it… this takes up to a minute." : "Making it…");
+  setBusy(true, request.batch ? "Finding a different one…"
+    : request.mode === "prompt" ? "Painting it… this takes up to a minute." : "Making it…");
   try {
     const data = await call("/generate", request);
     const bytes = Uint8Array.from(atob(data.sheet), (ch) => ch.charCodeAt(0));
-    say("Here it is. Approve it to wear it.");
-    showReview({ bytes, note: GEN_LABELS[request.mode] ?? request.mode, again: () => generate(request) });
+    say("Here it is. Approve it to wear it, or Try again for a different one.");
+    // A prompt's Try again continues its run (data.batch): a take unlike the ones shown.
+    const fresh = request.batch ? request.fresh : request;
+    showReview({
+      bytes,
+      note: GEN_LABELS[request.mode] ?? request.mode,
+      again: () => generate(data.batch ? { slot: fresh.slot, mode: fresh.mode, batch: data.batch, fresh } : fresh),
+    });
   } catch (error) {
     say(error.message, true);
+    if (request.batch && pending) pending.again = () => generate(request.fresh); // expired: draw afresh
   } finally {
     setBusy(false);
   }

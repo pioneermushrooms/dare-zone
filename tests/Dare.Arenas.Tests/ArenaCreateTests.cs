@@ -57,13 +57,13 @@ public sealed class ArenaCreateTests : IDisposable
     }
 
     [Fact]
-    public void refuses_owner_who_already_owns_three()
+    public void refuses_owner_at_their_limit_of_ten()
     {
-        foreach (var n in new[] { "one", "two", "three" })
-            Assert.True(_s.Create(n, "S", "Racer", NoFolder, FolderOk).Ok);
-        var r = _s.Create("four", "S", "RACER", NoFolder, FolderOk);
+        for (var i = 0; i < ArenaStore.MaxArenasPerAccount; i++)
+            Assert.True(_s.Create($"arena{(char)('a' + i)}", "S", "Racer", NoFolder, FolderOk).Ok);
+        var r = _s.Create("eleven", "S", "RACER", NoFolder, FolderOk);
         Assert.False(r.Ok);
-        Assert.Contains("3", r.Message);
+        Assert.Contains("10", r.Message);
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public sealed class ArenaCreateTests : IDisposable
     [Fact]
     public void checks_run_before_folder_is_created()
     {
-        foreach (var n in new[] { "one", "two", "three" })
-            Assert.True(_s.Create(n, "S", "A", NoFolder, FolderOk).Ok);
+        for (var i = 0; i < ArenaStore.MaxArenasPerAccount; i++)
+            Assert.True(_s.Create($"arena{(char)('a' + i)}", "S", "A", NoFolder, FolderOk).Ok);
         var ran = false;
         Assert.False(_s.Create("four", "S", "A", NoFolder, () => { ran = true; return null; }).Ok);
         Assert.False(ran); // owner check failed first: no orphan folder

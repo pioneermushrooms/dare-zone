@@ -26,9 +26,9 @@ def size(png: bytes) -> tuple[int, int]:
 
 class Generators(unittest.TestCase):
     def test_every_mode_keeps_the_sheet_size(self):
-        for kind in list(graphics.SPRITES) + list(graphics.BURSTS) + ["over2", "goal"]:
+        for kind in list(graphics.SPRITES) + list(graphics.BURSTS) + ["gradient"]:
             for mode in ["recolor", "new"]:
-                if mode == "new" and kind not in graphics.SPRITES and kind not in graphics.BURSTS:
+                if mode == "new" and not (graphics.SHEETS.get(kind) and graphics.SHEETS[kind].body or kind in graphics.BURSTS):
                     continue
                 with self.subTest(kind=kind, mode=mode):
                     png = graphics.generate(kind, mode, stock(kind), seed=3)
@@ -69,7 +69,7 @@ class Generators(unittest.TestCase):
             self.assertIn(word, description)
             self.assertEqual(drawn.call_args.kwargs["px"], max(graphics.SPRITES[kind][:2]))
             self.assertEqual(size(png), size(stock(kind)), kind)  # the stock layout, so the game reads it
-        self.assertEqual(graphics.sprite_description("prizes", "a red gem"), "a red gem")
+        self.assertEqual(graphics.sprite_description("gradient", "a red gem"), "a red gem")
 
     def test_service_refuses_clearly(self):
         with self.assertRaises(service.Refused):
@@ -233,3 +233,131 @@ class SheetMeanings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def coins() -> Image.Image:
+    """A stand-in for PixelLab's "explosion bursting into tiny coins": gold discs round a core."""
+    import math
+    from PIL import ImageDraw
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for k in range(9):
+        a = k * 2 * math.pi / 9
+        x, y = 32 + 24 * math.cos(a), 30 + 20 * math.sin(a)
+        d.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(245, 200, 30, 255))
+    d.ellipse((22, 20, 42, 40), fill=(255, 140, 30, 255))
+    return img
+
+
+class Prompts(unittest.TestCase):
+    """Every graphic but the colour gradient can be drawn from a description."""
+
+    def test_every_picture_kind_takes_a_prompt_in_its_stock_layout(self):
+        self.assertFalse(graphics.promptable("gradient"))
+        for kind in list(graphics.SHEETS) + list(graphics.BURST_SHEETS):
+            with self.subTest(kind=kind), mock.patch.object(graphics, "pixel_lab_sprite", return_value=coins()) as drawn:
+                png = graphics.generate(kind, "prompt", stock(kind), prompt="tiny coins", seed=1)
+                self.assertEqual(size(png), size(stock(kind)))
+                text, kw = drawn.call_args.args[0], drawn.call_args.kwargs
+                self.assertTrue(text.startswith("tiny coins, drawn as "), text)
+                effect = kind in graphics.BURST_SHEETS
+                self.assertIs(kw["prompt"], graphics.EFFECT_PROMPT if effect else graphics.SPRITE_PROMPT)
+                self.assertEqual(kw["px"], graphics.BURSTS[kind] if effect else max(graphics.SPRITES[kind][:2]))
+
+    def test_a_prompted_explosion_keeps_its_colours_and_plays_once_out(self):
+        with mock.patch.object(graphics, "pixel_lab_sprite", return_value=coins()):
+            out = sheet("explode1", "prompt", sprite=coins())
+        tpl = graphics.load_template(stock("explode1"))
+        live = [i for i in range(36) if frame(tpl, 48, i).getchannel("A").getbbox()]
+        for i in range(36):  # the stock's unused frames stay empty, so the animation's length holds
+            self.assertEqual(frame(out, 48, i).getchannel("A").getbbox() is not None, i in live, i)
+        sizes = [width(frame(out, 48, i)) for i in live]
+        peak = max(range(len(sizes)), key=lambda k: ink(frame(out, 48, live[k])))
+        self.assertLess(sizes[0], sizes[peak] / 2, "starts small and blooms")
+        self.assertLess(ink(frame(out, 48, live[-1])), ink(frame(out, 48, live[peak])) / 3, "breaks up at the end")
+        hue = graphics._hue_of(frame(out, 48, live[peak]), (0, 0, 48, 48))
+        self.assertLess(gap(hue, graphics._hue_of(coins(), (0, 0, 64, 64))), 0.05, "gold coins stay gold")
+
+    def test_asteroids_turn_once_through_every_frame_in_their_own_colours(self):
+        out = sheet("over1", "prompt", sprite=coins())
+        frames = [frame(out, 16, i) for i in range(30)]
+        self.assertGreater(difference(frames[14], frames[15]), 0, "row 2 carries on, not a restart")
+        self.assertLess(difference(frames[29], frames[0]), difference(frames[15], frames[0]), "and loops back")
+        self.assertLess(gap(graphics._hue_of(out, (0, 0, 240, 32)), graphics._hue_of(coins(), (0, 0, 64, 64))), 0.05)
+
+    def test_bricks_and_goals_keep_teams_apart(self):
+        for kind, cols in (("wall", 10), ("goal", 9)):
+            out = sheet(kind, "prompt", sprite=coins())
+            tpl = graphics.load_template(stock(kind))
+            for row in (0, 1):
+                a = graphics._hue_of(tpl, (0, row * 16, cols * 16, row * 16 + 16))
+                b = graphics._hue_of(out, (0, row * 16, cols * 16, row * 16 + 16))
+                self.assertLess(gap(a, b), 0.08, (kind, row))
+
+
+class GraphicTries(unittest.TestCase):
+    """/graphic prompts run like prompted ships: Try again shows a take unlike the ones shown."""
+
+    def setUp(self):
+        self.calls = []
+        looks = [(245, 200, 30), (246, 201, 31), (40, 120, 230), (200, 40, 200), (40, 210, 90), (230, 60, 40)]
+
+        def fake(description, px=16, **kw):
+            self.calls.append(description)
+            colour = looks[(len(self.calls) - 1) % len(looks)]
+            img = coins()
+            img.paste(colour + (255,), (22, 20, 42, 40), img.crop((22, 20, 42, 40)))
+            body = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            body.paste(img, mask=img)
+            px_ = body.load()
+            for y in range(64):
+                for x in range(64):
+                    if px_[x, y][3]:
+                        px_[x, y] = colour + (255,)
+            return body
+
+        for p in (mock.patch.object(graphics, "pixel_lab_sprite", side_effect=fake),
+                  mock.patch.dict(os.environ, {"PIXEL_LAB_API_KEY": "test"})):
+            p.start()
+            self.addCleanup(p.stop)
+        service._tries.clear()
+        self.template = base64.b64encode(stock("explode1")).decode()
+
+    def ask(self, **body):
+        return service.graphic({"kind": "explode1", "template": self.template, "mode": "prompt", **body})
+
+    @staticmethod
+    def hue(reply):
+        img = graphics.load_template(base64.b64decode(reply["sheet"]))
+        return graphics._hue_of(img, (0, 0, img.width, img.height))
+
+    def test_try_again_differs_and_the_next_take_is_drawn_ahead(self):
+        first = self.ask(prompt="an explosion bursting into tiny coins")
+        self.assertEqual(size(base64.b64decode(first["sheet"])), (288, 288))
+        tries = service._found(first["batch"])
+        tries._drawing and tries._drawing.join()
+        self.assertEqual(len(self.calls), 2)
+        self.assertTrue(all(c.startswith("an explosion bursting into tiny coins") for c in self.calls))
+        self.assertEqual(sum("Another take" in c for c in self.calls), 1)  # drawn alongside, any order
+        # take 2 came back a near-twin of take 1: one more take is drawn rather than shown
+        second = self.ask(batch=first["batch"])
+        self.assertGreater(gap(self.hue(first), self.hue(second)), 0.1)
+        self.assertGreaterEqual(len(self.calls), 3)
+
+    def test_a_run_has_a_cap_and_tokens_stay_with_their_graphic(self):
+        first = self.ask(prompt="coins")
+        with self.assertRaises(service.Refused) as other:
+            service.graphic({"kind": "repel", "template": base64.b64encode(stock("repel")).decode(),
+                             "mode": "prompt", "batch": first["batch"]})
+        self.assertEqual(other.exception.status, 410)
+        with self.assertRaises(service.Refused):
+            for _ in range(20):
+                self.ask(batch=first["batch"])
+        service._found(first["batch"])._drawing and service._found(first["batch"])._drawing.join()
+        self.assertLessEqual(len(self.calls), 5)
+
+    def test_gradient_has_no_prompt(self):
+        with self.assertRaises(service.Refused) as r:
+            service.graphic({"kind": "gradient", "template": base64.b64encode(stock("gradient")).decode(),
+                             "mode": "prompt", "prompt": "x"})
+        self.assertEqual(r.exception.status, 400)

@@ -8,6 +8,9 @@
 // layout (rows are weapon levels, EMP, bouncing...), since the game cuts frames at fixed cells.
 // The game is reached through globalThis.dareGraphics (play/start.mjs): `bombs` is the sheet for
 // every ship, `bombs@3` the one for ship 3's shots.
+// The Armory also holds banners (12×8, the game palette): not a weapon the browser game draws, but
+// the picture beside the pilot's name. The one on "every ship" is their banner, which the zone
+// shows (the server keeps it as the game's own 8-bit BMP and sets it as they enter an arena).
 const SHIPS = ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 const API = "/account/api/armory";
 const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
@@ -19,7 +22,10 @@ const CELLS = {
   shrapnel: { w: 8, h: 8, row: 10 },
   repel: { w: 96, h: 96 },
   rocket: { w: 24, h: 24 },
+  banner: { w: 12, h: 8, row: 1 },
 };
+const BANNER = "banner";
+const isBanner = (name) => name === BANNER;
 
 const $ = (id) => document.getElementById(id);
 const dialog = $("graphics");
@@ -45,10 +51,13 @@ let kind = "bombs";
 let ship = 0; // 0 = every ship, else 1..8
 let pending = null; // { sheet (canvas), name, source, again } awaiting Approve
 let busy = false;
+let shown = null; // { bytes, stem } of the sheet shown as current, for Download
 
 const kindOf = (name) => kinds.find((k) => k.name === name);
 const gameName = (k, s) => (s ? `${k}@${s}` : k);
 const shipLabel = (s) => (s ? `ship ${s} (${SHIPS[s - 1]})` : "every ship");
+/** What putting an item on the selected weapon does, in words. */
+const putOn = (name, s) => (isBanner(name) ? "wear it as your banner" : `put it on ${shipLabel(s)}`);
 
 // ---- the server --------------------------------------------------------------------------------
 async function call(path, body) {
@@ -92,7 +101,7 @@ async function applyArmory() {
   if (!game || !(await load())) return;
   const jobs = [];
   for (const [name, row] of Object.entries(armory.slots))
-    row.forEach((id, s) => {
+    if (!isBanner(name)) row.forEach((id, s) => {
       if (id) jobs.push(itemBytes(id).then((bytes) => game.set(gameName(name, s), bytes))
         .catch((error) => console.warn(`${gameName(name, s)}:`, error)));
     });
@@ -136,6 +145,40 @@ const sheetFromBytes = (bytes, need) => sheetFromBlob(new Blob([bytes]), need);
 async function pngBytes(sheet) {
   const blob = await new Promise((resolve) => sheet.toBlob(resolve, "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** A banner as a 24-bit BMP (clear pixels black): the server turns it into the game's 8-bit file. */
+function bannerBmp(sheet) {
+  const g = sheet.getContext("2d");
+  const px = g.getImageData(0, 0, 12, 8).data;
+  const out = new Uint8Array(54 + 36 * 8);
+  const v = new DataView(out.buffer);
+  out[0] = 0x42; out[1] = 0x4d;
+  v.setUint32(2, out.length, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+  v.setInt32(18, 12, true); v.setInt32(22, 8, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 12; x++) {
+      const s = (y * 12 + x) * 4, d = 54 + (7 - y) * 36 + x * 3;
+      if (px[s + 3] < 128) continue; // clear: black
+      out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s];
+    }
+  return out;
+}
+
+/** A file name from a pilot's name for a sheet: "Green plasma" -> "green-plasma". */
+const slug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/** Saves bytes as a file in the browser's downloads (PNG or BMP, by what they are). */
+function saveFile(bytes, stem) {
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const url = URL.createObjectURL(new Blob([bytes], { type: png ? "image/png" : "image/bmp" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${stem}.${png ? "png" : "bmp"}`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function base64(bytes) {
@@ -202,7 +245,7 @@ function say(text, bad = false) {
 function setBusy(on, text = "") {
   busy = on;
   for (const b of panel.querySelectorAll("button, textarea, input, select")) b.disabled = on;
-  if (!on) $("gfx-a-restore").disabled = !worn().own;
+  if (!on) { $("gfx-a-restore").disabled = !worn().own; $("gfx-a-download").disabled = !shown; }
   if (text) say(text);
   dialog.classList.toggle("busy", on);
 }
@@ -257,24 +300,33 @@ async function showCurrent() {
   $("gfx-a-hint").textContent = k?.hint ?? "";
   $("gfx-a-restore").disabled = busy || !own;
   $("gfx-a-prompted").hidden = !k?.generate?.includes("prompt");
-  let sheet = null;
+  $("gfx-a-generate").hidden = !k?.generate?.length;
+  $("gfx-a-restore").textContent = isBanner(kind) ? "No banner" : "Restore default";
+  let sheet = null, bytes = null, stem = "";
   try {
     if (item) {
-      sheet = await sheetFromBytes(await itemBytes(item.id));
+      bytes = await itemBytes(item.id);
+      stem = `${kind}-${slug(item.name) || item.id}`;
+      sheet = await sheetFromBytes(bytes);
       label.textContent = `${k.label}${where}: ${item.name} (from your armory${own || !ship ? "" : ", for every ship"})`;
+    } else if (isBanner(kind)) {
+      label.textContent = "Banner: none yet. Upload one (12×8), or keep one from the Foundry.";
     } else {
-      const stock = await stockBytes(kind);
-      sheet = stock ? await sheetFromBytes(stock) : null;
+      bytes = await stockBytes(kind);
+      stem = kind;
+      sheet = bytes ? await sheetFromBytes(bytes) : null;
       label.textContent = `${k?.label ?? kind}${where}: the game's own (an arena may show its own)`;
     }
   } catch (error) {
     label.textContent = error.message;
   }
   if (asked !== `${kind}@${ship}`) return; // another weapon or ship was picked meanwhile
+  shown = sheet ? { bytes, stem } : null;
+  $("gfx-a-download").disabled = busy || !shown;
   play(current, sheet, kind);
   showSheet(currentSheet, sheet);
   $("gfx-a-note").textContent = armory
-    ? `${k?.label ?? ""} you've saved. Click one to put it on ${k?.perShip ? shipLabel(ship) : "every ship"}.`
+    ? `${k?.label ?? ""}${isBanner(kind) ? "s" : ""} you've saved. Click one to ${putOn(kind, k?.perShip ? ship : 0)}.`
     : "";
 }
 
@@ -289,7 +341,7 @@ function renderList() {
     const pick = document.createElement("button");
     pick.type = "button";
     pick.className = "thumb";
-    pick.title = `${it.name}: put it on ${k?.perShip ? shipLabel(ship) : "every ship"}`;
+    pick.title = `${it.name}: ${putOn(kind, k?.perShip ? ship : 0)}`;
     const art = document.createElement("span");
     art.className = "art";
     const cell = CELLS[kind];
@@ -304,8 +356,8 @@ function renderList() {
     if (on.length) {
       const badge = document.createElement("span");
       badge.className = "on";
-      badge.textContent = on.join(" ");
-      badge.title = `On ${on.map((s) => (s === "all" ? "every ship" : `ship ${s}`)).join(", ")}`;
+      badge.textContent = isBanner(kind) ? "on" : on.join(" ");
+      badge.title = isBanner(kind) ? "Your banner" : `On ${on.map((s) => (s === "all" ? "every ship" : `ship ${s}`)).join(", ")}`;
       pick.append(badge);
     }
     pick.addEventListener("click", () => void useItem(it, ship));
@@ -315,7 +367,14 @@ function renderList() {
     remove.setAttribute("aria-label", `Remove ${it.name}`);
     remove.textContent = "✕";
     remove.addEventListener("click", () => void removeItem(it));
-    li.append(pick, remove);
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "download";
+    save.title = `Download ${it.name}`;
+    save.setAttribute("aria-label", `Download ${it.name}`);
+    save.textContent = "⤓";
+    save.addEventListener("click", () => void downloadItem(it));
+    li.append(pick, remove, save);
     return li;
   }));
   if (armory && !items.length) {
@@ -344,8 +403,9 @@ const FALLBACK_KINDS = [
   { name: "bombs", label: "Bombs", width: 160, height: 208, perShip: true, generate: ["random", "prompt"], hint: "" },
   { name: "mines", label: "Mines", width: 160, height: 128, perShip: true, generate: ["random", "prompt"], hint: "" },
   { name: "shrapnel", label: "Shrapnel", width: 80, height: 48, perShip: true, generate: ["random", "prompt"], hint: "" },
-  { name: "repel", label: "Repel", width: 480, height: 192, perShip: false, generate: ["random"], hint: "" },
-  { name: "rocket", label: "Rocket", width: 312, height: 48, perShip: false, generate: ["random"], hint: "" },
+  { name: "repel", label: "Repel", width: 480, height: 192, perShip: false, generate: ["random", "prompt"], hint: "" },
+  { name: "rocket", label: "Rocket", width: 312, height: 48, perShip: false, generate: ["random", "prompt"], hint: "" },
+  { name: "banner", label: "Banner", width: 12, height: 8, perShip: false, generate: [], hint: "" },
 ];
 
 /** Puts a saved item on the selected weapon for ship `s` (0 = every ship): on the account, then in the game. */
@@ -354,6 +414,7 @@ async function useItem(it, s) {
   setBusy(true, `Putting ${it.name} on ${shipLabel(s)}…`);
   try {
     await call("/slot", { kind, ship: s, id: it.id });
+    if (isBanner(kind)) { say(`${it.name} is your banner now.`); return; }
     globalThis.dareGraphics?.set(gameName(kind, s), await itemBytes(it.id));
     await nextFrame();
     say(`${it.name} is on ${shipLabel(s)}.`);
@@ -365,13 +426,21 @@ async function useItem(it, s) {
   }
 }
 
+async function downloadItem(it) {
+  try {
+    saveFile(await itemBytes(it.id), `${it.kind}-${slug(it.name) || it.id}`);
+  } catch (error) {
+    say(error.message, true);
+  }
+}
+
 async function removeItem(it) {
   if (busy || !confirm(`Remove ${it.name} from your armory?`)) return;
   setBusy(true, `Removing ${it.name}…`);
   try {
     const on = (armory.slots[it.kind] ?? []).map((id, s) => (id === it.id ? s : -1)).filter((s) => s >= 0);
     await call("/remove", { id: it.id });
-    for (const s of on) globalThis.dareGraphics?.clear(gameName(it.kind, s));
+    if (!isBanner(it.kind)) for (const s of on) globalThis.dareGraphics?.clear(gameName(it.kind, s));
     await nextFrame();
     say(`Removed ${it.name}.`);
   } catch (error) {
@@ -387,6 +456,7 @@ async function restoreDefault() {
   setBusy(true, "Back to the default…");
   try {
     if (armory) await call("/slot", { kind, ship, id: 0 });
+    if (isBanner(kind)) { say("No banner now."); return; }
     globalThis.dareGraphics?.clear(gameName(kind, ship));
     await nextFrame();
     say(ship ? `${kindOf(kind).label} on ship ${ship}: back to ${armory?.slots?.[kind]?.[0] ? "your every-ship one" : "the default"}.`
@@ -415,7 +485,7 @@ function showReview(next) {
   if (!next) { play(reviewSpin, null, kind); return; }
   play(reviewSpin, next.sheet, kind);
   showSheet(reviewSheet, next.sheet);
-  $("gfx-a-review-note").textContent = `${kindOf(kind).label}: ${next.name}. The preview plays level 1.`;
+  $("gfx-a-review-note").textContent = isBanner(kind) ? `Banner: ${next.name}. Colours become the game's nearest.` : `${kindOf(kind).label}: ${next.name}. The preview plays level 1.`;
   $("gfx-a-again").hidden = !next.again;
   applyTo.value = String(ship);
   $("gfx-a-approve").focus();
@@ -423,14 +493,24 @@ function showReview(next) {
 
 async function generate(request, name) {
   if (busy || !needArmory()) return;
-  setBusy(true, request.mode === "prompt" ? "Drawing it… this takes up to a minute." : "Making one…");
+  setBusy(true, request.batch ? "Finding a different one…"
+    : request.mode === "prompt" ? "Drawing it… this takes up to a minute." : "Making one…");
   try {
     const data = await call("/generate", request);
-    const sheet = await sheetFromBytes(Uint8Array.from(atob(data.sheet), (ch) => ch.charCodeAt(0)), kindOf(kind));
+    const sheet = await sheetFromBytes(Uint8Array.from(atob(data.sheet), (ch) => ch.charCodeAt(0)), kindOf(request.kind));
     say("Approve it to add it to your armory, or Try again for a different one.");
-    showReview({ sheet, name, source: request.mode === "prompt" ? "generated" : "random", again: () => generate(request, name) });
+    // A prompt's Try again continues its run (data.batch): a take unlike the ones shown.
+    const fresh = request.batch ? request.fresh : request;
+    showReview({
+      sheet,
+      name,
+      source: request.mode === "prompt" ? "generated" : "random",
+      prompt: fresh.mode === "prompt" ? fresh.prompt || "" : "",
+      again: () => generate(data.batch ? { kind: fresh.kind, mode: fresh.mode, batch: data.batch, fresh } : fresh, name),
+    });
   } catch (error) {
     say(error.message, true);
+    if (request.batch && pending) pending.again = () => generate(request.fresh, name); // expired: draw afresh
   } finally {
     setBusy(false);
   }
@@ -452,14 +532,14 @@ async function approve() {
   const s = Number(applyTo.value) || 0;
   setBusy(true, "Adding it to your armory…");
   try {
-    const bytes = await pngBytes(pending.sheet);
-    const added = await call("/add", { kind, name: pending.name, source: pending.source, sheet: base64(bytes) });
+    const bytes = isBanner(kind) ? bannerBmp(pending.sheet) : await pngBytes(pending.sheet);
+    const added = await call("/add", { kind, name: pending.name, source: pending.source, prompt: pending.prompt || undefined, sheet: base64(bytes) });
     await call("/slot", { kind, ship: s, id: added.id });
-    globalThis.dareGraphics?.set(gameName(kind, s), bytes);
+    if (!isBanner(kind)) globalThis.dareGraphics?.set(gameName(kind, s), bytes);
     ship = s;
     showReview(null);
     await nextFrame();
-    say(`Added to your armory and put on ${shipLabel(s)}.`);
+    say(isBanner(kind) ? "Added to your armory; it's your banner now." : `Added to your armory and put on ${shipLabel(s)}.`);
   } catch (error) {
     say(error.message, true);
   } finally {
@@ -470,6 +550,7 @@ async function approve() {
 
 // ---- wiring ----------------------------------------------------------------------------------------
 $("gfx-a-restore").addEventListener("click", () => void restoreDefault());
+$("gfx-a-download").addEventListener("click", () => { if (shown) saveFile(shown.bytes, shown.stem); });
 $("gfx-a-upload").addEventListener("click", () => { if (needArmory()) fileInput.click(); });
 fileInput.addEventListener("change", () => { void upload(fileInput.files?.[0]); fileInput.value = ""; });
 $("gfx-a-generate").addEventListener("click", () => {

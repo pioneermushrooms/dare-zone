@@ -63,7 +63,7 @@ internal sealed partial class WebServer
         {
             ok = true,
             name = cur.Account.Name,
-            ships = ships.Select(s => new { id = s.Id, name = s.Name, source = s.Source, created = s.Created }),
+            ships = ships.Select(s => new { id = s.Id, name = s.Name, source = s.Source, created = s.Created, prompt = s.Prompt }),
             slots,
             max = AccountStore.MaxShipyardShips,
         });
@@ -85,7 +85,7 @@ internal sealed partial class WebServer
         byte[] png;
         try { png = Convert.FromBase64String(Str(body, "sheet") ?? ""); }
         catch (FormatException) { return Bad("That isn't a ship sheet."); }
-        var r = _m.Accounts.AddShipyardShip(accountId, Str(body, "name"), Str(body, "source") ?? "", png, out var shipId);
+        var r = _m.Accounts.AddShipyardShip(accountId, Str(body, "name"), Str(body, "source") ?? "", png, out var shipId, Str(body, "prompt"));
         return r.Ok ? JsonReply(200, new { ok = true, message = r.Message, id = shipId }) : Bad(r.Message);
     }
 

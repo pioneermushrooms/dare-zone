@@ -32,7 +32,7 @@ internal sealed partial class WebServer
             "/armory/generate" => await GenerateWeaponAsync(req, id, body).ConfigureAwait(false),
             "/armory/add" => AddWeapon(id, body),
             "/armory/remove" => ResultReply(_m.Accounts.RemoveArmoryItem(id, Num(body, "id"))),
-            "/armory/slot" => ResultReply(_m.Accounts.SetArmorySlot(id, Str(body, "kind"), (int)Num(body, "ship"), Num(body, "id"))),
+            "/armory/slot" => await ArmorySlotAsync(cur.Account, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
     }
@@ -52,9 +52,9 @@ internal sealed partial class WebServer
                 width = k.Width,
                 height = k.Height,
                 perShip = k.PerShip,
-                generate = k.Prompt ? new[] { "random", "prompt" } : ["random"],
+                generate = !k.Generate ? [] : k.Prompt ? new[] { "random", "prompt" } : ["random"],
             }),
-            items = items.Select(i => new { id = i.Id, kind = i.Kind, name = i.Name, source = i.Source, created = i.Created }),
+            items = items.Select(i => new { id = i.Id, kind = i.Kind, name = i.Name, source = i.Source, created = i.Created, prompt = i.Prompt }),
             slots,
             max = AccountStore.MaxArmoryItems,
         });
@@ -70,23 +70,49 @@ internal sealed partial class WebServer
         return new Reply(200, ImageType(image), image, [("Cache-Control", "private, max-age=31536000, immutable")]);
     }
 
+    /// <summary>Puts an item on a weapon, or the pilot's banner (which, when they're in the game, changes there at once).</summary>
+    private async Task<Reply> ArmorySlotAsync(Account account, JsonElement? body)
+    {
+        var kind = Str(body, "kind");
+        var r = _m.Accounts.SetArmorySlot(account.Id, kind, (int)Num(body, "ship"), Num(body, "id"));
+        if (r.Ok && kind == "banner") await ApplyBannerNowAsync(account).ConfigureAwait(false);
+        return ResultReply(r);
+    }
+
+    /// <summary>Shows the pilot's Armory banner (or none) in the game now, when they're in it under that name.</summary>
+    private async Task ApplyBannerNowAsync(Account account)
+    {
+        var px = _m.Accounts.PilotBanner(account.Id);
+        await OnMain(() => { _m.ShowBanner(account.Name, px); return true; }).ConfigureAwait(false);
+    }
+
     private Reply AddWeapon(long accountId, JsonElement? body)
     {
         byte[] image;
         try { image = Convert.FromBase64String(Str(body, "sheet") ?? ""); }
         catch (FormatException) { return Bad("That isn't a weapon sheet."); }
-        var r = _m.Accounts.AddArmoryItem(accountId, Str(body, "kind"), Str(body, "name"), Str(body, "source") ?? "", image, out var itemId);
+        var r = _m.Accounts.AddArmoryItem(accountId, Str(body, "kind"), Str(body, "name"), Str(body, "source") ?? "", image, out var itemId, Str(body, "prompt"));
         return r.Ok ? JsonReply(200, new { ok = true, message = r.Message, id = itemId }) : Bad(r.Message);
     }
 
-    /// <summary>{"kind", "mode": "random"|"prompt", "prompt"?}: a new sheet from the ship service, not saved.</summary>
+    /// <summary>{"kind", "mode": "random"|"prompt", "prompt"? | "batch"?}: a new sheet from the ship service, not saved.
+    /// "batch" (from an earlier prompted answer) is Try again: a take unlike the ones shown.</summary>
     private async Task<Reply> GenerateWeaponAsync(HttpListenerRequest req, long accountId, JsonElement? body)
     {
         if (AccountStore.FindArmoryKind(Str(body, "kind")) is not { } kind) return Bad("That isn't one of the weapons.");
+        if (!kind.Generate) return Bad($"{kind.Label}s aren't generated: upload one, or keep one from the Foundry.");
         var mode = Str(body, "mode");
         var prompt = (Str(body, "prompt") ?? "").Trim();
         string serviceMode;
-        if (mode == "random")
+        var batch = mode == "prompt" && Str(body, "batch") is { Length: > 0 and <= 64 } b ? b : null;
+        if (batch is not null && kind.Prompt)
+        {
+            // Try again on a prompt: usually a take already drawn; the ship service caps the paid ones.
+            if (!_m.ShipRandomPerAccount.TryTake("armory:random:" + accountId)) return Bad(TooMany, 429);
+            serviceMode = "prompt";
+            prompt = "";
+        }
+        else if (mode == "random")
         {
             if (!_m.ShipRandomPerAccount.TryTake("armory:random:" + accountId)) return Bad(TooMany, 429);
             serviceMode = "new";
@@ -107,12 +133,12 @@ internal sealed partial class WebServer
         if (Stock(kind.Name) is not { } template) return Bad("There's no picture to start from.");
         try
         {
-            using var content = JsonContent(new { kind = kind.Name, mode = serviceMode, prompt = serviceMode == "prompt" ? prompt : null, template = Convert.ToBase64String(template) });
+            using var content = JsonContent(new { kind = kind.Name, mode = serviceMode, prompt = serviceMode == "prompt" && batch is null ? prompt : null, batch, template = Convert.ToBase64String(template) });
             using var res = await ShipService.PostAsync(ShipServiceUrl + "/graphic", content).ConfigureAwait(false);
             var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var status = (int)res.StatusCode;
             _m.Log(status == 200 ? LogLevel.Info : LogLevel.Warn, $"Armory {kind.Name} {mode} for account {accountId}: {status}.");
-            return JsonBytes(status == 200 ? 200 : status is 400 or 429 or 503 ? status : 502, bytes);
+            return JsonBytes(status == 200 ? 200 : status is 400 or 410 or 429 or 503 ? status : 502, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {

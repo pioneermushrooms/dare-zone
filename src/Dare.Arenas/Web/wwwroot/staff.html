@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
+<link rel="stylesheet" href="/arena/header.css">
 <script src="/arena/dialogs.js" defer></script>
 <script src="/arena/staff.js" defer></script>
 </head>
 <body class="staff">
-<header class="site"><nav aria-label="Main navigation"><a class="brand" href="/"><span class="logo" aria-hidden="true">◈</span> SUBSPACE FOUNDATION</a><div class="navlinks"><a href="/">Play</a><a href="/arena/me">Arena editor</a><a href="/arena/staff" aria-current="page">Admin</a></div><a class="outline" href="/account/">Pilot account</a></nav></header>
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+  <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/arena/header.js"></script>
 <div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Admin</h1><p class="sub" id="who"></p></div>
 
 <section class="panel" id="gate" hidden><p id="gatemsg"></p></section>
@@ -21,10 +24,11 @@
   <button type="button" class="settab" role="tab" data-tab="howto" aria-selected="false">How do I…</button>
 </nav>
 <div data-pane="arenas">
-<section class="panel" id="pendingpanel" hidden>
-  <h2>Stuck requests</h2>
-  <p class="dim">Arenas launch on their own now. These couldn't (a folder problem, say): approve to make them, or decline.</p>
-  <div id="pending"></div>
+<section class="panel" id="limitpanel" hidden>
+  <h2>Asking for more arenas</h2>
+  <p class="dim">Pilots at their arena limit (10 per account, all its names together, unless raised). Pick the new limit and approve, or decline with a reason; they hear back in game and on their arena page.</p>
+  <ul class="list" id="limitlist"></ul>
+  <p class="msg" id="limitmsg" role="status"></p>
 </section>
 <section class="panel" id="createpanel" hidden>
   <h2>Make an arena for someone</h2>
