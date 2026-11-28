@@ -1,4 +1,4 @@
-// The Admin page: decide waiting arena requests, create arenas, see every owned arena, look up server commands.
+// The Admin page: create arenas, see every owned arena, look up server commands.
 "use strict";
 
 // Sign-in that comes back here: /account/login?next=<this page>, plus a short-lived dare_next
@@ -47,41 +47,6 @@ function say(target, body) {
   target.className = "msg " + (body?.ok ? "ok" : "bad");
 }
 
-function requestRow(r, can, maxReason) {
-  const msg = el("p", { className: "msg", role: "status" });
-  const actions = el("div", { className: "row" });
-  if (r.fromDraft) actions.append(el("a", { href: "/?arena=" + encodeURIComponent("#" + r.arena), textContent: "Fly in #" + r.arena }));
-  if (can.approve) {
-    const approve = el("button", { type: "button", textContent: "Approve" });
-    approve.addEventListener("click", async () => {
-      approve.disabled = true;
-      const { body } = await call("/staff/approve", { arena: r.arena, player: r.player });
-      approve.disabled = false;
-      say(msg, body);
-      if (body?.ok) setTimeout(load, 1200);
-    });
-    actions.append(approve);
-  }
-  if (can.decline) {
-    const reason = el("input", { type: "text", placeholder: "reason to decline", maxLength: maxReason, autocomplete: "off" });
-    reason.setAttribute("aria-label", "Reason to decline " + r.arena);
-    const decline = el("button", { type: "button", className: "hot", textContent: "Decline" });
-    decline.addEventListener("click", async () => {
-      decline.disabled = true;
-      const { body } = await call("/staff/decline", { arena: r.arena, reason: reason.value, player: r.player });
-      decline.disabled = false;
-      say(msg, body);
-      if (body?.ok) setTimeout(load, 1200);
-    });
-    actions.append(reason, decline);
-  }
-  return el("div", { className: "req" },
-    el("div", {}, el("b", { className: "name", textContent: r.arena }), r.fromDraft ? " (from a draft)" : ""),
-    el("div", { className: "who", textContent: `${r.player} · ${when(r.at)}` }),
-    el("div", { textContent: r.pitch }),
-    actions, msg);
-}
-
 async function load() {
   const { status, body } = await call("/staff");
   if (status !== 200 || !body) {
@@ -96,9 +61,6 @@ async function load() {
   $("gate").hidden = true;
   $("desk").hidden = false;
   $("who").textContent = "SIGNED IN AS " + String(body.player).toUpperCase();
-  const pending = body.pending ?? [];
-  $("pendingpanel").hidden = pending.length === 0;
-  $("pending").replaceChildren(...pending.map((r) => requestRow(r, body.can, body.maxReason ?? 120)));
   $("createpanel").hidden = !body.can.create;
   const arenas = body.arenas ?? [];
   $("arenas").replaceChildren(...(arenas.length

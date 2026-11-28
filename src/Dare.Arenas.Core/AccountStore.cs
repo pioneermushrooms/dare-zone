@@ -169,6 +169,7 @@ public sealed partial class AccountStore : IDisposable
         CreateWebSessionTable();
         CreateGalleryTables();
         CreateProfileTable();
+        CreateWallTable();
         MoveWeaponGraphicsToArmory();
     }
 

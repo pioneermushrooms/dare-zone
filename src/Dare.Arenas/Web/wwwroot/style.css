@@ -228,6 +228,8 @@ main.acct > .card dl.facts { grid-template-columns:repeat(3, max-content); grid-
   gap:0 28px; margin:0; }
 main.acct > .card dl.facts dt { font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; }
 main.acct > .card .links { margin:0; white-space:nowrap; }
+main.acct > .card .links { display:flex; align-items:center; gap:8px; grid-column:1 / -1; justify-self:start; margin-top:14px; }
+main.acct > .card .links .profilebtn { min-height:32px; padding:4px 12px; font-size:.85rem; text-decoration:none; }
 @media (max-width:640px) {
   main.acct > .card { grid-template-columns:minmax(0, 1fr); }
   main.acct > .card dl.facts { grid-template-columns:minmax(0, 1fr); grid-auto-flow:row; grid-template-rows:none; gap:0; }
@@ -641,16 +643,43 @@ dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }
   .edopts .opthint { display:none; }
 }
 
-/* ---- public pilot profile (/pilot/<name>) ---- */
-.pilotpage { padding-bottom:24px; }
-.pilotpage form.panel { margin:0 auto 16px; padding:24px; }
-.pilothead { display:flex; gap:20px; align-items:flex-start; padding:24px; }
-.pilothead .avatar { flex:0 0 72px; width:72px; height:72px; border:1px solid var(--line); border-radius:4px; background:var(--panel2); image-rendering:pixelated; }
-.pilothead .who { flex:1; min-width:0; }
-.pilothead h1 { margin:0; font-size:1.8rem; overflow-wrap:anywhere; }
-.pilothead #since { margin:4px 0 0; font-size:.9rem; }
-.pilothead .bio { margin:12px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
-.pilothead .headbtns { flex:0 0 auto; }
+/* ---- public pilot profile (/pilot/<name>) ----
+   Two columns: who this is on the left (picture top-left, name, bio, then arenas and ships), what they made and
+   their wall on the right. One column on narrow screens. */
+.pilotpage { width:min(1180px, calc(100% - 32px)); margin:0 auto; padding-bottom:24px; display:grid;
+  grid-template-columns:minmax(280px, 340px) minmax(0, 1fr); gap:16px; align-items:start; }
+.pilotpage .panel { width:auto; margin:0 0 16px; }
+.pilotpage .pside, .pilotpage .pmain { min-width:0; }
+.pilotpage form.panel { margin:0 0 16px; padding:24px; }
+.pilothead { display:grid; grid-template-columns:96px minmax(0, 1fr); gap:14px 16px; align-items:center; padding:20px; }
+.pilothead .avatar { width:96px; height:96px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); image-rendering:pixelated; }
+.pilothead .who { min-width:0; }
+.pilothead h1 { margin:0; font-size:1.8rem; line-height:1.05; overflow-wrap:anywhere; }
+.pilothead #since { margin:6px 0 0; font-size:.85rem; }
+.pilothead .bio, .pilothead #hiddennote, .pilothead .headbtns { grid-column:1 / -1; margin:0; }
+.pilothead .bio { white-space:pre-wrap; overflow-wrap:anywhere; padding-top:12px; border-top:1px solid var(--line); }
+.pilothead .headbtns:has(> [hidden]:only-child) { display:none; }
+.pside ul.tiles { grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); }
+.pside ul.tiles .tile img, .pside ul.tiles .tile canvas { width:60px; height:60px; }
+
+/* the wall */
+.wall h2 { margin-bottom:12px; }
+.wallform { display:grid; gap:8px; margin:0 0 16px; }
+.wallform textarea { width:100%; min-height:64px; resize:vertical; box-sizing:border-box; }
+.wallrow { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.wallform .msg { margin:0; min-height:0; }
+.wallnote { margin:0 0 14px; }
+ol.wallposts { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.wallpost { padding:12px 14px; background:var(--panel2); border:1px solid var(--line); border-radius:6px; }
+.wallhead { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.wallauthor { font-weight:700; }
+.wallhead time { font-size:.8rem; }
+.wallhead .wallremove { margin-left:auto; min-height:28px; padding:2px 8px; font-size:.75rem; }
+.walltext { margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+#wallmore { margin-top:12px; }
+@media (max-width: 860px) {
+  .pilotpage { grid-template-columns:minmax(0, 1fr); }
+}
 form.stack label.check { display:flex; align-items:center; gap:8px; color:var(--text); font-size:.95rem; }
 form.stack label.check input { width:auto; }
 .sechead { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
@@ -667,8 +696,8 @@ a.profilelink { font-size:.85rem; align-self:center; }
 a.pilotlink { color:inherit; text-decoration:underline dotted; text-underline-offset:3px; }
 a.pilotlink:hover { color:var(--accent); }
 @media (max-width: 560px) {
-  .pilothead { flex-wrap:wrap; padding:18px; }
-  .pilothead .headbtns { flex-basis:100%; }
+  .pilothead { grid-template-columns:72px minmax(0, 1fr); padding:18px; }
+  .pilothead .avatar { width:72px; height:72px; }
   .pilothead h1 { font-size:1.4rem; }
 }
 

@@ -6,12 +6,13 @@
 <title>Admin — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
 <link rel="stylesheet" href="/arena/header.css">
+<script src="/arena/header.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
 <script src="/arena/staff.js" defer></script>
 </head>
 <body class="staff">
-<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace Foundation</span></a>
-  <nav class="toplinks" aria-label="Site"><a class="play" href="/" title="Fly in the Foundation zone">Play</a><a href="/foundry.html" title="Ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a><a href="/account/" title="Your pilot names, keys and macros, recovery email, password and public profile">Pilot account</a><a href="/arena/staff" aria-current="page" title="Zone staff: arenas, server commands, how-tos">Admin</a></nav></header>
+<header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+  <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
 <div class="page-head"><p class="eyebrow">ZONE STAFF</p><h1>Admin</h1><p class="sub" id="who"></p></div>
 
 <section class="panel" id="gate" hidden><p id="gatemsg"></p></section>
@@ -23,11 +24,6 @@
   <button type="button" class="settab" role="tab" data-tab="howto" aria-selected="false">How do I…</button>
 </nav>
 <div data-pane="arenas">
-<section class="panel" id="pendingpanel" hidden>
-  <h2>Stuck requests</h2>
-  <p class="dim">Arenas launch on their own now. These couldn't (a folder problem, say): approve to make them, or decline.</p>
-  <div id="pending"></div>
-</section>
 <section class="panel" id="createpanel" hidden>
   <h2>Make an arena for someone</h2>
   <p class="dim">The owner needs a pilot account. Leave it empty to own it yourself.</p>

@@ -10,7 +10,7 @@ if [ "${DEPLOY_LOCK_CHECK:-1}" = 1 ] && flock -n "$DEPLOY_LOCK_FILE" true; then
 fi
 host=subspacefoundation.com
 files=(
-  style.css home.css play.css header.css chat.css chat.js arena-list.js graphics.js graphics-other.js graphics-armory.js loading.js jump.webp sector.png
+  style.css home.css play.css header.css chat.css chat.js arena-list.js header.js graphics.js graphics-other.js graphics-armory.js loading.js jump.webp sector.png
   arena-owner-reference.html arena-owners.html pilot.html
   arenas.html index.html build.html foundry.html foundry.css foundry.js
 )
@@ -47,7 +47,7 @@ for name in "${files[@]}"; do
   mv -fT -- "$work/$name" "$site/$name"
   installed+=("$name")
 done
-for route in / /header.css /chat.css /chat.js /arena-list.js /foundry.html /build.html /arenas.html /jump.webp /arena-owners.html /pilot.html /play/ /arena/ /account/signup /arena/api/public; do
+for route in / /header.css /header.js /chat.css /chat.js /arena-list.js /foundry.html /build.html /arenas.html /jump.webp /arena-owners.html /pilot.html /play/ /arena/ /account/signup /arena/api/public; do
   curl -fsS --max-time 10 --resolve "$host:443:127.0.0.1" "https://$host$route" -o /dev/null
 done
 echo "Published https://$host/ and https://$host/arenas.html"

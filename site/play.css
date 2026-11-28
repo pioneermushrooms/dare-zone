@@ -16,37 +16,13 @@ body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100v
 #entry[hidden] { display: none; }
 
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-/* the name beside the mark: SubSpace a step smaller than Foundation */
+/* the mark and the name (header.css styles the name the same on every page) */
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
 .brand .logo { color: var(--cyan); font-size: 2.2rem; line-height: 1; }
-.brand h1 { display: flex; align-items: baseline; gap: .28em; margin: 0; font-size: clamp(1.7rem, 2.6vw, 2.4rem); line-height: 1; white-space: nowrap; }
-.brand h1 span { font-size: .74em; color: var(--ink); }
-.brand:hover h1 span { color: var(--cyan-hi); }
 /* the links and the pilot button: one row, evenly spaced (the same gap as between the links), ending at the chat panel's
    right edge and staying there when it's resized or moved */
 .topright { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;
   width: var(--dock-default-w); }
-/* the links' buttons (.toplinks): header.css, the same on every page */
-.pilotbox { position: relative; }
-.pilot { display: inline-flex; align-items: center; gap: 10px; font: 600 .95rem Inter, system-ui, sans-serif; color: var(--ink); cursor: pointer;
-  padding: 8px 14px; min-height: 44px; border: 1px solid #4a6179; border-radius: 3px; background: #091221cc; backdrop-filter: blur(6px); }
-.pilot:hover, .pilot[aria-expanded="true"] { border-color: var(--cyan); }
-.pilot-label { color: var(--cyan); font-size: .68rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.pilot-name { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.caret { color: var(--muted); font-size: .8rem; }
-.pilotmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 15rem; padding: 8px; display: grid; gap: 2px;
-  background: #0d1624f5; border: 1px solid var(--line); border-top-color: #537a92; border-radius: 4px; box-shadow: 0 12px 30px #0008; }
-.pilotmenu[hidden] { display: none; }
-.pilotmenu .menuhead { margin: 4px 10px 4px; color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-.pilotmenu a, .pilotmenu button { display: flex; justify-content: space-between; gap: 10px; text-align: left; font: 500 .92rem Inter, system-ui, sans-serif;
-  color: var(--ink); text-decoration: none; background: transparent; border: 0; border-radius: 3px; padding: 9px 10px; cursor: pointer; }
-.pilotmenu a:hover, .pilotmenu button:hover { background: #16243a; }
-.pilotmenu button.current { color: var(--cyan); cursor: default; }
-.pilotmenu button.current::after { content: "✓"; }
-#pilotlist { display: grid; gap: 2px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-/* Sign out sits apart from the account links */
-.pilotmenu .signout { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); border-radius: 0 0 3px 3px; }
-
 /* left of the dock: never under it, whatever size the dock is (chat.js sets --dock-w and --dock-right) */
 .launch { align-self: center; width: min(440px, 100%, calc(100vw - var(--dock-w, 0px) - var(--dock-right, 0px) - var(--pad) - 24px)); }
 h1 { font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; text-transform: uppercase; letter-spacing: .01em; }
@@ -122,7 +98,6 @@ dialog .guest[hidden] { display: none; }
 @media (max-width: 560px) {
   #entry { background-position: center, center, 55% center, center; }
   .bar { flex-wrap: wrap; }
-  .brand h1 { font-size: 1.6rem; }
   .controls { flex-direction: column; }
   .arena select { max-width: none; flex: 1; }
   #start { justify-content: flex-start; }
@@ -323,25 +298,20 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 
 /* the top bar: brand, links and the pilot button */
 .brand .logo { text-shadow:0 0 8px #71e4fa40; }
-.pilot, .ghostbtn, dialog button.ghost, .gfx .shiplist button, .gfxtabs .tab, .gfx .slotlist button, .gfx .yardlist .thumb {
+.ghostbtn, dialog button.ghost, .gfx .shiplist button, .gfxtabs .tab, .gfx .slotlist button, .gfx .yardlist .thumb {
   color:var(--ink); text-shadow:0 1px 0 #000a; border:1px solid #34496a; border-bottom-color:#0a1320; border-radius:5px;
   background:linear-gradient(180deg, #22344f, #172539); backdrop-filter:none;
   box-shadow:inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000;
   transition:transform .08s, box-shadow .15s, background .15s, border-color .15s, color .15s; }
-.pilot:hover, .pilot[aria-expanded="true"], .ghostbtn:hover, dialog button.ghost:hover:not(:disabled),
+.ghostbtn:hover, dialog button.ghost:hover:not(:disabled),
 .gfx .shiplist button:hover:not(:disabled), .gfxtabs .tab:hover, .gfx .slotlist button:hover, .gfx .yardlist .thumb:hover:not(:disabled) {
   color:#fff; border-color:#4f7298; border-bottom-color:#0a1320; background:linear-gradient(180deg, #2a4062, #1b2c44); }
 .ghostbtn, .gfxtabs .tab { font:700 1rem/1 var(--label); letter-spacing:.1em; text-transform:uppercase; }
-.pilot-label { font:700 .78rem/1 var(--label); letter-spacing:.2em; }
-.pilot-name { font-weight:600; }
 .ghostbtn { padding:6px 12px; font-size:.88rem; letter-spacing:.08em; }
 /* chosen: pressed in, lit cyan */
 .gfxtabs .tab[aria-current="page"], .gfx .shiplist button[aria-pressed="true"], .gfx .slotlist button[aria-pressed="true"] {
   color:var(--cyan); background:linear-gradient(180deg, #0c1a2a, #12243a); border-color:#3f6a8c; border-top-color:#05090f;
   box-shadow:inset 0 2px 6px #000c, inset 0 -2px 0 var(--cyan); }
-.pilotmenu { background:linear-gradient(180deg, #13203a, #0b1422); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
-  box-shadow:inset 0 1px 0 #ffffff12, 0 24px 50px -18px #000e; }
-.pilotmenu .menuhead { font:700 .8rem/1.2 var(--label); letter-spacing:.2em; }
 
 /* the title */
 h1 { font-weight:800; background:linear-gradient(180deg, #fff 30%, #a9bdd4); -webkit-background-clip:text; background-clip:text;
@@ -393,7 +363,7 @@ dialog button.ghost { font:700 1.02rem/1 var(--label); letter-spacing:.1em; text
 .gfx .yardlist .thumb { box-shadow:inset 0 1px 0 #ffffff12, 0 2px 0 #04080e; }
 .gfx .yardlist .remove, .gfx .yardlist .download { box-shadow:none; text-shadow:none; }
 /* pressed */
-.pilot:active, .ghostbtn:active, dialog button:active:not(:disabled) {
+.ghostbtn:active, dialog button:active:not(:disabled) {
   transform:translateY(2px); box-shadow:inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
 dialog button:disabled { opacity:1; color:#5d6e86; text-shadow:none; background:#111b2a; border-color:#1d2a3d; box-shadow:inset 0 1px 0 #ffffff08; }
 
@@ -410,14 +380,12 @@ dialog label input, dialog label textarea { font:500 1rem Inter, system-ui, sans
 .gfxreview, .genchoice { background:var(--well); border-color:var(--well-line); box-shadow:inset 0 2px 6px #000a; }
 .card { background:linear-gradient(180deg, #13203ae6, #0b1422e6); border-color:#22324a; border-top-color:#3a5576; border-radius:8px;
   box-shadow:inset 0 1px 0 #ffffff12, 0 18px 40px -18px #000e; }
-@media (prefers-reduced-motion:reduce) { #start, .pilot, .ghostbtn, dialog button { transition:none; } }
+@media (prefers-reduced-motion:reduce) { #start, .ghostbtn, dialog button { transition:none; } }
 /* Armory: which ship a weapon sheet is for; a ship with its own shows a dot */
 .gfx .shiplist.forship button { font-size: .78rem; min-height: 30px; padding: 4px 8px; }
 .gfx .shiplist.forship button.has::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--cyan); vertical-align: 1px; }
 
 /* HANGAR: the title in the top bar, the Next stop card, and the arena list attached to the chat */
-.brand h1 { filter:drop-shadow(0 2px 0 #000) drop-shadow(0 6px 14px #000a); }
-.brand h1 span { -webkit-text-fill-color:transparent; }
 .dest { background:linear-gradient(180deg, #13203ae6, #0b1422e0 140px); border-color:#22324a; border-top-color:#3a5576; border-left:3px solid var(--cyan);
   border-radius:8px; box-shadow:inset 0 1px 0 #ffffff12, 0 1px 0 #000, 0 24px 50px -18px #000e; }
 .dest .kicker { font:700 .9rem/1 var(--label); letter-spacing:.24em; }

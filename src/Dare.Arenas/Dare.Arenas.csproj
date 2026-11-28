@@ -32,7 +32,7 @@
     <EmbeddedResource Include="Web/wwwroot/*" LogicalName="wwwroot/%(Filename)%(Extension)" />
     <!-- Shared with the public site (site/), one source: the top bar's styles and the arena chat panel. The plugin serves
          them as /arena/… and /account/…, so its pages always get the copy they were built with. -->
-    <EmbeddedResource Include="../../site/header.css;../../site/chat.css;../../site/chat.js" LogicalName="wwwroot/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../site/header.css;../../site/header.js;../../site/chat.css;../../site/chat.js" LogicalName="wwwroot/%(Filename)%(Extension)" />
     <!-- Stock game graphics, shown as an arena's current graphics until it replaces them. -->
     <EmbeddedResource Include="Web/gfx/*.bm2" LogicalName="gfx/%(Filename)%(Extension)" />
   </ItemGroup>

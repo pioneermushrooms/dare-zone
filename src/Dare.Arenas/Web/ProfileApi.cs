@@ -49,6 +49,7 @@ internal sealed partial class WebServer
         var method = req.HttpMethod;
         if (api == "/profile" && method is "GET" or "HEAD") return await ProfileGetAsync(req).ConfigureAwait(false);
         if (api == "/profile/ship") return Get(method, () => ProfileShip(req));
+        if (api == "/profile/wall" && method is "GET" or "HEAD") return await WallGetAsync(req).ConfigureAwait(false);
         if (method != "POST") return MethodNotAllowed();
         if (AccountPostCheck(req) is { } refused) return refused;
         var (body, error) = await ReadJsonAsync(req).ConfigureAwait(false);
@@ -58,6 +59,8 @@ internal sealed partial class WebServer
         {
             "/profile" => ProfileSave(cur.Account, body),
             "/profile/moderate" => await ProfileModerateAsync(cur.Account, body).ConfigureAwait(false),
+            "/profile/wall" => WallLeave(cur.Account, body),
+            "/profile/wall/remove" => await WallRemoveAsync(cur.Account, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
     }
@@ -116,6 +119,55 @@ internal sealed partial class WebServer
         bool? hidden = Str(body, "hidden") switch { "true" => true, "false" => false, _ => null };
         var r = _m.Accounts.ModerateProfile(name, clear, hidden);
         if (r.Ok) _m.Log(SS.Core.ComponentInterfaces.LogLevel.Info, $"Profile moderation by {me.Name}: {r.Message}");
+        return ResultReply(r);
+    }
+
+    // ---- the wall: dated messages other pilots leave on a profile ------------------------------------------
+
+    /// <summary>GET /profile/wall?name=&amp;before=: the newest messages (20 at a time), and which of them the viewer may remove.</summary>
+    private async Task<Reply> WallGetAsync(HttpListenerRequest req)
+    {
+        var name = (req.QueryString["name"] ?? "").Trim();
+        var me = CurrentAccount(req)?.Account;
+        var mine = me is not null && string.Equals(me.Name, name, StringComparison.OrdinalIgnoreCase);
+        var staff = me is not null && await OnMain(() => _m.IsWebStaff(me.Name)).ConfigureAwait(false);
+        long? before = long.TryParse(req.QueryString["before"], out var b) ? b : null;
+        var posts = _m.Accounts.WallPosts(name, privileged: mine || staff, before, 20);
+        if (posts is null) return JsonReply(404, new { ok = false, message = NoSuchPilot });
+        return JsonReply(200, new
+        {
+            ok = true,
+            posts = posts.Select(p => WallJson(p, me, mine, staff)),
+            more = posts.Count == 20,
+            canPost = me is not null && !mine,
+            max = AccountStore.MaxWallLength,
+        });
+    }
+
+    private static object WallJson(WallPost p, Account? me, bool mine, bool staff) => new
+    {
+        id = p.Id,
+        author = p.Author,
+        text = p.Text,
+        at = p.At,
+        canRemove = mine || staff || (me is not null && string.Equals(me.Name, p.Author, StringComparison.OrdinalIgnoreCase)),
+    };
+
+    private Reply WallLeave(Account me, JsonElement? body)
+    {
+        var name = (Str(body, "name") ?? "").Trim();
+        if (string.Equals(me.Name, name, StringComparison.OrdinalIgnoreCase))
+            return JsonReply(400, new { ok = false, message = "That's your own wall: others leave messages here." });
+        var r = _m.Accounts.PostOnWall(me.Id, name, Str(body, "text"), out var post);
+        if (!r.Ok) return ResultReply(r);
+        return JsonReply(200, new { ok = true, message = r.Message, post = WallJson(post!, me, false, false) });
+    }
+
+    private async Task<Reply> WallRemoveAsync(Account me, JsonElement? body)
+    {
+        var staff = await OnMain(() => _m.IsWebStaff(me.Name)).ConfigureAwait(false);
+        var r = _m.Accounts.RemoveWallPost(me.Id, Num(body, "id"), staff);
+        if (r.Ok && staff) _m.Log(SS.Core.ComponentInterfaces.LogLevel.Info, $"Wall message {Num(body, "id")} removed by {me.Name}");
         return ResultReply(r);
     }
 

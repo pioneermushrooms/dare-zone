@@ -7,7 +7,7 @@
 <title>SubSpace Foundation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/header.css?v=1">
+<link rel="stylesheet" href="/header.css?v=2">
 <link rel="stylesheet" href="/chat.css?v=2">
 <link rel="stylesheet" href="/play.css?v=25">
 <!-- The game, its download and Play: /play/start.mjs (from the client's build). It uses the ids below.
@@ -55,7 +55,7 @@ setTimeout(function () {
 <div id="entry">
   <header class="bar">
     <a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span>
-      <h1><span>SubSpace</span> <em>Foundation</em></h1></a>
+      <h1 class="word"><span>SubSpace</span> <em>Foundation</em></h1></a>
     <div class="topright">
     <nav class="toplinks" aria-label="Site">
       <a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a>
@@ -69,12 +69,7 @@ setTimeout(function () {
       <div class="pilotmenu" id="pilotmenu" role="menu" hidden>
         <p class="menuhead">Fly as</p>
         <div id="pilotlist"></div>
-        <p class="menuhead">Your account</p>
-        <a role="menuitem" href="/account/#pilots">Pilot names</a>
-        <a role="menuitem" href="/account/#keys">Keys and macros</a>
-        <a role="menuitem" href="/account/#email">Recovery email</a>
-        <a role="menuitem" href="/account/#password">Password</a>
-        <a role="menuitem" href="/account/profile">Public profile</a>
+        <a role="menuitem" class="acctbtn" href="/account/">Account</a>
         <button type="button" role="menuitem" class="signout" id="signout">Sign out</button>
       </div>
     </div>

@@ -111,6 +111,7 @@ internal sealed partial class WebServer
         ["/account/profile.js"] = "profile.js",
         ["/account/style.css"] = "style.css",
         ["/account/header.css"] = "header.css",
+        ["/account/header.js"] = "header.js",
     };
 
     internal static readonly string[] AccountStaticFiles =

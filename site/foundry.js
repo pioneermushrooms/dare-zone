@@ -196,7 +196,6 @@ async function load(more = false) {
     kinds = data.kinds;
     viewer = data.viewer;
     fillKinds();
-    signedInLinks();
     const grid = $("grid");
     if (!more) grid.replaceChildren();
     for (const it of data.items) grid.append(card(it));
@@ -295,13 +294,6 @@ async function takeDown(it, button) {
 }
 
 const signInHref = () => "/account/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
-
-function signedInLinks() {
-  const a = $("acctlink");
-  // the label stays "Pilot account" (the same top bar on every page); signed out, it signs in and comes back here
-  if (viewer) { a.href = "/account/"; a.title = `Your pilot account (${viewer.name})`; }
-  else { a.href = signInHref(); a.title = "Sign in to keep and share designs"; }
-}
 
 // ---- sharing ------------------------------------------------------------------------------------
 const dlg = $("share");

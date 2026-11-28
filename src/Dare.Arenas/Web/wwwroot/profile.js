@@ -62,7 +62,7 @@ function drawInitial(canvas, name) {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#6ee7ff";
-  ctx.font = "700 34px system-ui, sans-serif";
+  ctx.font = "700 46px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText((name[0] || "?").toUpperCase(), canvas.width / 2, canvas.height / 2 + 2);
@@ -213,6 +213,93 @@ async function moderate(change) {
   if (body.ok) await load();
 }
 
+// ---- the wall: dated messages other pilots leave here ------------------------------------------
+let wallNext = null; // the id to page from (older messages), or null when there are none
+let wallMax = 300;
+const stamp = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function wallItem(m) {
+  const li = el("li", "wallpost");
+  li.dataset.id = m.id;
+  const head = el("div", "wallhead");
+  const who = el("a", "pilotlink wallauthor", m.author);
+  who.href = "/pilot/" + encodeURIComponent(m.author);
+  const when = el("time", "dim", stamp.format(new Date(m.at)));
+  when.dateTime = m.at;
+  head.append(who, when);
+  if (m.canRemove) {
+    const x = el("button", "ghost small wallremove", "Remove");
+    x.type = "button";
+    x.setAttribute("aria-label", `Remove ${m.author}'s message`);
+    x.addEventListener("click", async () => {
+      x.disabled = true;
+      const body = await post("/profile/wall/remove", { id: m.id });
+      if (body.ok) { li.remove(); wallCount(-1); }
+      else { x.disabled = false; msg($("wallmsg"), body.message, false); }
+    });
+    head.append(x);
+  }
+  li.append(head, el("p", "walltext", m.text));
+  return li;
+}
+
+let wallShown = 0;
+function wallCount(delta) {
+  wallShown += delta;
+  $("wallnone").hidden = wallShown > 0;
+}
+
+async function loadWall(more) {
+  const list = $("wallposts");
+  let url = `${API}/profile/wall?name=${encodeURIComponent(profile.name)}`;
+  if (more && wallNext != null) url += `&before=${wallNext}`;
+  const { body } = await getJson(url);
+  if (!body || !body.ok) return;
+  $("wall").hidden = false;
+  if (!more) { list.replaceChildren(); wallShown = 0; }
+  wallMax = body.max || wallMax;
+  for (const m of body.posts) list.append(wallItem(m));
+  wallCount(body.posts.length);
+  wallNext = body.more && body.posts.length ? body.posts[body.posts.length - 1].id : null;
+  $("wallmore").hidden = wallNext == null;
+  // who may write: anyone signed in, on someone else's wall
+  const form = $("wallform"), note = $("wallnote");
+  form.hidden = !body.canPost;
+  note.hidden = body.canPost;
+  if (!body.canPost) {
+    note.replaceChildren();
+    if (profile.mine) note.textContent = "Your wall: other pilots leave messages here.";
+    else {
+      const a = el("a", null, "Sign in");
+      a.href = "/account/login?next=" + encodeURIComponent(location.pathname);
+      note.append(a, ` to leave ${profile.name} a message.`);
+    }
+  }
+  $("walltext").placeholder = `Leave ${profile.name} a message`;
+  wallLeft();
+}
+
+function wallLeft() {
+  const n = $("walltext").value.length;
+  $("wallleft").textContent = n ? `${n} / ${wallMax}` : "";
+}
+
+async function postWall(e) {
+  e.preventDefault();
+  const text = $("walltext").value.trim();
+  if (!text) return;
+  const btn = $("wallpost");
+  btn.disabled = true;
+  const body = await post("/profile/wall", { name: profile.name, text });
+  btn.disabled = false;
+  if (!body.ok) { msg($("wallmsg"), body.message, false); return; }
+  $("walltext").value = "";
+  msg($("wallmsg"), "", true);
+  $("wallposts").prepend(wallItem(body.post));
+  wallCount(1);
+  wallLeft();
+}
+
 // ---- load --------------------------------------------------------------------------------------
 async function load() {
   const { status, body } = await getJson(`${API}/profile?name=${encodeURIComponent(pilotName)}`);
@@ -232,7 +319,7 @@ async function load() {
   renderArenas();
   renderShips();
   if (first) {
-    await loadContribs(false);
+    await Promise.all([loadWall(false), loadContribs(false)]);
   }
 }
 
@@ -243,4 +330,8 @@ $("biofield").addEventListener("input", countBio);
 $("modclear").addEventListener("click", () => moderate({ clearBio: true }));
 $("modhide").addEventListener("click", () => moderate({ hidden: !profile.hidden }));
 $("contribmore").addEventListener("click", () => loadContribs(true));
+$("wallform").addEventListener("submit", postWall);
+$("walltext").addEventListener("input", wallLeft);
+$("walltext").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("wallform").requestSubmit(); });
+$("wallmore").addEventListener("click", () => loadWall(true));
 load();

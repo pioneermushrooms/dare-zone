@@ -1,8 +1,9 @@
 /* The site's top bar and its buttons, the same on every page: the home page, The Foundry, the static pages and
    the plugin's pages (Dare.Arenas embeds this file and serves it as /arena/header.css and /account/header.css).
-   Markup: <header class="bar"><a class="brand">…</a><nav class="toplinks"><a class="play">Play</a><a>…</a></nav></header>.
-   The home page has its own title and puts the links in .topright beside its pilot button (play.css lays that out);
-   the buttons themselves are these.
+   Markup: <header class="bar"><a class="brand"><span class="logo">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
+   <nav class="toplinks">…</nav></header>; header.js then rebuilds the links (Home, Foundry, Arena Editor, Admin) and adds the
+   pilot button, so every page matches the home page. The home page has the same buttons in its own markup (play.css lays out
+   its bar; start.mjs runs its pilot menu); the buttons and the menu themselves are these.
    Mark the page you are on with aria-current="page". HANGAR look: bevelled metal, condensed uppercase labels. */
 /* the bar itself on every page but the home page (its title, links and pilot button are laid out in play.css) */
 body > header.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -11,6 +12,52 @@ body > header.bar .brand { display: inline-flex; align-items: center; gap: 10px;
   font: 800 1.05rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
 body > header.bar .brand:hover { color: #f1f6ff; }
 body > header.bar .brand .logo { color: #71e4fa; font-size: 2rem; line-height: 1; text-shadow: 0 0 8px #71e4fa40; }
+/* the name: SubSpace and Foundation the same size, Foundation in cyan, on every page (the home page's is its <h1>) */
+.bar .brand .word { display: inline-flex; align-items: baseline; gap: .28em; margin: 0; white-space: nowrap; color: #f1f6ff;
+  font: 800 clamp(1.4rem, 2.2vw, 1.9rem)/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase;
+  background: none; -webkit-text-fill-color: currentColor; filter: drop-shadow(0 2px 0 #000) drop-shadow(0 6px 14px #000a); }
+.bar .brand .word span { font-size: 1em; color: inherit; -webkit-text-fill-color: currentColor; }
+.bar .brand .word em { font-style: normal; color: #71e4fa; -webkit-text-fill-color: #71e4fa; }
+.bar .brand:hover .word { color: #fff; }
+/* the links and the pilot button, one row (header.js builds it on every page but the home page) */
+body > header.bar .topright { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* the pilot button and its menu: fly as another of your names, Account, Sign out */
+.pilotbox { position: relative; }
+.pilot { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; box-sizing: border-box; cursor: pointer;
+  font: 600 .95rem Inter, system-ui, sans-serif; letter-spacing: 0; text-transform: none; color: #f1f6ff; text-shadow: 0 1px 0 #000a;
+  border: 1px solid #34496a; border-bottom-color: #0a1320; border-radius: 5px; background: linear-gradient(180deg, #22344f, #172539);
+  box-shadow: inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e, 0 8px 16px -8px #000; transition: transform .08s, box-shadow .15s, background .15s, border-color .15s; }
+.pilot:hover, .pilot[aria-expanded="true"] { color: #fff; border-color: #4f7298; border-bottom-color: #0a1320; background: linear-gradient(180deg, #2a4062, #1b2c44); }
+.pilot:active { transform: translateY(2px); box-shadow: inset 0 1px 0 #ffffff14, 0 0 0 #000, 0 4px 10px -6px #000; }
+.pilot:focus-visible { outline: 2px solid #71e4fa; outline-offset: 3px; }
+.pilot-label { color: #71e4fa; font: 700 .78rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .2em; text-transform: uppercase; }
+.pilot-name { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pilot .caret { color: #aebcd0; font-size: .8rem; }
+.pilot [hidden] { display: none; }
+.pilotmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 15rem; padding: 8px; display: grid; gap: 2px; box-sizing: border-box;
+  background: linear-gradient(180deg, #13203a, #0b1422); border: 1px solid #22324a; border-top-color: #3a5576; border-radius: 8px;
+  box-shadow: inset 0 1px 0 #ffffff12, 0 24px 50px -18px #000e; }
+.pilotmenu[hidden] { display: none; }
+.pilotmenu .menuhead { margin: 4px 10px; color: #aebcd0; font: 700 .8rem/1.2 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .2em; text-transform: uppercase; }
+.pilotmenu .menunote { margin: 4px 10px; color: #aebcd0; font: 500 .85rem Inter, system-ui, sans-serif; }
+.pilotmenu .menunote.warn { color: #ffcf7a; }
+#pilotlist, .pilotmenu .pilotlist { display: grid; gap: 2px; }
+.pilotmenu a, .pilotmenu button { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0; min-height: 0; text-align: left;
+  font: 500 .92rem Inter, system-ui, sans-serif; letter-spacing: 0; text-transform: none; text-shadow: none; color: #f1f6ff; text-decoration: none;
+  background: transparent; border: 0; border-radius: 4px; box-shadow: none; padding: 9px 10px; cursor: pointer; transform: none; }
+.pilotmenu a:hover, .pilotmenu button:hover { color: #fff; background: #16243a; }
+.pilotmenu button.current { color: #71e4fa; cursor: default; }
+.pilotmenu button.current::after { content: "✓"; }
+/* Account: one button, set apart from the names */
+.pilotmenu a.acctbtn { justify-content: center; margin: 8px 2px 2px; padding: 10px 12px; position: relative;
+  font: 700 1rem/1 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 0 #000a;
+  border: 1px solid #34496a; border-bottom-color: #0a1320; border-radius: 5px; background: linear-gradient(180deg, #22344f, #172539);
+  box-shadow: inset 0 1px 0 #ffffff1f, 0 2px 0 #04080e; }
+.pilotmenu a.acctbtn::before { content: ""; position: absolute; left: -10px; right: -10px; top: -9px; border-top: 1px solid #000; box-shadow: 0 1px 0 #ffffff0d; }
+.pilotmenu a.acctbtn:hover { border-color: #4f7298; border-bottom-color: #0a1320; background: linear-gradient(180deg, #2a4062, #1b2c44); }
+.pilotmenu a.acctbtn[aria-current="page"] { color: #71e4fa; border-top-color: #05090f; background: linear-gradient(180deg, #0c1a2a, #12243a); box-shadow: inset 0 2px 6px #000c, inset 0 -2px 0 #71e4fa; }
+.pilotmenu .signout { justify-content: center; color: #aebcd0; }
 .toplinks { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; padding: 0; width: auto; min-height: 0; }
 
 .toplinks a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; box-sizing: border-box;
@@ -33,11 +80,13 @@ body > header.bar .brand .logo { color: #71e4fa; font-size: 2rem; line-height: 1
 @media (max-width: 760px) {
   body > header.bar { padding: 12px 16px; }
   body > header.bar .brand .word { display: none; }
+  .pilot { padding: 8px 10px; }
   .toplinks { gap: 6px; }
   .toplinks a { padding: 8px 10px; font-size: .9rem; letter-spacing: .08em; }
 }
 /* phones: the links two by two under the logo */
 @media (max-width: 480px) {
+  body > header.bar .topright { flex: 1 1 100%; }
   body > header.bar .toplinks { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; }
 }
-@media (prefers-reduced-motion: reduce) { .toplinks a { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .toplinks a, .pilot { transition: none; } }
