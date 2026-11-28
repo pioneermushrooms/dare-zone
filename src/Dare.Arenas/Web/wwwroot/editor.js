@@ -382,6 +382,13 @@ function signedIn() {
   // Other scripts draw on the map through these (lvz-layer.js: the arena's LVZ map objects).
   const overlays = window.mapOverlays = window.mapOverlays || [];
   window.mapView = { view, get cam() { return cam; }, get arena() { return arena; }, redraw: () => draw() };
+  // Game labels (labels-layer.js): team spawns, bases, flag spots, areas, kept as eLVL regions in this
+  // map's own prefix, so they're published, downloaded and kept in Your maps with it.
+  if (window.GameLabels) GameLabels.mount($("labelspanel"), {
+    get: () => ({ grid, prefix, arena }),
+    set: (p, note) => { prefix = p; setDirty(true); draw(); say(note, true); },
+  });
+
   let dragRect = null;
   function draw() {
     vctx.imageSmoothingEnabled = false;
@@ -667,11 +674,13 @@ function signedIn() {
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
     if (!j.ok) { say(j.message, false); setDirty(true); return false; }
     if (j.library) { libId = j.library; libName = libName || arena.replace(/^#/, ""); loadLibrary(); } // the server kept a copy in Your maps
+    // spawn labels become arena settings, before the restart so the arena starts with them
+    const spawnNote = window.GameLabels ? await GameLabels.publishSettings(arena) : "";
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
     if (!liveName && !choice.restart) {
       setDirty(false);
-      say(`Saved to ${arena}; the running arena keeps the old map until you restart it. `, true);
+      say(`Saved to ${arena}; the running arena keeps the old map until you restart it. ${spawnNote ? spawnNote + " " : ""}`, true);
       $("msg").append(Object.assign(document.createElement("a"),
         { href: "/arena/me?arena=" + encodeURIComponent(arena) + "#map", textContent: "Restart it in the arena editor" }));
       $("edname").textContent = `${arena} · ${fileName}`;
@@ -682,7 +691,7 @@ function signedIn() {
       : await fetch(API + "/restart", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena, message: choice.message }) });
     const jj = await rr.json().catch(() => ({ ok: false, message: "HTTP " + rr.status }));
     setDirty(false);
-    say(jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`, jj.ok);
+    say((jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`) + (spawnNote ? " " + spawnNote : ""), jj.ok);
     $("edname").textContent = `${arena} · ${fileName}`;
     return !!jj.ok;
   }
