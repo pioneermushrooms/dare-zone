@@ -920,3 +920,17 @@ ul.notelist { list-style:none; margin:0; padding:0; }
 .gmok { color:var(--ok); margin:10px 0; }
 .gmbig { font-size:1.05rem; line-height:1.6; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:12px; }
 @media (max-width:760px) { .gmrow2 { grid-template-columns:1fr; } }
+
+/* Map editor: Game labels panel (labels-layer.js) */
+.labelspanel { border-top:1px solid var(--line); padding-top:10px; }
+.lbtoggles { gap:14px; }
+.lblist { list-style:none; padding:0; margin:6px 0; border:1px solid var(--line); border-radius:5px; max-height:220px; overflow:auto; }
+.lblist li { display:flex; justify-content:space-between; gap:6px; padding:3px 8px; border-bottom:1px solid var(--line); cursor:pointer; font-size:.85rem; }
+.lblist li:last-child { border-bottom:0; }
+.lblist li.on { background:#14223a; }
+.lbdot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+.lbkind { color:var(--dim); font-size:.75rem; }
+.lbform { margin-top:6px; }
+.lbrow { display:grid; grid-template-columns:70px minmax(0, 1fr); gap:6px; align-items:center; margin:5px 0; font-size:.85rem; }
+.lbrow input[type=number] { width:6em; }
+.lbrules { display:flex; flex-wrap:wrap; gap:8px; }

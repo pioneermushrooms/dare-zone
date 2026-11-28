@@ -433,10 +433,13 @@ const GameModeTab = (() => {
     try {
       const r = await fetch(API + "/map?arena=" + encodeURIComponent(arena), { credentials: "same-origin" });
       if (!r.ok) return;
-      const grid = Lvl.parse(new Uint8Array(await r.arrayBuffer())).grid;
+      const parsed = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
       let flags = 0, goals = 0;
-      for (const t of grid) { if (t === 170) flags++; else if (t === 172) goals++; }
-      if (st.mapArena === arena) { st.map = { arena, flags, goals }; renderBody(); }
+      for (const t of parsed.grid) { if (t === 170) flags++; else if (t === 172) goals++; }
+      // the map's Game labels (map editor), kept as eLVL regions
+      let labels = [];
+      try { if (typeof Elvl !== "undefined" && typeof GameLabels !== "undefined") labels = GameLabels.fromRegions(Elvl.regions(parsed.prefix)); } catch { labels = []; }
+      if (st.mapArena === arena) { st.map = { arena, flags, goals, labels }; renderBody(); }
     } catch { /* no map check */ }
   }
 
@@ -447,8 +450,20 @@ const GameModeTab = (() => {
     if (o === "turf" && m.flags === 0) return el("div", { class: "gmwarn" }, el("span", { text: `Turf needs flags on the map, and ${m.arena}'s map has none.` }), editor());
     if (o === "turf") return el("div", { class: "gmok small", text: `${m.arena}'s map has ${m.flags} flag${m.flags === 1 ? "" : "s"}.` });
     if (o === "powerball" && m.goals === 0) return el("div", { class: "gmwarn" }, el("span", { text: `Powerball needs goals on the map, and ${m.arena}'s map has none.` }), editor());
-    if (o === "powerball") return el("div", { class: "gmok small", text: `${m.arena}'s map has ${m.goals} goal tile${m.goals === 1 ? "" : "s"}.` });
-    return null;
+    const parts = [];
+    if (o === "powerball") {
+      parts.push(`${m.arena}'s map has ${m.goals} goal tile${m.goals === 1 ? "" : "s"}.`);
+      const balls = m.labels.filter((l) => l.kind === "ballspawn").length;
+      parts.push(balls ? `Balls start at the map's ${balls} ball spawn label${balls === 1 ? "" : "s"}.` : "Balls start in the middle of the map; place Ball spawn labels in the map editor to choose.");
+    }
+    if (["carryall", "ownall", "rabbit"].includes(o)) {
+      const f = m.labels.find((l) => l.kind === "flagspawn");
+      parts.push(f ? `Flags appear at the map's Flag spawn area (${f.x}, ${f.y}, radius ${f.r}).` : "Flags appear near the middle of the map; place a Flag spawn area label in the map editor to choose.");
+    }
+    const bases = m.labels.filter((l) => l.kind === "base").length, spots = m.labels.filter((l) => l.kind === "flagspot").length;
+    if (bases || spots) parts.push(`The map has ${bases} base${bases === 1 ? "" : "s"} and ${spots} flag spot${spots === 1 ? "" : "s"}, ready for capture-the-flag and hold-the-base (rules, Phase 4).`);
+    if (!parts.length) return null;
+    return el("div", { class: "gmok small" }, parts.join(" "), " ", editor());
   }
 
   function seg(label, values, labels, current, onPick, hint) {

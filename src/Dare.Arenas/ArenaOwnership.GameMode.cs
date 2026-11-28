@@ -42,6 +42,29 @@ public sealed partial class ArenaOwnership
         if (action is ArenaAction.Create or ArenaAction.ConfChanged) ApplyGameModeAttach(arena);
     }
 
+    // The server reads a spawn point per ball (Balls.cs: SpawnX, SpawnX1..SpawnX7) but documents only the first,
+    // so owners couldn't place balls 2-8: documenting them here puts them on the owner allow-list (Phase 3 labeller).
+    [ConfigHelp<int>("Soccer", "SpawnX1", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 2 spawns: x in tiles (balls spawn in order; ball 2 needs ball 1's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY1", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 2 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius1", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 2 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX2", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 3 spawns: x in tiles (balls spawn in order; ball 3 needs ball 2's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY2", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 3 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius2", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 3 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX3", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 4 spawns: x in tiles (balls spawn in order; ball 4 needs ball 3's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY3", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 4 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius3", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 4 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX4", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 5 spawns: x in tiles (balls spawn in order; ball 5 needs ball 4's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY4", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 5 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius4", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 5 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX5", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 6 spawns: x in tiles (balls spawn in order; ball 6 needs ball 5's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY5", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 6 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius5", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 6 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX6", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 7 spawns: x in tiles (balls spawn in order; ball 7 needs ball 6's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY6", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 7 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius6", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 7 may appear (tiles).")]
+    [ConfigHelp<int>("Soccer", "SpawnX7", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 8 spawns: x in tiles (balls spawn in order; ball 8 needs ball 7's).")]
+    [ConfigHelp<int>("Soccer", "SpawnY7", ConfigScope.Arena, Min = 0, Max = 1023, Description = "Where ball 8 spawns: y in tiles.")]
+    [ConfigHelp<int>("Soccer", "SpawnRadius7", ConfigScope.Arena, Min = 0, Max = 1024, Description = "How far from its spawn point ball 8 may appear (tiles).")]
     [ConfigHelp<GameModeModules>("GameMode", "Attach", ConfigScope.Arena, Default = GameModeModules.None,
         Description = "Scoring and rules this arena runs: Kills, Flags, Balls, King, Ships, ShipChange (names separated by commas).")]
     private void ApplyGameModeAttach(Arena arena)
