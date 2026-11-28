@@ -381,9 +381,10 @@ function signedIn() {
     const change = Autotile.tidy(grid, tileLayout(), area);
     if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); }
     draw();
-    say(change.length ? `Tidied ${change.length.toLocaleString()} wall tiles. Undo puts them back.` : "Those walls were already tidy.", true);
+    say(change.length ? `Fitted ${change.length.toLocaleString()} wall pieces. Undo puts them back.` : "Those walls already have the pieces that fit.", true);
   }
   $("tidyall").addEventListener("click", () => tidy(null));
+  $("tidysel").addEventListener("click", () => { if (tools) tools.fitSelection(); });
   $("roleview").addEventListener("change", (e) => {
     roleView = e.target.checked ? Autotile.previewTileset(tileLayout()) : null;
     drawPalette(); draw();
@@ -457,7 +458,7 @@ function signedIn() {
     }
     vctx.strokeStyle = "#22d3ee66"; vctx.lineWidth = 1; vctx.strokeRect(ox, oy, N * s, N * s);
     for (const f of overlays) f("above", vctx, s, ox, oy); // ... and over them
-    if (tools) tools.overlay(vctx, s, ox, oy, view);
+    if (tools) { tools.overlay(vctx, s, ox, oy, view); const sel = tools.selection; $("tidysel").disabled = !(sel && sel.size); }
     if (dragRect) {
       const [ax, ay, bx, by] = dragRect;
       vctx.strokeStyle = "#ff8a1f"; vctx.lineWidth = 2;
