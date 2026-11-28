@@ -40,7 +40,23 @@ function signedIn() {
   const tileset = () => roleView || (flatView ? null : (ownTileset || mapTileset || defaultTileset));
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
-  const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
+  // dirty: differs from the arena's map (Publish, the Draft tag). Changes: edits since the map was last
+  // loaded, opened from Your maps, saved there or published (Save to my maps, and whether to ask first).
+  let changeSeq = 0, savedSeq = 0;
+  const hasChanges = () => changeSeq !== savedSeq;
+  const noteChanges = () => {
+    const c = hasChanges(), b = $("libsave");
+    b.disabled = !c; b.classList.toggle("lit", c);
+    b.title = c ? "Keep this map in Your maps (not published)" : "No unsaved changes";
+    document.dispatchEvent(new CustomEvent("mapeditor:changes", { detail: { changes: c } }));
+  };
+  const markSaved = () => { savedSeq = changeSeq; noteChanges(); };
+  window.MapEditor = Object.assign(window.MapEditor || {}, { hasChanges });
+  noteChanges();
+  const setDirty = (d) => {
+    dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d;
+    if (d) { changeSeq++; noteChanges(); } else markSaved(); // not dirty = loaded or published: nothing unsaved
+  };
 
   // Walls placed in flat-coloured (unused) tileset slots show as solid colour, here and in game,
   // unless the arena's .lvz draws over them. Say so, so it isn't mistaken for the editor's doing.
@@ -148,11 +164,12 @@ function signedIn() {
     centre();
     drawPalette(); drawMini(); draw();
     setDirty(false);
+    if (r.ok) setLibOpen(false); // a map is open: the list folds away (its title brings it back)
   }
 
   // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
   async function replaceMap(next, nextPrefix, nextTileset, note) {
-    if (dirty && !await Dlg.confirm("Replace the map you're editing? Undo brings it back.", { title: "Replace the map?", ok: "Replace" })) return false;
+    if (hasChanges() && !await Dlg.confirm("Replace the map you're editing? Undo brings it back.", { title: "Replace the map?", ok: "Replace" })) return false;
     const change = [];
     for (let i = 0; i < N * N; i++) if (grid[i] !== next[i]) change.push([i, grid[i], next[i]]);
     for (const [i, , t] of change) grid[i] = t;
@@ -241,6 +258,8 @@ function signedIn() {
     libId = id; libName = name;
     $("edname").textContent = `${arena} · draft from your maps: ${name}`;
     setDirty(true); // a draft until published, even if it matches
+    markSaved(); // ...but nothing unsaved: it is what Your maps holds
+    setLibOpen(false);
     loadLibrary();
   }
   // a copy of a downloaded map (same bytes only once); the editor keeps editing what it was editing
@@ -250,13 +269,12 @@ function signedIn() {
     loadLibrary();
     return j;
   }
-  $("libjump").addEventListener("click", () => {
-    const p = $("libpanel");
-    p.scrollIntoView({ block: "start", behavior: "smooth" });
-    p.classList.remove("flash"); void p.offsetWidth; p.classList.add("flash");
-    const first = p.querySelector("button.open");
-    if (first) first.focus({ preventScroll: true });
-  });
+  // the list folds away once a map is open; its title shows and hides it
+  function setLibOpen(open) {
+    $("libpanel").classList.toggle("folded", !open);
+    $("libtoggle").setAttribute("aria-expanded", String(open));
+  }
+  $("libtoggle").addEventListener("click", () => setLibOpen($("libtoggle").getAttribute("aria-expanded") !== "true"));
   $("libfile").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
@@ -274,7 +292,7 @@ function signedIn() {
     const url = API + "/library/save?name=" + encodeURIComponent(name) + (libId ? "&id=" + libId : "");
     const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: hdrs("application/octet-stream"), body: bytes });
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
-    if (j.ok) { libId = j.id; libName = name; }
+    if (j.ok) { libId = j.id; libName = name; markSaved(); }
     say(j.ok ? `${j.message} Not published: ${arena} still has its old map.` : j.message, j.ok);
     loadLibrary();
   });
@@ -286,18 +304,20 @@ function signedIn() {
     for (const name of (j && j.maps) || []) {
       const o = document.createElement("option");
       o.value = name; o.textContent = name.replace(/\.lvl$/i, "");
-      $("startfrom").append(o);
+      $("servermaps").append(o);
     }
   }
   $("startfrom").addEventListener("change", async (e) => {
     const name = e.target.value;
     e.target.value = "";
     if (!name) return;
-    if (name === "!empty") { replaceMap(new Uint8Array(N * N), null, null, "Started from an empty map."); return; }
+    // a new map: no longer the one from Your maps, so Save to my maps adds it instead of overwriting that one
+    const fresh = () => { libId = null; libName = null; $("edname").textContent = `${arena} · new map`; loadLibrary(); };
+    if (name === "!empty") { if (await replaceMap(new Uint8Array(N * N), null, null, "Started from an empty map.")) fresh(); return; }
     const r = await fetch(API + "/maps/file?name=" + encodeURIComponent(name), { credentials: "same-origin" });
     if (!r.ok) { say("Couldn't open that map.", false); return; }
     const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
-    replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name}: ${m.count} tiles. Publish to use it.`);
+    if (await replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name.replace(/\.lvl$/i, "")}: ${m.count} tiles. Publish to use it.`)) fresh();
   });
   // ---- random maps, and tidying walls (autotile.js) -------------------------------------------------
   for (const [id, label] of Object.entries(Lvl.GEN_LAYOUTS)) $("genlayout").append(new Option(label, id));

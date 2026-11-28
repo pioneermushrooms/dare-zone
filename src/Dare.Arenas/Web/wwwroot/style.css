@@ -361,8 +361,14 @@ dialog .warn { color:var(--hot); }
 .edside > * { flex-shrink:0; }
 .libpanel { display:flex; flex-direction:column; gap:6px; border-radius:6px; }
 .libpanel .kicker { margin-top:0; }
-.libpanel.flash { animation:libflash 1.2s ease-out; }
-@keyframes libflash { from { box-shadow:0 0 0 2px var(--accent); } to { box-shadow:0 0 0 2px transparent; } }
+.libpanel.folded .libbody { display:none; }
+.libbody { display:flex; flex-direction:column; gap:6px; }
+button.libtoggle, button.libtoggle:hover:not(:disabled) { all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font:inherit; color:inherit; letter-spacing:inherit; text-transform:inherit; }
+button.libtoggle::before { content:"▾"; display:inline-block; width:1em; transition:transform .15s; }
+.libpanel.folded button.libtoggle::before { transform:rotate(-90deg); }
+button.libtoggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:3px; }
+/* Save to my maps: grey until there is something to save, then lit */
+#libsave.lit { color:var(--accent); border-color:#3f6a8c; box-shadow:inset 0 -2px 0 var(--accent); }
 .libmaps { list-style:none; margin:0; padding:0; display:grid; gap:4px; max-height:260px; overflow:auto; }
 .libmaps li { display:flex; align-items:center; gap:4px; font-size:.8rem; min-width:0; }
 .libmaps li button.open { flex:1; min-width:0; text-align:left; justify-content:flex-start; display:flex; flex-direction:column; align-items:flex-start; gap:1px; overflow:hidden; }

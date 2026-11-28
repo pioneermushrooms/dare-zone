@@ -25,11 +25,11 @@
   <div class="edtools" role="toolbar" aria-label="Tools">
     <button type="button" class="ghost small" id="undo">Undo</button>
     <button type="button" class="ghost small" id="redo">Redo</button>
+    <button type="button" class="ghost small" id="libsave" disabled title="No unsaved changes">Save to my maps</button>
     <button type="button" class="ghost small" id="zoomOut" aria-label="Zoom out">−</button>
     <button type="button" class="ghost small" id="zoomIn" aria-label="Zoom in">+</button>
   </div>
   <div class="edactions">
-    <button type="button" class="ghost small" id="libjump" title="Your saved maps: open, rename or delete">Your maps</button>
     <button type="button" class="ghost small" id="download" title="Download this map (a copy is kept in Your maps)">Download .lvl</button>
     <button type="button" class="hot small" id="publish" disabled>Publish</button>
     <a class="btn small" id="enterarena" href="/" title="Go into this arena in the game">Enter arena</a>
@@ -39,14 +39,14 @@
 <div class="edbody">
   <aside class="edside">
     <section class="libpanel" id="libpanel" aria-labelledby="libtitle">
-      <p class="kicker" id="libtitle">Your maps <span class="dim" id="libcount"></span></p>
-      <ul class="libmaps" id="libmaps"></ul>
-      <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label>
-        <button type="button" class="ghost small" id="libsave" title="Keep this map in your maps without publishing it">Save to my maps</button></div>
-      <p class="hint" id="libhint">Every map you add, download or publish is kept here, yours only. Open one to edit it as a draft; the arena changes only when you Publish.</p>
+      <p class="kicker" id="libtitle"><button type="button" class="libtoggle" id="libtoggle" aria-expanded="true" aria-controls="libbody">Your maps <span class="dim" id="libcount"></span></button></p>
+      <div class="libbody" id="libbody">
+        <ul class="libmaps" id="libmaps"></ul>
+        <div class="row"><label class="btn ghost small">Add a .lvl<input type="file" id="libfile" accept=".lvl" hidden></label></div>
+      </div>
     </section>
-    <p class="kicker">Start from</p>
-    <div class="row"><select id="startfrom" aria-label="Start from a map"><option value="">a ready-made map…</option><option value="!empty">an empty map</option></select></div>
+    <p class="kicker">New map</p>
+    <div class="row"><select id="startfrom" aria-label="Start a new map"><option value="" hidden selected>Start a new map…</option><option value="!empty">Empty</option><optgroup label="Maps on the server" id="servermaps"></optgroup></select></div>
     <div class="row"><button type="button" class="ghost small" id="randomize">Randomize</button>
       <select id="genlayout" aria-label="Kind of random map"></select></div>
     <div class="row">
