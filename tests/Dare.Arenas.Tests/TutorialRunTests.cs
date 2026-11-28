@@ -258,4 +258,27 @@ public class TutorialRunTests
     }
 
     [Fact] public void FirstStepOfAct_IsMinusOne_WhenNoSuchAct() => Assert.Equal(-1, TutorialRun.FirstStepOfAct(FourSteps(), 9));
+
+    [Fact] public void ActGrants_TheActsGrantsUpToTheStep_NotLaterOnesOrOtherActs()
+    {
+        var s = Script(
+            Step("a", 1, new(CheckKind.None), grant: ["Gun"]),
+            Step("b", 2, new(CheckKind.None), grant: ["Shield", "Repel"]),
+            Step("c", 2, new(CheckKind.None)),
+            Step("d", 2, new(CheckKind.None), grant: ["Super"]),
+            Step("e", 3, new(CheckKind.None), grant: ["Thor"]));
+        Assert.Equal(["Shield", "Repel"], TutorialRun.ActGrants(s, 2));
+        Assert.Equal(["Shield", "Repel", "Super"], TutorialRun.ActGrants(s, 3));
+        Assert.Equal(["Gun"], TutorialRun.ActGrants(s, 0));
+        Assert.Equal(["Thor"], TutorialRun.ActGrants(s, 4));
+        Assert.Empty(TutorialRun.ActGrants(s, 9));
+    }
+
+    [Fact] public void ActGrants_ShippedScript_RepelStepStillHasRepel()
+    {
+        var s = TutorialScript.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "tutorial.script.json")));
+        var repel = s.Steps.ToList().FindIndex(x => x.Id == "repel");
+        Assert.Contains("Repel", TutorialRun.ActGrants(s, repel));
+        Assert.Contains("Shield", TutorialRun.ActGrants(s, repel));
+    }
 }

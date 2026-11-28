@@ -84,6 +84,9 @@ public sealed partial class ArenaOwnership
         public DateTimeOffset? SkipPopupUntil;
         // last position values queued (the position callback's thread only)
         public int LastRotation = -1, LastTileX = -1, LastTileY = -1;
+        /// <summary>The screen was sent again on the first position packet (the position callback's thread sets it).</summary>
+        public bool ScreenResent;
+        public readonly HashSet<HudPart> Revealed = new();
     }
 
     /// <summary>A player on the way to a training arena, and how the run there starts.</summary>
@@ -173,14 +176,29 @@ public sealed partial class ArenaOwnership
     /// <summary>Mainloop (player actions are fired from the core's player processing).</summary>
     private void TutorialPlayerAction(Player player, PlayerAction action, Arena? arena)
     {
+        if (action == PlayerAction.EnterArena && arena is not null)
+        {
+            var first = _enteredThisLogin.Add(player);
+            try
+            {
+                if (_tutorialScript is not null) TutorialEnter(player, arena, first);
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Error, $"Tutorial: entry handling failed for {player.Name}: {ex.Message}");
+            }
+            // every account's first game entry is noted, whatever the tutorial did (or whether it is on): after
+            // Decide above, so a new account's missing row was seen first; never again a newcomer after this
+            if (first && player.Name is { } name && TutorialKindOf(player, out _) == EntryKind.Account)
+                _accounts?.NoteGameLogin(name);
+            return;
+        }
+        if (action == PlayerAction.Disconnect) _enteredThisLogin.Remove(player);
         if (_tutorialScript is null) return;
         try
         {
             switch (action)
             {
-                case PlayerAction.EnterArena when arena is not null:
-                    TutorialEnter(player, arena);
-                    break;
                 case PlayerAction.LeaveArena when arena is not null:
                     // the zone drops a run before moving its player on, so a run still here means ?go elsewhere or a
                     // disconnect; which one shows next (an arena entry, or the disconnect that follows at once)
@@ -188,10 +206,11 @@ public sealed partial class ArenaOwnership
                     {
                         DropRun(s);
                         _tutorialExits[player] = new(s.Name, s.Records);
+                        // a Dare client closes its mentor box (it shows no arena list: the player chose where to go)
+                        if (_hintClients.ContainsKey(player)) _chat.SendMessage(player, TutorialHint.End(false));
                     }
                     break;
                 case PlayerAction.Disconnect:
-                    _enteredThisLogin.Remove(player);
                     _hintClients.TryRemove(player, out _);
                     _tutorialOffers.Remove(player);
                     _tutorialTrips.Remove(player);
@@ -211,9 +230,8 @@ public sealed partial class ArenaOwnership
         }
     }
 
-    private void TutorialEnter(Player player, Arena arena)
+    private void TutorialEnter(Player player, Arena arena, bool first)
     {
-        var first = _enteredThisLogin.Add(player);
         // left a training arena with ?go and arrived somewhere: that's leaving, not dropping out
         if (_tutorialExits.Remove(player, out var exit) && exit.Records)
             _accounts?.SetTutorialOutcome(exit.Name, "left");
@@ -233,8 +251,6 @@ public sealed partial class ArenaOwnership
         var record = kind == EntryKind.Account ? _accounts?.TutorialOf(name) : null;
         var (what, act) = TutorialEntry.Decide(kind.Value, record, guestSaysDone, arena.IsPublic, first,
             TutorialCast.HasCapacity(TutorialsRunning, max));
-        // after Decide, so a new account's missing row is seen first
-        if (kind == EntryKind.Account && first) _accounts?.NoteGameLogin(name);
 
         switch (what)
         {
@@ -440,7 +456,8 @@ public sealed partial class ArenaOwnership
                     continue;
                 }
                 PumpLines(s, now);
-                // the clock waits while the mentor is still talking, so a step's pause starts counting once its lines are out
+                // no Tick while the mentor still has lines queued: a step that moves on by itself can't leave before its
+                // lines have shown (its pause still counts from the step's start; checks the player meets still move on)
                 if (s.Lines.Count == 0) Feed(s, new Tick());
                 if (s.SkipPopupUntil is { } until && now >= until)
                 {
@@ -496,14 +513,12 @@ public sealed partial class ArenaOwnership
                     s.Lines.Enqueue(say);
                     break;
                 case RevealPart reveal:
+                    s.Revealed.Add(reveal.Part);
                     Toggle(player, TutorialLvz.CoversOf(reveal.Part), false);
                     if (hints) _chat.SendMessage(player, TutorialHint.Reveal(reveal.Part));
                     break;
                 case Grant grant:
-                    if (Enum.TryParse<Prize>(grant.Prize, true, out var prize) && Enum.IsDefined(prize))
-                        _game.GivePrize(player, prize, 1);
-                    else
-                        Log(LogLevel.Warn, $"Tutorial: unknown prize '{grant.Prize}' in the script.");
+                    GiveGrant(player, grant.Prize);
                     break;
                 case EngineOff:
                     if (!s.EngineOff) _game.GivePrize(player, Prize.Shutdown, 1);
@@ -533,6 +548,37 @@ public sealed partial class ArenaOwnership
             Toggle(player, [TutorialLvz.Beacon], reach);
         }
         PumpLines(s, DateTimeOffset.UtcNow);
+    }
+
+    private void GiveGrant(Player player, string name)
+    {
+        if (Enum.TryParse<Prize>(name, true, out var prize) && Enum.IsDefined(prize))
+            _game.GivePrize(player, prize, 1);
+        else
+            Log(LogLevel.Warn, $"Tutorial: unknown prize '{name}' in the script.");
+    }
+
+    /// <summary>
+    /// Sends the screen's state again: the covers (on, or off once revealed), the beacon and, for Continuum, the mentor
+    /// box with its current line and the skip popup. Toggles made in the arena-entry callback can reach the client
+    /// before it has the LVZ file; by its first position packet it is in the game. Toggles are idempotent.
+    /// </summary>
+    private void ResendScreen(TutorialSession s)
+    {
+        var revealed = s.Revealed.SelectMany(TutorialLvz.CoversOf).ToHashSet();
+        var toggles = TutorialLvz.AllCovers.Select(id => new LvzObjectToggle(id, !revealed.Contains(id))).ToList();
+        toggles.Add(new(TutorialLvz.Beacon, s.BeaconOn));
+        if (!_hintClients.ContainsKey(s.Player))
+        {
+            if (s.LineShown is { } line)
+            {
+                toggles.Add(new(TutorialLvz.MentorBox, true));
+                toggles.Add(new(TutorialLvz.Portrait, true));
+                toggles.Add(new(line, true));
+            }
+            if (s.SkipPopupUntil is not null) toggles.Add(new(TutorialLvz.SkipPopup, true));
+        }
+        Toggle(s.Player, toggles);
     }
 
     /// <summary>Shows the next queued mentor line once the one before has had its time.</summary>
@@ -599,7 +645,13 @@ public sealed partial class ArenaOwnership
 
     private void Tutorial_Position(Player player, ref readonly C2S_PositionPacket pos, ref readonly ExtraPositionData extra, bool hasExtra)
     {
-        if (!_tutorials.TryGetValue(player, out var s) || !s.Started || player.Ship == ShipType.Spec) return;
+        if (!_tutorials.TryGetValue(player, out var s)) return;
+        if (!s.ScreenResent)
+        {
+            s.ScreenResent = true;
+            OnRun(player, ResendScreen);
+        }
+        if (!s.Started || player.Ship == ShipType.Spec) return;
         int rotation = pos.Rotation, tileX = pos.X >> 4, tileY = pos.Y >> 4;
         var weapon = pos.Weapon;
         string? fired = weapon.Type switch
@@ -671,11 +723,14 @@ public sealed partial class ArenaOwnership
 
     private void Tutorial_Spawn(Player player, SpawnCallback.SpawnReason reason)
     {
-        // a respawn brings the engines back: put the shutdown back while the act wants them off
+        // a respawn brings the engines back and loses the act's prizes: while the act has the engines off (the swarm),
+        // give back the shutdown and what the act has given so far, or a player killed at "repel" has no Repel
         if ((reason & (SpawnCallback.SpawnReason.AfterDeath | SpawnCallback.SpawnReason.ShipChange | SpawnCallback.SpawnReason.Initial)) == 0) return;
         OnRun(player, run =>
         {
-            if (run.EngineOff) _game.GivePrize(player, Prize.Shutdown, 1);
+            if (!run.EngineOff || run.Run.Done) return;
+            _game.GivePrize(player, Prize.Shutdown, 1);
+            foreach (var grant in TutorialRun.ActGrants(_tutorialScript!, run.Run.StepIndex)) GiveGrant(player, grant);
         });
     }
 

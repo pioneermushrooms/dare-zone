@@ -58,6 +58,19 @@ public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> cloc
         return -1;
     }
 
+    /// <summary>
+    /// The prizes the act has given by <paramref name="stepIndex"/>: the grants of that step and the act's steps before
+    /// it, in order. A respawn or ship reset loses them; the zone gives them again. Empty past the end.
+    /// </summary>
+    public static IReadOnlyList<string> ActGrants(TutorialScript s, int stepIndex)
+    {
+        if (stepIndex < 0 || stepIndex >= s.Steps.Count) return [];
+        var act = s.Steps[stepIndex].Act;
+        var from = stepIndex;
+        while (from > 0 && s.Steps[from - 1].Act == act) from--;
+        return s.Steps.Skip(from).Take(stepIndex - from + 1).SelectMany(st => st.Grant).ToList();
+    }
+
     public IReadOnlyList<TutorialEffect> Start() => Enter();
 
     public IReadOnlyList<TutorialEffect> Handle(TutorialEvent e)
