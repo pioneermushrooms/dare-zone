@@ -47,17 +47,17 @@
     <div class="row"><button type="button" class="ghost small" id="randomize">Randomize</button>
       <select id="genlayout" aria-label="Kind of random map"></select></div>
     <div class="row">
-      <select id="gensize" aria-label="Size of a random map"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option><option value="huge">huge</option></select>
-      <select id="gensym" aria-label="Symmetry of a random map"><option value="4">4-way</option><option value="2">2-way</option><option value="1">no mirror</option></select>
-      <select id="genthick" aria-label="Wall thickness"><option value="3">thick walls</option><option value="2">medium walls</option><option value="1">thin walls</option></select></div>
-    <div class="row"><label class="hint" for="gendensity">Rock</label>
-      <input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="How much rock">
-      <label class="hint"><input type="checkbox" id="genflags"> flags</label></div>
+      <select id="gensize" aria-label="Size of a random map" title="How much of the 1024-tile map it covers"><option value="small">small (300 tiles)</option><option value="medium" selected>medium (420)</option><option value="large">large (600)</option><option value="huge">huge (900)</option></select>
+      <select id="gensym" aria-label="Symmetry of a random map" title="Mirrored maps are fair: every team and spawn sees the same map"><option value="4">4-way</option><option value="2">2-way</option><option value="1">no mirror</option></select>
+      <select id="genthick" aria-label="How rock is drawn" title="Solid rock fills every rock tile (the pack's plain interior inside); walls draw only a band round hollow rock"><option value="0">solid rock</option><option value="3">thick walls</option><option value="2">medium walls</option><option value="1">thin walls</option></select></div>
+    <div class="row gendensity" title="How much of the map is rock: open arenas at the left, tight caves, corridors and cover at the right"><label class="hint" for="gendensity">Density</label>
+      <span class="hint">open</span><input type="range" id="gendensity" min="0.2" max="0.6" step="0.02" value="0.45" aria-label="Density: how much of the map is rock"><span class="hint">tight</span></div>
+    <div class="row"><label class="hint" title="Puts a flag in the roomiest open spot of each mirrored part of the map (the team arena always has its flag rooms)"><input type="checkbox" id="genflags"> Add flags</label>
+      <label class="hint" title="Give the walls the chosen pack's ends, bars, corners and junctions, and put the standard tiles in the map"><input type="checkbox" id="genauto" checked> Tidy walls with the pack</label></div>
     <p class="hint" id="genseed"></p>
     <p class="kicker">Wall tiles</p>
     <div class="row"><select id="tilelayout" aria-label="Tile layout for tidy walls"></select>
       <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the right end, bar, corner or junction tile">Tidy whole map</button></div>
-    <label class="hint"><input type="checkbox" id="genauto" checked> Tidy random maps' walls</label>
     <div class="row"><button type="button" class="ghost small" id="stdtiles" title="Put the standard tileset (the packs' art, with plain wall interiors) into this map, so the packs look right here and in game">Use the standard tiles</button></div>
     <p class="hint" id="stdnote">The packs are drawn from the standard tileset: use it in this map to see (and publish) them as they're meant to look.</p>
     <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>

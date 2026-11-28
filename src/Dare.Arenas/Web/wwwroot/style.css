@@ -654,3 +654,4 @@ dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }
   .railgroup:last-child { border-right:0; }
   .edopts .opthint { display:none; }
 }
+.edside .gendensity input[type=range] { flex:1 1 90px; min-width:0; accent-color:var(--accent); }

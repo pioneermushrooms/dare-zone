@@ -78,15 +78,24 @@ function signedIn() {
 
   // "Use the standard tiles": the standard tileset (the packs' art, with plain interiors for thick
   // walls) into this map, so the packs look here and in game as they're meant to
-  $("stdtiles").addEventListener("click", async () => {
-    const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
-    if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return; }
-    const ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+  let standardTiles = null; // the standard tileset canvas, once loaded
+  async function useStandardTiles() {
+    if (!standardTiles) {
+      const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
+      if (!r || !r.ok || !window.TileArt) return false;
+      standardTiles = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+    }
+    const ts = standardTiles;
+    if (mapTileset === ts) return true; // already
     const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
     prefix = TileArt.withTileset(prefix, rgba, ts.width, ts.height); mapTileset = ts; ownTileset = null;
     flatView = false; $("flatview").checked = false;
     noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw();
-    say("This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.", true);
+    return true;
+  }
+  $("stdtiles").addEventListener("click", async () => {
+    if (await useStandardTiles()) say("This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.", true);
+    else say("Couldn't load the standard tiles.", false);
   });
 
   // ---- load --------------------------------------------------------------------------------------
@@ -291,6 +300,7 @@ function signedIn() {
     const teams = $("genlayout").value === "teams";
     $("gensym").disabled = teams; // left vs right, always
     $("genflags").disabled = teams; // always has flag rooms
+    if (teams) $("genflags").checked = true;
   });
   $("randomize").addEventListener("click", async () => {
     const seed = (Math.random() * 2 ** 32) >>> 0;
@@ -299,8 +309,11 @@ function signedIn() {
       thickness: Number($("genthick").value), density: Number($("gendensity").value), flags: $("genflags").checked,
       tile: cur > 0 && cur <= 161 ? cur : 1, tiles: $("genauto").checked ? tileLayout() : null,
     });
-    if (await replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`))
-      $("genseed").textContent = `Seed ${seed}`;
+    if (!await replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`)) return;
+    $("genseed").textContent = `Seed ${seed}`;
+    // walls tidied with a standard pack only look right on the standard tiles: put them in the map
+    if ($("genauto").checked && tileLayout().spec && await useStandardTiles())
+      say(`A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map in ${tileLayout().name.replace(/^.*: /, "")}, on the standard tiles. Randomize again for another, or draw on it.`, true);
   });
   // tidy walls over an area (x0, y0, x1, y1) or the whole map, as one undoable change
   function tidy(area) {
