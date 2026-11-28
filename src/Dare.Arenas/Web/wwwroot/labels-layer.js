@@ -103,6 +103,9 @@
 
   // ---- the panel (browser only) -------------------------------------------------------------------
   let api = null; // set by mount; publishSettings needs it
+  /** The LVZ panel's "Place and move LVZ" checkbox (lvz-layer.js: class lzp-edit, no id). */
+  const lvzToggle = (doc) => doc.querySelector(".lzp-edit") || doc.getElementById("lzp-edit");
+
   function mount(host, hooks) {
     const mv = typeof window !== "undefined" && window.mapView;
     if (!host || !mv || !window.mapOverlays) return null;
@@ -139,13 +142,18 @@
       el("div", { class: "row lbtoggles" }, el("label", { class: "hint" }, show, " Show"), el("label", { class: "hint" }, edit, " Edit")),
       list, add, hint, form, counts);
 
-    const lvzEdit = () => document.getElementById("lzp-edit");
+    // Label editing and LVZ placing both take the map's clicks, and LVZ's handler comes first: only one is on.
+    const lvzEdit = () => lvzToggle(document);
     edit.addEventListener("change", () => {
       if (edit.checked && lvzEdit()?.checked) { lvzEdit().checked = false; lvzEdit().dispatchEvent(new Event("change")); }
       if (!edit.checked) { armed = null; add.value = ""; }
       render(); mv.redraw();
     });
-    document.addEventListener("change", (e) => { if (e.target === lvzEdit() && e.target.checked && edit.checked) { edit.checked = false; armed = null; render(); } });
+    const lvzTookOver = () => { if (edit.checked) { edit.checked = false; armed = null; add.value = ""; render(); mv.redraw(); } };
+    document.addEventListener("change", (e) => { if (e.target === lvzEdit() && e.target.checked) lvzTookOver(); });
+    // LVZ also starts placing without a change event (picking an image): it marks the page with body.lvzplacing.
+    new MutationObserver(() => { if (document.body.classList.contains("lvzplacing")) lvzTookOver(); })
+      .observe(document.body, { attributes: true, attributeFilter: ["class"] });
     show.addEventListener("change", () => mv.redraw());
     add.addEventListener("change", () => {
       armed = add.value || null;
@@ -345,5 +353,5 @@
     } catch { return "Spawn settings not set: the server didn't answer."; }
   }
 
-  return { KINDS, TEAMS, fromRegions, toRegions, spawnSettings, resetSettings, mount, publishSettings };
+  return { KINDS, TEAMS, fromRegions, toRegions, spawnSettings, resetSettings, mount, publishSettings, lvzToggle };
 });
