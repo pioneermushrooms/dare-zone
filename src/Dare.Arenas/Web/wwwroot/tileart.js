@@ -100,28 +100,66 @@
     return plan;
   }
 
-  // Every wall slot: the layout's packs first, then every slot the map uses redrawn as the piece
-  // its walls call for (so maps that don't follow the standard layout still join up).
+  // Every wall slot: the layout's packs first, then the slots the map uses redrawn as the piece
+  // its walls call for (so maps that don't follow the standard layout still join up). On a map that
+  // follows the layout, the slots the layout claims keep their pack's style and piece: only the
+  // other slots are redrawn from how the map uses them.
   function restylePlan(grid, choice, data, layout) {
     const plan = sheetPlan(layout, choice, data);
     const use = usage(grid);
+    const claimed = followsLayout(use, layout) ? layoutSlots(layout) : new Map();
+    const free = new Map([...use].filter(([t]) => !claimed.has(t)));
     const styles = stylesFor(choice, data);
-    groups(grid, use).forEach((g, i) => { for (const t of g) plan.set(t, { style: styles[i % styles.length], mask: use.get(t).mask }); });
+    groups(grid, free).forEach((g, i) => { for (const t of g) plan.set(t, { style: styles[i % styles.length], mask: free.get(t).mask }); });
     return plan;
+  }
+
+  // Map(slot -> { pack, index, mask }) for every wall slot the layout's packs name: their roles,
+  // and the optional interior (wall all round), calm edges (an edge, plain inside) and inner
+  // corners (wall all round but the one open diagonal).
+  const DIAG = { NE, SE, SW, NW };
+  function layoutSlots(layout) {
+    const out = new Map();
+    const roles = (layout && layout.roles) || {};
+    ((layout && layout.packs) || []).forEach((p, index) => {
+      const put = (t, mask) => { if (isWall(t) && !out.has(t)) out.set(t, { pack: p.id, index, mask }); };
+      for (const [role, t] of Object.entries(p.tiles || {})) if (roles[role]) put(t, openMask(roles[role].open));
+      if (p.interior != null) put(p.interior, 255);
+      for (const [open, t] of Object.entries(p.calm || {})) put(t, openMask(open));
+      for (const [d, t] of Object.entries(p.inner || {})) if (DIAG[d]) put(t, 255 & ~DIAG[d]);
+    });
+    return out;
+  }
+
+  // Does the map place the layout's slots as the layout means them? Most placements of claimed
+  // slots must have the claimed open sides (diagonals aside).
+  function followsLayout(use, layout) {
+    const claimed = layoutSlots(layout);
+    let hit = 0, all = 0;
+    for (const [t, u] of use) {
+      const c = claimed.get(t); if (!c) continue;
+      for (const [m, k] of u.masks) { all += k; if ((m & 85) === (c.mask & 85)) hit += k; }
+    }
+    return all > 0 && hit / all >= 0.6;
+  }
+
+  // The style a pack is drawn in for a tile-art choice (a theme's style for that pack, or the one style).
+  function packStyle(choice, packId, data, layout) {
+    const th = data.themes[choice];
+    if (th) {
+      if (th[packId]) return th[packId];
+      const styles = stylesFor(choice, data);
+      const i = ((layout && layout.packs) || []).findIndex((p) => p.id === packId);
+      return styles[Math.max(0, i) % styles.length];
+    }
+    return choice;
   }
 
   // A whole sheet in the layout: each pack in the theme's style for it (or the one style chosen).
   function sheetPlan(layout, choice, data) {
     const plan = new Map();
-    const th = data.themes[choice];
     const styles = stylesFor(choice, data);
-    const roles = (layout && layout.roles) || {};
-    ((layout && layout.packs) || []).forEach((p, i) => {
-      const style = (th && th[p.id]) || styles[i % styles.length];
-      for (const [role, tile] of Object.entries(p.tiles || {})) {
-        if (roles[role] && isWall(tile)) plan.set(tile, { style, mask: openMask(roles[role].open) });
-      }
-    });
+    for (const [t, c] of layoutSlots(layout)) plan.set(t, { style: packStyle(choice, c.pack, data, layout), mask: c.mask });
     for (let t = 1; t <= 161; t++) if (!plan.has(t)) plan.set(t, { style: styles[t % styles.length], mask: 0 });
     return plan;
   }
@@ -161,7 +199,7 @@
     return out;
   }
 
-  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, withTileset, isWall };
+  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, layoutSlots, followsLayout, packStyle, withTileset, isWall };
   if (typeof module !== "undefined" && module.exports) { module.exports = api; return; }
 
   // ---- browser ---------------------------------------------------------------------------------

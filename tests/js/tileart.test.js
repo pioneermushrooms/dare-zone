@@ -101,3 +101,29 @@ test("new tileset keeps the map's eLVL data", () => {
     assert.deepStrictEqual([out[o], out[o + 1], out[o + 2]], [200, 7, 0]);
   }
 });
+
+test("restyle keeps each pack's style and piece on a map that follows the layout", () => {
+  const pack = layout.packs.find((p) => p.id === "green-lit");
+  const g = new Uint8Array(n * n);
+  const row = [pack.tiles["end-left"], pack.tiles["h-mid"], pack.tiles["h-mid"], pack.tiles["end-right"]];
+  row.forEach((t, i) => { g[20 * n + 10 + i] = t; g[22 * n + 10 + i] = t; });
+  g[30 * n + 30] = 1; // a slot the layout doesn't claim
+  const use = TA.usage(g, n);
+  assert.ok(TA.followsLayout(use, layout));
+  const plan = TA.restylePlan(g, "foundry", data, layout);
+  for (const t of row) assert.strictEqual(plan.get(t).style, data.themes.foundry["green-lit"]);
+  assert.strictEqual(plan.get(pack.tiles["h-mid"]).mask, TA.openMask("EW"));
+  if (pack.interior) assert.strictEqual(plan.get(pack.interior).mask, 255);
+  for (const [open, t] of Object.entries(pack.calm || {})) assert.strictEqual(plan.get(t).mask, TA.openMask(open));
+  assert.strictEqual(plan.get(1).mask, 0); // unclaimed: from how the map uses it
+  // a map that places the layout's slots as other pieces doesn't follow it
+  assert.ok(!TA.followsLayout(TA.usage(grid(["2112"]), n), layout));
+});
+
+test("packStyle names what each pack looks like", () => {
+  assert.strictEqual(TA.packStyle("foundry", "steel-blue", data, layout), data.themes.foundry["steel-blue"]);
+  assert.strictEqual(TA.packStyle("steel", "navy", data, layout), "steel");
+  const slots = TA.layoutSlots({ roles: layout.roles, packs: [{ id: "x", tiles: {}, inner: { NE: 20, SW: 56 } }] });
+  assert.strictEqual(slots.get(20).mask, 255 & ~2);
+  assert.strictEqual(slots.get(56).mask, 255 & ~32);
+});
