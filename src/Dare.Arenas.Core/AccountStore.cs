@@ -173,6 +173,7 @@ public sealed partial class AccountStore : IDisposable
         CreateWallTable();
         MoveWeaponGraphicsToArmory();
         EnsurePeople(backup);
+        CreateTutorialTable();
         AddLibraryPersons();
     }
 
