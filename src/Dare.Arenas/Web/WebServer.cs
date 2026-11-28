@@ -499,6 +499,7 @@ internal sealed partial class WebServer : IDisposable
             default:
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await LvzRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? Text(404, "Not found.");
         }
