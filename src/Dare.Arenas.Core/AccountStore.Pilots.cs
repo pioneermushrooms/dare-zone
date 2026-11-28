@@ -1,32 +1,22 @@
 namespace Dare.Arenas.Core;
 
 /// <summary>
-/// Pilot names on one account: a signed-in pilot sees every active name confirmed on the same
-/// recovery email, may switch to any of them without a password (same email, same person),
-/// add a name (it starts with the current name's password and then keeps its own) and delete
-/// one (the name is freed at once). Names without an email are grouped instead by
-/// <c>link_id</c>: the id of the group's first name (that name itself has none). Confirming an
-/// email on any of them moves the whole group onto it.
+/// Pilot names on one account (one person, <see cref="PersonOf"/>): a signed-in pilot sees every
+/// active name of the person, may switch to any of them without a password, add a name (it starts
+/// with the current name's email and password and then keeps its own password) and delete one
+/// (the name is freed at once; what the account owns stays). The email is the account's: setting
+/// it on one name sets it on all.
 /// </summary>
 public sealed partial class AccountStore
 {
-    /// <summary>Active names sharing <paramref name="accountId"/>'s confirmed email (itself included), by name.</summary>
+    /// <summary>The active names of <paramref name="accountId"/>'s person (itself included), by name.</summary>
     public IReadOnlyList<Account> PilotsOf(long accountId)
     {
         lock (_gate)
         {
             var me = LoadAccount("id = $id", ("$id", accountId));
             if (me is null || me.Status != "active") return Array.Empty<Account>();
-            if (!HasEmail(me) && me.Email is not null) return new[] { me }; // email not confirmed: only itself
-            using var cmd = HasEmail(me)
-                ? Cmd("SELECT id FROM accounts WHERE recovery_email = $e AND email_verified = 1 AND status = 'active' ORDER BY name COLLATE NOCASE",
-                    ("$e", me.Email!))
-                : Cmd("SELECT id FROM accounts WHERE (id = $g OR link_id = $g) AND recovery_email IS NULL AND status = 'active' ORDER BY name COLLATE NOCASE",
-                    ("$g", GroupOf(accountId)));
-            var ids = new List<long>();
-            using (var r = cmd.ExecuteReader())
-                while (r.Read()) ids.Add(r.GetInt64(0));
-            return ids.Select(id => LoadAccount("id = $id", ("$id", id))).OfType<Account>().ToList();
+            return PersonOfLocked(accountId) is { } person ? NamesOfLocked(person) : new List<Account> { me };
         }
     }
 
@@ -36,26 +26,16 @@ public sealed partial class AccountStore
 
     private static bool HasEmail(Account a) => a.EmailVerified && !string.IsNullOrEmpty(a.Email);
 
-    /// <summary>The no-email group id of <paramref name="accountId"/>: its link_id, or its own id. Under the lock.</summary>
-    private long GroupOf(long accountId)
+    /// <summary>Every name row (any status) of <paramref name="accountId"/>'s person. Under the lock.</summary>
+    private List<long> PersonNamesAll(long accountId)
     {
-        using var c = Cmd("SELECT link_id FROM accounts WHERE id = $id", ("$id", accountId));
-        return c.ExecuteScalar() is long g ? g : accountId;
-    }
-
-    /// <summary>
-    /// The names that take on an email confirmed for <paramref name="accountId"/>: its whole
-    /// no-email group when it has no email, else just itself. Under the lock.
-    /// </summary>
-    private List<long> LinkedMoving(long accountId)
-    {
-        var me = LoadAccount("id = $id", ("$id", accountId));
-        if (me is null || HasEmail(me) || me.Email is not null) return new List<long> { accountId };
-        using var cmd = Cmd("SELECT id FROM accounts WHERE (id = $g OR link_id = $g) AND recovery_email IS NULL AND status = 'active'",
-            ("$g", GroupOf(accountId)));
-        using var r = cmd.ExecuteReader();
         var ids = new List<long>();
-        while (r.Read()) ids.Add(r.GetInt64(0));
+        if (PersonOfLocked(accountId) is { } person)
+        {
+            using var cmd = Cmd("SELECT id FROM accounts WHERE person_id = $p", ("$p", person));
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) ids.Add(r.GetInt64(0));
+        }
         if (!ids.Contains(accountId)) ids.Add(accountId);
         return ids;
     }
@@ -81,19 +61,19 @@ public sealed partial class AccountStore
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0)
                 return Fail($"The name '{n}' is taken.");
             if (BotNameTaken(n)) return Fail(BotNameMessage);
-            var group = GroupOf(accountId);
-            if (withEmail ? PilotsOn(me.Email!) >= MaxAccountsPerEmail : LinkedMoving(accountId).Count >= MaxAccountsPerEmail)
-                return Fail(withEmail ? TooManyPilots : $"You already have {MaxAccountsPerEmail} pilot names.");
+            var person = PersonOfLocked(accountId)!.Value;
+            if (NamesOfLocked(person).Count >= MaxAccountsPerEmail)
+                return Fail($"You already have {MaxAccountsPerEmail} pilot names.");
             using (var c = Cmd("SELECT password_hash, password_salt, hash_iterations, legacy_hash FROM accounts WHERE id = $id", ("$id", accountId)))
             using (var r = c.ExecuteReader())
             {
                 if (!r.Read()) return Fail("Sign in again first.");
-                Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, legacy_hash, recovery_email, email_verified, created, status, link_id) "
+                Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, legacy_hash, recovery_email, email_verified, created, status, person_id) "
                     + "VALUES($n,$h,$s,$i,$l,$e,$v,$c,'active',$g)",
                     ("$n", n), ("$h", r.IsDBNull(0) ? DBNull.Value : r.GetString(0)), ("$s", r.IsDBNull(1) ? DBNull.Value : r.GetString(1)),
                     ("$i", r.GetInt64(2)), ("$l", r.IsDBNull(3) ? DBNull.Value : r.GetString(3)),
                     ("$e", withEmail ? me.Email! : DBNull.Value), ("$v", withEmail ? 1 : 0), ("$c", Now()),
-                    ("$g", withEmail ? DBNull.Value : group));
+                    ("$g", person));
             }
             id = Scalar("SELECT last_insert_rowid()");
             return Ok($"'{n}' is yours. It has the same password as {me.Name}.");
