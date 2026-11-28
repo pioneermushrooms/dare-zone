@@ -141,3 +141,23 @@ public class TutorialWholeCastTests
         Assert.Equal((BotSeat.In, 0), (b[4].Placement.Seat, b[4].Placement.Team));
     }
 }
+
+public class TutorialLineupTextTests
+{
+    // oss-bot greets publicly ("I take flight orders from the arena owner...") whenever its lineup names a controller,
+    // and that controller may order the bots about: the tutorial's bots must have none.
+    [Fact] public void RenderLineup_HasNoController()
+    {
+        var lineup = TutorialCast.Lineup("#training1", [new CastLine("swarm", "in", "ship 2\nbehaviour swarm\nrange 12")], ["Wobbly Nebula"]);
+        var text = TutorialCast.RenderLineup("#training1", lineup.Select(l => (l.Bot, l.Placement, "PASS")).ToList());
+        Assert.StartsWith("lineup #training1\nbot Wobbly Nebula\n", text);
+        Assert.DoesNotContain("controller", text);
+        Assert.EndsWith("done\n", text);
+    }
+
+    [Fact] public void Render_NullController_OmitsTheLine() =>
+        Assert.Equal("lineup duel\ndone\n", BotLineup.Render("duel", null, []));
+
+    [Fact] public void Render_Controller_StillNamed() =>
+        Assert.Equal("lineup duel\ncontroller Chris\ndone\n", BotLineup.Render("duel", "Chris", []));
+}

@@ -416,7 +416,8 @@ public sealed partial class ArenaOwnership
             }
             run.Passes.KeepOnly(lineup.Select(e => e.Bot.Label).ToList());
 
-            var text = BotLineup.Render(arena, owner, lineup);
+            // a tutorial cast (fixed placements) takes orders from nobody
+            var text = run.Fixed is not null ? TutorialCast.RenderLineup(arena, lineup) : BotLineup.Render(arena, owner, lineup);
             if (text != run.LastLineup)
             {
                 try

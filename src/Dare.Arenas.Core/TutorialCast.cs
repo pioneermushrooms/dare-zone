@@ -104,6 +104,13 @@ public static class TutorialCast
     // How many lines of the same role come before cast[i].
     private static int Nth(IReadOnlyList<CastLine> cast, int i) => cast.Take(i).Count(c => c.Role == cast[i].Role);
 
+    /// <summary>
+    /// The lineup text for a tutorial's bot host. It names no controller: oss-bot would otherwise greet the arena with
+    /// how to give it orders (giving the bots away), and whoever holds that name could order them about.
+    /// </summary>
+    public static string RenderLineup(string arena, IReadOnlyList<(ArenaBot Bot, BotPlacement Placement, string Password)> bots) =>
+        BotLineup.Render(arena, null, bots);
+
     /// <summary>Up to <paramref name="count"/> distinct guest-style names that <paramref name="taken"/> says are free.</summary>
     public static IReadOnlyList<string> PickNames(int count, Func<int, int> next, Func<string, bool> taken)
     {

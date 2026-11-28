@@ -76,6 +76,9 @@ public sealed partial class ArenaOwnership
         public required DateTimeOffset StartBy;
         public bool Started;
         public bool Finishing;
+        /// <summary>The step the run started at, and how many steps ?skip moved on (for the end-of-run log line).</summary>
+        public int FirstStep;
+        public int Skips;
         public bool EngineOff;
         public bool BeaconOn;
         public short? LineShown;
@@ -93,7 +96,7 @@ public sealed partial class ArenaOwnership
     private sealed record TutorialTrip(string Arena, int StartStep, string? Origin, bool Replay, bool Records);
 
     /// <summary>A player who left a training arena mid-run without ?leave: ?go elsewhere (left) or a disconnect (dropout).</summary>
-    private sealed record TutorialExit(string Name, bool Records);
+    private sealed record TutorialExit(string Name, bool Records, string Arena, string Step);
 
     private TutorialScript? _tutorialScript;
     private ILvzObjects? _lvz;
@@ -205,7 +208,7 @@ public sealed partial class ArenaOwnership
                     if (_tutorials.TryGetValue(player, out var s) && string.Equals(s.Arena, arena.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         DropRun(s);
-                        _tutorialExits[player] = new(s.Name, s.Records);
+                        _tutorialExits[player] = new(s.Name, s.Records, s.Arena, StepLabel(s));
                         // a Dare client closes its mentor box (it shows no arena list: the player chose where to go)
                         if (_hintClients.ContainsKey(player)) _chat.SendMessage(player, TutorialHint.End(false));
                     }
@@ -217,7 +220,7 @@ public sealed partial class ArenaOwnership
                     if (_tutorials.TryGetValue(player, out var run))
                     {
                         DropRun(run);
-                        RecordDropout(new(run.Name, run.Records));
+                        RecordDropout(new(run.Name, run.Records, run.Arena, StepLabel(run)));
                     }
                     else if (_tutorialExits.Remove(player, out var exit))
                         RecordDropout(exit);
@@ -233,8 +236,11 @@ public sealed partial class ArenaOwnership
     private void TutorialEnter(Player player, Arena arena, bool first)
     {
         // left a training arena with ?go and arrived somewhere: that's leaving, not dropping out
-        if (_tutorialExits.Remove(player, out var exit) && exit.Records)
-            _accounts?.SetTutorialOutcome(exit.Name, "left");
+        if (_tutorialExits.Remove(player, out var exit))
+        {
+            if (exit.Records) _accounts?.SetTutorialOutcome(exit.Name, "left");
+            Log(LogLevel.Info, $"Tutorial: {exit.Arena} [{exit.Name}] ended: left (?go) at step {exit.Step}, to [{arena.Name}].");
+        }
 
         if (TutorialCast.IsTutorialArena(arena.Name))
         {
@@ -342,11 +348,16 @@ public sealed partial class ArenaOwnership
     {
         if (s.Started) return;
         s.Started = true;
+        s.FirstStep = s.Run.StepIndex;
+        Log(LogLevel.Info, $"Tutorial: {s.Arena} [{s.Name}] start: {(s.Lean ? "lean" : "full")} cast ({s.BotNames.Count} bots), " +
+            $"{(_hintClients.ContainsKey(s.Player) ? "Dare client (hints)" : "Continuum (LVZ mentor)")}" +
+            $"{(s.Replay ? $", replay from [{s.Origin}]" : "")}{(s.Records ? ", recorded" : "")}.");
         // a run started part-way (a resumed act, ?tutorial swarm) shows what the steps before it revealed
         var earlier = _tutorialScript!.Steps.Take(s.Run.StepIndex).SelectMany(st => st.Reveal).Distinct();
         Apply(s, [.. earlier.Select(p => new RevealPart(p)), .. s.Run.Start()]);
         if (!s.Run.Done) ShowSkipPopup(s); // the skip/leave popup shows at the start
         RecordProgress(s);
+        LogStep(s);
     }
 
     /// <summary>The run stops (its bots with it); the player is not moved.</summary>
@@ -376,13 +387,29 @@ public sealed partial class ArenaOwnership
             _accounts?.SetTutorialProgress(s.Name, s.Run.Done ? _tutorialScript!.Steps.Count : s.Run.StepIndex + 1, CurrentAct(s));
             _accounts?.SetTutorialOutcome(s.Name, outcome);
         }
-        Log(LogLevel.Info, $"Tutorial: {s.Name} {outcome} at step {Math.Min(s.Run.StepIndex + 1, _tutorialScript!.Steps.Count)} in [{s.Arena}].");
-
         var (arena, nobodyOn) = TutorialDestination.Pick(ArenaPilots(player), s.Origin, s.Replay);
+        var walked = _tutorialScript!.Steps.Count - s.FirstStep;
+        var logged = outcome == "finished" && s.Skips >= walked ? "skip-all" : outcome;
+        Log(LogLevel.Info, $"Tutorial: {s.Arena} [{s.Name}] ended: {logged} at step {StepLabel(s)}, " +
+            $"{s.Skips} of {walked} step(s) skipped, to [{arena}]{(nobodyOn ? " (nobody on)" : "")}.");
+
         // the Dare client closes the mentor and, with nobody on, opens the arena list; Continuum gets a line instead
         if (_hintClients.ContainsKey(player)) _chat.SendMessage(player, TutorialHint.End(nobodyOn));
         else if (nobodyOn) _chat.SendMessage(player, NobodyOnLine());
         _arenaManager.SendToArena(player, arena, 0, 0);
+    }
+
+    /// <summary>"n/m id" of the run's current step (the last one once the run is done).</summary>
+    private string StepLabel(TutorialSession s)
+    {
+        var steps = _tutorialScript!.Steps;
+        var i = Math.Min(s.Run.StepIndex, steps.Count - 1);
+        return $"{i + 1}/{steps.Count} {steps[i].Id}";
+    }
+
+    private void LogStep(TutorialSession s)
+    {
+        if (!s.Run.Done) Log(LogLevel.Info, $"Tutorial: {s.Arena} [{s.Name}] step {StepLabel(s)}");
     }
 
     private int CurrentAct(TutorialSession s) =>
@@ -395,10 +422,10 @@ public sealed partial class ArenaOwnership
 
     private void RecordDropout(TutorialExit exit)
     {
+        Log(LogLevel.Info, $"Tutorial: {exit.Arena} [{exit.Name}] ended: dropout at step {exit.Step}.");
         if (!exit.Records || _accounts is null) return;
         if (_accounts.AddTutorialDropout(exit.Name) >= TutorialEntry.MaxDropouts)
             _accounts.SetTutorialOutcome(exit.Name, "left");
-        Log(LogLevel.Info, $"Tutorial: {exit.Name} dropped out.");
     }
 
     /// <summary>Real pilots (no bots, no fake players) per arena a newcomer could be sent to, leaving out <paramref name="self"/>.</summary>
@@ -492,7 +519,9 @@ public sealed partial class ArenaOwnership
         Apply(s, s.Run.Handle(e));
         if (s.Run.StepIndex != before)
         {
+            if (e is Skip) s.Skips++;
             RecordProgress(s);
+            LogStep(s);
             if (s.SkipPopupUntil is not null)
             {
                 s.SkipPopupUntil = null;
