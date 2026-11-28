@@ -216,3 +216,22 @@ test("inside corners: decorated in a two-deep wall, plain where solid wall is be
   assert.equal(Autotile.resolve(q, "calmin-ne"), 9, "the plain interior piece");
   assert.equal(Autotile.resolve(q, "inner-ne"), 3, "the pack's own fill");
 });
+
+test("inside corners: a pack's own inner pieces (by open diagonal) serve with or without solid wall behind", () => {
+  const spec = { format: "dare-tile-layout", version: 1, roles: { all: { open: "NESW" } },
+    packs: [{ id: "q", tiles: { all: 3 }, interior: 9, inner: { NE: 11, se: 12, SW: 13, NW: 14, XX: 15 } }] };
+  const [q] = Autotile.fromSpec(spec).layouts;
+  for (const [d, t] of [["ne", 11], ["se", 12], ["sw", 13], ["nw", 14]]) {
+    assert.equal(Autotile.resolve(q, "inner-" + d), t);
+    assert.equal(Autotile.resolve(q, "calmin-" + d), t);
+  }
+  assert.equal(Autotile.resolve(q, "fill"), 9, "the interior is still the interior");
+  // fitting a whole map puts them in: a box with a two-deep and a three-deep rim
+  const g = new Uint8Array(N * N);
+  S.apply(g, S.fill(S.rect(400, 400, 420, 420, 3), 1), null);
+  Autotile.tidy(g, q);
+  assert.equal(g[at(402, 402)], 12, "top-left inside corner: open to the bottom-right");
+  assert.equal(g[at(418, 418)], 14);
+  assert.equal(g[at(418, 402)], 13);
+  assert.equal(g[at(402, 418)], 11);
+});

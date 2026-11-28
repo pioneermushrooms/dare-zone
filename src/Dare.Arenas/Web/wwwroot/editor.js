@@ -142,6 +142,7 @@ function signedIn() {
     const list = (j && j.tilesets) || [];
     if (tileArt) tileArt.setSources([...list.map((t) => ({ group: "Your tilesets", label: t.name, value: "ts:" + t.id, own: true,
       note: "One of your tilesets (drawn in the Tile Editor or kept from the Foundry). Use in this map puts it in; Publish takes it to the arena." })), STANDARD]);
+    listTileLayouts(); // the Tile art choice may have moved to one of them
   }
   async function applyMyTileset(id) {
     if (!window.TileArt) return false;
@@ -342,10 +343,35 @@ function signedIn() {
   });
   // ---- random maps, and tidying walls (autotile.js) -------------------------------------------------
   for (const [id, label] of Object.entries(Lvl.GEN_LAYOUTS)) $("genlayout").append(new Option(label, id));
-  function listTileLayouts(pick) {
-    $("tilelayout").replaceChildren(...[...Autotile.layouts.values()].map((l) => new Option(l.name || l.id, l.id)));
-    if (pick) $("tilelayout").value = pick;
+  var tileSpec = null; // tile-layout.json, once loaded (var: the Tile art sources are set before this line runs)
+  // The Wall tiles list names each pack by how it looks in the Tile art choice: a theme draws each
+  // pack in its own style (Foundry's grey-plate pack is Steel), one style draws them all alike.
+  // A whole tileset (the standard tiles, the pilot's own) keeps the packs' own names.
+  function artChoice() {
+    const v = $("tileartstyle") && $("tileartstyle").value, d = window.TileArt && TileArt.data;
+    if (!v || !d || !TileArt.packStyle) return null;
+    if (d.themes[v]) return { id: v, theme: true };
+    return d.styles.some((st) => st.id === v) ? { id: v, theme: false } : null;
   }
+  function packLabel(l, art) {
+    const own = (l.name || l.id).replace(/^.*: /, "");
+    if (!l.spec || !art) return l.name || l.id;
+    const id = TileArt.packStyle(art.id, l.id, TileArt.data, tileSpec), st = TileArt.data.styles.find((x) => x.id === id);
+    const name = st ? st.name : id;
+    return art.theme ? `${name} (${own.toLowerCase()} pieces)` : `${name}: ${own.toLowerCase()} pieces`;
+  }
+  function listTileLayouts(pick) {
+    const was = pick || $("tilelayout").value, art = artChoice();
+    $("tilelayout").replaceChildren(...[...Autotile.layouts.values()].map((l) => new Option(packLabel(l, art), l.id)));
+    if (was && Autotile.layouts.has(was)) $("tilelayout").value = was;
+  }
+  // a new Tile art choice relabels the packs; one style that is also a pack's own name picks that pack
+  // (its interior and calm pieces are drawn for it)
+  if ($("tileartstyle")) $("tileartstyle").addEventListener("change", () => {
+    const art = artChoice();
+    listTileLayouts(art && !art.theme && Autotile.layouts.has(art.id) ? art.id : undefined);
+    if (roleView) roleView = Autotile.previewTileset(tileLayout());
+  });
   listTileLayouts();
   // the standard tile layout (tile-layout.json): one choice per pack, the first one picked; without
   // it the stand-in role preview layout is all there is
@@ -353,6 +379,7 @@ function signedIn() {
     const r = await fetch("/arena/tile-layout.json", { credentials: "same-origin" }).catch(() => null);
     const spec = r && r.ok ? await r.json().catch(() => null) : null;
     if (!spec) return;
+    tileSpec = spec;
     const { layouts, errors } = Autotile.fromSpec(spec);
     for (const l of layouts) Autotile.register(l);
     if (errors.length) console.warn("tile layout:", errors);
@@ -383,9 +410,10 @@ function signedIn() {
     const change = Autotile.tidy(grid, tileLayout(), area);
     if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); }
     draw();
-    say(change.length ? `Tidied ${change.length.toLocaleString()} wall tiles. Undo puts them back.` : "Those walls were already tidy.", true);
+    say(change.length ? `Fitted ${change.length.toLocaleString()} wall pieces. Undo puts them back.` : "Those walls already have the pieces that fit.", true);
   }
   $("tidyall").addEventListener("click", () => tidy(null));
+  $("tidysel").addEventListener("click", () => { if (tools) tools.fitSelection(); });
   $("roleview").addEventListener("change", (e) => {
     roleView = e.target.checked ? Autotile.previewTileset(tileLayout()) : null;
     drawPalette(); draw();
@@ -460,7 +488,7 @@ function signedIn() {
     }
     vctx.strokeStyle = "#22d3ee66"; vctx.lineWidth = 1; vctx.strokeRect(ox, oy, N * s, N * s);
     for (const f of overlays) f("above", vctx, s, ox, oy); // ... and over them
-    if (tools) tools.overlay(vctx, s, ox, oy, view);
+    if (tools) { tools.overlay(vctx, s, ox, oy, view); const sel = tools.selection; $("tidysel").disabled = !(sel && sel.size); }
     if (dragRect) {
       const [ax, ay, bx, by] = dragRect;
       vctx.strokeStyle = "#ff8a1f"; vctx.lineWidth = 2;
