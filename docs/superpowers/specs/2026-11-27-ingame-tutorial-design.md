@@ -1,6 +1,6 @@
 # In-game tutorial
 
-Date: 2026-11-27. Status: design, reshaped by Chris's feedback; awaiting his approval.
+Date: 2026-11-27. Status: design, approved by Chris 2026-11-27.
 
 ## Why
 
@@ -91,11 +91,11 @@ LVZ arrow pointing at it, and over big centre-screen text for key lines only.
   newcomers). The Dare client remembers on that machine that the player left or
   finished, and tells the zone at login so it skips the tutorial (mechanism left to the
   builder; honoured only for guests).
-- **Arriving for a particular arena** (my call): the tutorial takes over only when a
-  newcomer enters a public arena (the default on login, or "public" on the browser's
-  arena list). A newcomer heading for a named arena, for example a friend's link, goes
-  there. They get one offer instead: a mentor popup with a **Try the tutorial** button
-  (browser), or the line to type (Continuum).
+- **Choosing another arena first** (Chris): the tutorial takes over when a newcomer
+  enters the normal starting arena (`public`, Continuum's default and "public" on the
+  browser's arena list). A newcomer who picks a different arena on their first
+  connection goes there and is prompted once: a mentor popup with a **Try the
+  tutorial** button (browser), or the line to type (Continuum).
 - **Bots** (bot-pass sessions) and fake players are never taken in.
 - **Leaving and skipping, without commands to learn:**
   - Dare client: **Skip** (this step) and **Leave tutorial** buttons beside the mentor
@@ -135,14 +135,16 @@ LVZ arrow pointing at it, and over big centre-screen text for key lines only.
   very high energy (they effectively can't die in the skit), and weak bullets that still
   do damage, so the swarm takes a while by hand. Prizes enabled for the greens step. No
   stats that count elsewhere.
-- **How many at once** (Chris: 10): up to **10** tutorials run at the same time (a
-  setting), each with its own bot host and full cast (target, swarm, teammate). Bots
-  only fly during the steps that use them. The builder measures one tutorial host's
-  memory and CPU on a local zone and reports it before shipping. An 11th newcomer isn't
-  taken in; they get the one-time "Try the tutorial" offer, which works once a place is
-  free (my call; no bot-less version of the tutorial is built). Bot names are unique
-  across the zone but look like ordinary pilot names, from a tutorial-specific lineup
-  rather than an arena record in `ArenaStore`.
+- **How many at once** (Chris): the first **10** tutorials running at the same time get
+  the full cast (target, swarm, teammate), each in its own bot host. When more are
+  running, each extra tutorial gets **one bot**, which plays every part: the target,
+  a swarm of one (the mentor's lines adjust, e.g. "a scout"), and the teammate. Both
+  numbers are settings. Bots only fly during the steps that use them. A ceiling
+  setting (default 30 tutorials) stops new ones beyond it; a newcomer then gets the
+  "Try the tutorial" prompt instead (my call, a safety valve only). The builder
+  measures one tutorial host's memory and CPU on a local zone and reports it before
+  shipping. Bot names are unique across the zone but look like ordinary pilot names,
+  from a tutorial-specific lineup rather than an arena record in `ArenaStore`.
 
 ### The mentor
 
