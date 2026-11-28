@@ -72,7 +72,7 @@ grabbed. An expert can skip straight to any panel and fine-tune everything.
 | Warp, ship reset, prizes | server interfaces (`IGame`) | called by the new rules module |
 | Turn LVZ objects on/off, move them, change image or display time | `LvzObjects` (`ILvzObjects.Toggle/SetImage/SetTimer/SetPosition`), `?objon/?objoff` | none |
 | Ship values | ~90 per-ship settings (`InitialGuns`, `MaxBombs`, `BulletSpeed`, `CloakEnergy`, `AttachBounty`, `TurretLimit`, `Upgrade*`, ...), `PrizeWeight:*`, `Prize:*` | none |
-| Named settings sets | `ingame-settings` session's 972214b (not on main yet): `pilot_setting_sets`, `/api/settingsets/*`, `/api/settings/preview` + `/apply` | reuse |
+| Named settings sets | `editor-polish` session's 972214b (not on main yet): `pilot_setting_sets`, `/api/settingsets/*`, `/api/settings/preview` + `/apply` | reuse |
 | LVZ read/write | `tile-editor` session: `lvz.js` (CLV1/CLV2, byte-exact round trip), LVZ library store `/api/lvzlib` (not on main yet) | reuse |
 | Browser client shows LVZ | dare-client `lvz.rs`: map and screen objects, all display modes, animation, server toggle `0x35` and change `0x36` | none expected; check screen anchors match Continuum |
 | Map areas | eLVL regions are read by the server; our map editor keeps eLVL bytes but can't edit regions | labels stored in the game mode instead (below) |
@@ -198,3 +198,11 @@ waits for `tile-editor`'s LVZ library to reach `main`.
 
 Exact setting values per role and pace step; the wizard's question wording and pictures; label
 drawing UI; the rule menu layout; timer art. Each comes with a mockup for approval.
+
+## Notes from other sessions
+
+- Settings sets and apply (972214b) belong to `editor-polish`. `ingame-settings` has proposed
+  stricter value checks: ints within the config help's min/max, bools 0/1, enums one of their
+  choices. Chris hasn't approved them yet. If they land, out-of-range values come back from
+  `/preview` and `/apply` as "skipped" rows with a reason. The wizard must only produce
+  in-range values (read min/max/choices from the settings API) and show any skipped rows.
