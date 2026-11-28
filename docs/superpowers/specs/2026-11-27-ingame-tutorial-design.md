@@ -1,282 +1,281 @@
 # In-game tutorial
 
-Date: 2026-11-27. Status: design, approach chosen by Chris in conversation; this document
-awaits his approval.
+Date: 2026-11-27. Status: design, reshaped by Chris's feedback; awaiting his approval.
 
 ## Why
 
 New pilots reach Foundation through the home page's Play button (the browser client) or
-through Continuum, and land in an arena with no idea what the screen shows, which keys do
-what, or what the arenas are for. The tutorial teaches them by doing, in three acts:
-**learn the controls, learn the screen, learn the objectives**, then sends them somewhere
-with people in it.
+through Continuum, and land in an arena with no idea what the screen shows, which keys
+do what, or what the arenas are for. The tutorial teaches them by doing, in three acts
+(**learn the controls, learn the screen, learn the objectives**), told as a short story
+by a mentor, and then sends them somewhere with people in it.
 
 ## What Chris decided
 
-- It runs in a **private tutorial arena, one per player**, and the player should not be
-  able to tell it is private: it looks and feels like an ordinary arena.
-- The **HUD is revealed slowly**: at the start everything except the ship is covered in
-  black, and each part of the screen is uncovered when it starts to matter. In Continuum
-  the covers are black LVZ screen objects toggled by the server; the browser can use
-  richer tools on top.
-- Approach: **one shared tutorial, plus browser extras** (see Approaches). The zone runs
-  the steps, their checks and the black covers for both clients; the Dare client adds a
-  large instruction banner, a highlight around the part being revealed, and the player's
-  own key bindings.
-- Afterwards the player goes to a **public arena with people in it**, or, when nobody is
-  on, is shown the arena list.
+- **A private tutorial arena, one per player**, that the player can't tell is private.
+  A quiet arena is fine: the player list shows the player and bots, and no chat is
+  relayed in from other arenas.
+- **The HUD is revealed slowly**: at first everything but the ship is covered in black,
+  and each part is uncovered when it starts to matter. In Continuum the covers are black
+  LVZ screen objects; the browser uses the same covers plus its own tools.
+- **One shared tutorial, plus browser extras.** The zone runs the steps, checks and
+  covers for both clients. The Dare client adds what its own tools allow.
+- **Not exhaustive.** Short and fun beats complete; at the end the player is told that
+  **F1** opens the full manual (both clients have F1 help pages).
+- **Narrated by a mentor**: a talking character with a portrait in the **bottom-left**
+  corner (clear of the radar), Star Fox style, speaking in character.
+- **Green chat text is ignored by new players**, so the mentor speaks in **speech
+  bubbles drawn as LVZ images** in Continuum; the Dare client draws the same box itself.
+- **No `?` commands for newcomers to learn.** In the browser, controls such as "skip"
+  and "leave" are buttons on the screen. In Continuum, an obvious LVZ popup says exactly
+  what to type.
+- **The swarm skit** (Act 2's centrepiece), as described below.
+- Afterwards the player goes to a public arena with people in it, or is shown the arena
+  list.
 
 ## Goals
 
 1. A new pilot is taken into the tutorial on their first connection, without a menu to
-   get through first, and can leave it at any moment.
+   get through first, and can leave at any moment without knowing any commands.
 2. Every step waits for the player to **actually do the thing** (checked on the server)
-   before going on; no step is just a wall of text.
-3. The same steps, in the same order, in Continuum and the Dare client (browser and
-   desktop builds), with the differences stated in the step text where keys or screens
-   differ.
-4. `?tutorial` replays it at any time, for anyone.
-5. When it ends (finished or left), the player lands in the busiest public arena, or the
-   main public arena plus a pointer to arenas with bots if nobody is on.
+   before going on.
+3. The same story in Continuum and the Dare client (browser and desktop builds), with
+   the differences stated in the mentor's lines where keys or screens differ.
+4. It can be replayed at any time.
+5. When it ends, the player lands where people are playing.
 
 ## Non-goals
 
-- Teaching advanced play (bounty tactics, team strategy, specific game modes).
-- A tutorial for building arenas; the tutorial only points at the arena editor.
-- Localisation.
-- A website version of the tutorial.
+- Covering every feature. Macros, most items (decoy, thor, brick, portal, rocket, warp,
+  stealth, cloak and the rest), stat-box cycling and advanced play are left to the F1
+  manual.
+- Teaching how to build arenas (the end only points at the arena editor).
+- Relaying chat from other arenas into the tutorial.
+- Localisation; a website version.
 
 ## Anti-goals (a failure even if it works)
 
-- The player feels trapped: no obvious way out, or a step that cannot be completed
-  (an action the server cannot see, a broken map spot) with no way past it.
-- The player can tell they were put in a special place: an arena named like
-  "#tutorial-Wobbly Nebula", other players' chat missing in a way that looks broken.
-- Veterans get it forced on them: an existing account that has logged in before must
-  never be sent into it unasked.
-- The covers break normal play: a cover left on after the tutorial, or LVZ objects
-  leaking into other arenas.
-- Wording that can only be changed by redrawing images.
+- The player feels trapped, or meets a step they can't complete with no way past it.
+- The player can tell they were put in a special place (an odd arena name, a broken-
+  looking screen).
+- Veterans get it forced on them.
+- The covers or the mentor box break normal play: anything left on screen after the
+  tutorial, or LVZ objects leaking into other arenas.
+- Changing a line of dialogue means redrawing an image by hand.
+- It drags: a step that waits on something slow without the mentor keeping it lively.
 
 ## Approaches considered
 
-1. **One shared tutorial, plus browser extras (chosen).** The zone owns steps, checks
-   and covers; both clients get the black reveal. The Dare client additionally renders
-   each instruction as a banner, outlines the part being revealed, and substitutes the
-   player's real key bindings. Continuum reads the same instruction as chat text naming
-   the default keys. Cost: a small client addition on top of the server work.
-2. **LVZ only.** Instructions and arrows are pre-drawn images toggled like the covers.
-   Identical in both clients, one piece of work, but any wording change means redrawing
-   images, and it cannot show the player's real keys. Rejected: wording would freeze.
-3. **Browser-first.** A rich browser tutorial; Continuum gets chat lines and no covers.
-   Rejected: Continuum newcomers get much less, and Chris wants the reveal there too.
+1. **One shared tutorial, plus browser extras (chosen).** The zone owns the story,
+   checks and covers; the Dare client draws the mentor box natively, with the player's
+   real keys and clickable buttons.
+2. **LVZ only.** Everything as images in both clients. Rejected: no real keys or
+   buttons in the browser.
+3. **Browser-first.** Rejected: Continuum newcomers get much less.
+
+For Continuum's dialogue, Chris chose **generated LVZ speech bubbles** over chat plus an
+LVZ arrow pointing at it, and over big centre-screen text for key lines only.
 
 ## How it works
 
-### Who is new, offering, declining, replaying
+### Who is new, leaving, skipping, replaying
 
 - **Accounts:** an account is new when it has **never logged in through the game**.
   `accounts.last_login` can't be used: web logins and game passes also set it, and
-  imported legacy accounts have it null. Instead the new tutorial table records each
+  imported legacy accounts have it null. Instead a new tutorial table records each
   account's first game login. When the table is first created it is filled with every
-  account that already exists, so no existing or imported account is ever counted as
-  new (my call). A new account's first arena entry goes to the tutorial.
-- **Guests** get a fresh random name every login (`GuestNames`), so the zone can never
-  tell a returning guest. Every guest is taken into the tutorial (my call: guests are by
-  far the likeliest newcomers). The very first line says how to leave. The Dare client
-  remembers on that machine that the player left or finished the tutorial and tells the
-  zone at login (mechanism left to the builder; for example the client sends
-  `?tutorial skip` as its first command, which the zone honours only for guests).
+  account that already exists, so no existing or imported account is ever new (my
+  call). A new account's first arena entry goes to the tutorial.
+- **Guests** get a fresh random name every login (`GuestNames`), so the zone can't tell
+  a returning guest. Every guest is taken in (my call: they are the likeliest
+  newcomers). The Dare client remembers on that machine that the player left or
+  finished, and tells the zone at login so it skips the tutorial (mechanism left to the
+  builder; honoured only for guests).
+- **Arriving for a particular arena** (my call): the tutorial takes over only when a
+  newcomer enters a public arena (the default on login, or "public" on the browser's
+  arena list). A newcomer heading for a named arena, for example a friend's link, goes
+  there. They get one offer instead: a mentor popup with a **Try the tutorial** button
+  (browser), or the line to type (Continuum).
 - **Bots** (bot-pass sessions) and fake players are never taken in.
-- **Leaving:** `?tutorial off` (also `?skip`) at any point ends it and sends the player
-  on as in "Afterwards". Stated in the first message and repeated every few steps.
-- **Skipping one step:** `?next` skips the current step. Every step has a fallback: if
-  the player hasn't completed it after a while (about 90 s), the hint says `?next` skips
-  it. Steps the server cannot check (see the table) say "type `?next` when ready".
-- **Replay:** `?tutorial` (no arguments) starts it from the beginning for anyone, from
-  any arena. `?tutorial <act>` (controls, screen, objectives) starts at that act. A
-  replay ends by returning the player to the arena they came from (my call); only a
-  newcomer's first run ends as in "Afterwards".
-- **Disconnects:** if a new account drops out mid-tutorial, its next login takes it back
-  in at the start of the act it was in. A second drop-out counts as having left (my
-  call). Guests can't be recognised, so they simply start again.
-- **Records:** the zone stores, per account, when the tutorial was finished or left, and
-  at which step (new table in the accounts db). Used only for the "never force it twice"
-  rule and for a staff count of how far people get; not shown publicly.
+- **Leaving and skipping, without commands to learn:**
+  - Dare client: **Skip** (this step) and **Leave tutorial** buttons beside the mentor
+    box. The client sends the commands for them.
+  - Continuum: an LVZ popup in the mentor box's style, impossible to miss, saying
+    *"Want to skip ahead? Type ?skip and press Enter. To leave: ?leave"*. It shows at
+    the start, and again whenever the player hasn't finished a step for about 60 s.
+  - Underneath, the commands are `?skip` (skip this step) and `?leave` (end the
+    tutorial). Steps the server can't check move on by themselves after the mentor's
+    line, or on Skip.
+- **Replay:** `?tutorial` replays it for anyone, from any arena. A replay ends by
+  returning the player to the arena they came from (my call). The F1 manual and the
+  end of the tutorial mention it.
+- **Disconnects:** a new account that drops out mid-tutorial is taken back in at the
+  start of the act it was in on its next login. A second drop-out counts as having left
+  (my call). Guests simply start again.
+- **Records:** per account, the first game login, and when the tutorial was finished or
+  left and at which step. Used for the rules above and a staff count of how far people
+  get; not shown publicly.
 
 ### The tutorial arena
 
 - One arena per player, created on demand. **My call on naming:** a private arena
-  (`#` prefix, so it is not listed in `?arena` to others) whose name reads like an
-  ordinary arena to the player who is in it, e.g. `#training1`, `#training2`... The
-  builder must check how SubspaceServer resolves `arena.conf` for a `#` name (base name
-  is the name without trailing digits, so `#training`), and fall back to numbered
-  public-style names hidden by `ArenaStore.Visibility` if `#` names don't resolve.
-  Where a client shows the arena name (the Dare client's HUD or chat on entry), the Dare
-  client shows "Training" without the `#` and number.
-- All tutorial arenas share one checked-in arena folder (`deploy/arenas/training/` or
-  the base name the resolution above requires): `arena.conf`, a small purpose-built map
-  and an LVZ file. The arena is a staff arena (not owned by a player) and is not offered
-  in the home page arena list or the zone list.
-- The arena is destroyed when its player leaves (SubspaceServer does this for empty
-  arenas). Its arena bots stop with it, as bots do today.
-- **The map** (small, about 200×200 tiles, built with the zone's map tools) has: an open
-  practice area around the start, a corridor to practise turning and thrusting through,
-  a safe zone, a field where greens appear, one flag, one ball with a goal, and room for
-  the target bots. The builder places these and records their coordinates in the
+  (`#` prefix, unlisted for others) whose name reads like an ordinary one, e.g.
+  `#training1`. The builder checks how SubspaceServer resolves `arena.conf` for a `#`
+  name (the base name is the name without trailing digits, so `#training`). If `#`
+  names don't resolve, the fallback is numbered names hidden by `ArenaStore.Visibility`.
+  Where the Dare client shows the arena name, it shows "Training".
+- All tutorial arenas share one checked-in arena folder: `arena.conf`, a small
+  purpose-built map and the tutorial LVZ file. A staff arena, not offered on the home
+  page or in the zone list. Destroyed when its player leaves; its bots stop with it.
+- **The map** (small, about 200×200 tiles): an open area around the start, a spot to
+  fly to, an open ring where the swarm skit happens, a safe zone, a field where greens
+  appear, one flag, one ball and goal. The builder records the coordinates in the
   tutorial's step data.
+- **Settings** (values left to the builder): Warbird-centred. For the tutorial player,
+  very high energy (they effectively can't die in the skit), and weak bullets that still
+  do damage, so the swarm takes a while by hand. Prizes enabled for the greens step. No
+  stats that count elsewhere.
 - **How many at once:** each tutorial arena with bots runs its own bot-host process,
   and every guest goes in. My call: at most **3** tutorials run with bots at the same
-  time (a setting). Beyond that, a tutorial runs without bots, and the bot steps (7, 16,
-  18, 19, 23) fall back to targets that don't need a bot, or to `?next`. The bot names
-  are unique across the zone but look like ordinary pilot names, and come from a
-  tutorial-specific lineup rather than an arena record in `ArenaStore`.
-- **A quiet arena is fine** (Chris): the player list shows the player and the bots, and
-  no chat is relayed in from other arenas. The chat steps are answered by the
-  teammate bot, so they don't fall flat. Relaying public chat may come later.
-- **Bots:** the arena uses the existing arena-bot host. A **target bot** sits still
-  (sentry, holds fire) for shooting practice; a **teammate bot** on the player's team
-  for the attach step; a weak **fighter bot** for the final duel. They fly under plain
-  names like other arena bots. Which bot is present is changed per step through the bot
-  lineup (bots spectate when not needed).
-- **Arena settings:** Warbird-centred, generous energy, prizes enabled with items the
-  steps grant, attaching allowed on the teammate's ship, short respawn. The builder
-  chooses values; the arena has no kill rewards or stats that count elsewhere.
+  time (a setting). Beyond that, a tutorial runs without bots: the target and swarm
+  steps use stationary map targets (or are skipped with a mentor line). Bot names are
+  unique across the zone but look like ordinary pilot names, from a tutorial-specific
+  lineup rather than an arena record in `ArenaStore`.
+
+### The mentor
+
+- **Character (my call; Chris may change it):** a veteran pilot with a callsign, dry and
+  a little cocky, who teases the player and cheers when they get it. One portrait,
+  roughly 64×64, plus a second "talking" frame for a simple mouth flap. The builder
+  draws a placeholder portrait in the zone's pixel style; Chris can swap in his own.
+- **The box**: bottom-left, above the chat lines, pinned to the chat anchor so it
+  follows the chat's size. It holds the portrait, the character's name and one line of
+  dialogue (two at most). The box appears with each new line and stays until the next;
+  it disappears when the tutorial ends.
+- **The script** lives in one file in the repo: the steps, each step's mentor lines,
+  what each step reveals, grants and checks, and its bot lineup. Lines use placeholders
+  for keys (`{gun}`, `{repel}`), named after the Dare client's `Action` names.
+- **Continuum (generated LVZ):** a build tool renders each line of the script, with
+  Continuum's default keys filled in, into an image in a pixel font. It packs those
+  images, the portrait frames, the box and the covers into the tutorial LVZ file. Each
+  line is a "server controlled" screen object; the tutorial toggles the box, portrait
+  and the current line on and the previous line off. Changing wording = edit the
+  script, rerun the tool, redeploy the arena. The tool, its font and how its output is
+  checked in or built are left to the builder; it reuses `LvzFile.cs`. (`tile-editor`
+  is extending LVZ support in parallel; coordinate before touching the same files.)
+- **Dare client (native):** the zone sends the same line as a structured hint line the
+  client recognises and hides from chat. The client draws the box itself, with the
+  player's real keys in place of the placeholders and a typewriter reveal, plus the
+  Skip and Leave buttons. The client hides the LVZ mentor objects (by object id range)
+  so the box isn't drawn twice. The covers stay LVZ in both clients.
+- **Older Dare clients** (my call): a client that handles tutorial hints says so at
+  login. A client that doesn't (an older desktop build) gets exactly the Continuum
+  experience: LVZ bubbles, and the popup with what to type. So the zone can ship before
+  every client updates. The zone, client and bot changes still ship together.
+- Each line is also sent as an arena message to that player, so it is in the chat log
+  for anyone who scrolls back. The chat isn't the main channel.
 
 ### The black covers (both clients)
 
-- The LVZ file defines one or more black rectangles per HUD part, each anchored to that
-  part's screen reference point (the CLV2 anchors both clients support), on the
-  TopMost layer, display mode **"show always"**, so they are on from the first frame
-  with no toggle at entry. Server-controlled objects start hidden, which would flash
-  the HUD. The Dare client toggles any object off whatever its mode (`lvz.rs`
-  `toggle`). Continuum is expected to do the same, but **this is the first thing to
-  check in a local play-through**, before the steps are built. If Continuum doesn't,
-  the fallback is server-controlled covers toggled on as the player enters the arena,
-  before their ship spawns. The parts:
-  radar, energy bar/gauge, stat box (player list), item and special icons (right side),
-  chat (lines and input), the top/bottom info lines (bounty, ship name, etc.).
-- The tutorial switches covers off per player with `ILvzObjects.Toggle` as steps reveal
-  each part. Leaving or finishing the tutorial switches every cover off first, then
-  moves the player. The LVZ file is served only in the tutorial arena, so it cannot
-  leak elsewhere.
-- **Continuum and chat:** Continuum shows the tutorial's instructions as chat, so in
-  Continuum the bottom few chat lines are uncovered from the start (my call) and the
-  rest of the chat area is revealed in the chat step. In the Dare client the banner
-  carries the instructions, so its chat stays covered until the chat step.
-- The builder verifies in both clients that each cover hides its part at common window
-  sizes (Continuum 1024×768 and 1920×1080; the browser at phone and desktop sizes) and
-  that nothing important is under a cover when it should be visible.
+- The LVZ file defines black rectangles for each HUD part, each anchored to that part's
+  screen reference point (the CLV2 anchors both clients support), on the TopMost layer.
+  The parts are the radar, energy gauge, stat box, item icons and the chat. Display mode
+  is **"show always"**, so they are on from the first frame with no flash. Toggling off
+  per player is done with `ILvzObjects.Toggle`. The Dare client toggles any object off
+  whatever its mode (`lvz.rs` `toggle`); Continuum is expected to, but **this is the
+  first thing to check on a local zone**, before the steps are built. If it doesn't,
+  the fallback is server-controlled covers toggled on as the player enters, before
+  their ship spawns.
+- Leaving or finishing turns every cover and mentor object off, then moves the player.
+  The LVZ file is served only in the tutorial arena.
+- The builder checks at common window sizes (Continuum 1024×768 and 1920×1080; browser
+  at phone and desktop sizes) that each cover hides its part and the mentor box doesn't
+  cover anything that is meant to be visible.
 
-### The steps
+### The story
 
-The step list is data (a table in code or an embedded file): id, act, the instruction
-text (with key placeholders, see the browser extras), what it reveals, the bot lineup,
-items granted, and its completion check. Continuum default keys are named in the text;
-the builder takes the defaults from the Dare client's `input.rs`, which mirrors
-Continuum's, and notes any place they differ.
+Mentor lines below give the gist; the builder writes them, in character, short. Checks
+are server-side. "Reveal" means that cover comes off, and in the Dare client the part
+glows briefly.
 
-| # | Act | Step | Check (server side) |
-|---|-----|------|---------------------|
-| 1 | Controls | Welcome; how to leave. Player is placed in a Warbird. | none (short pause, then on) |
-| 2 | Controls | Turn left and right. | rotation in position packets changes through a full turn |
-| 3 | Controls | Thrust forward and back; fly to the marked spot. | position reaches the spot |
-| 4 | Controls | Fly through the corridor. | position reaches its end |
-| 5 | Screen | **Reveal energy gauge.** Energy is your health and your ammo. | none (pause) |
-| 6 | Controls | Afterburner: hold it and watch energy drop. | speed above the ship's normal top speed for about 1 s |
-| 7 | Controls | Fire bullets at the target bot. | a bullet weapon packet, then a hit or kill on the target |
-| 8 | Controls | Fire a bomb. | bomb weapon packet |
-| 9 | Controls | Lay a mine. | bomb packet with the mine flag |
-| 10 | Screen | **Reveal radar.** Find the safe zone on it and fly there. | safe-zone entry callback |
-| 11 | Screen | Safe zone: you can't be hurt or shoot here; energy refills. | none (pause) |
-| 12 | Objectives | Greens: fly over a prize to pick it up. | green callback |
-| 13 | Screen | **Reveal item icons.** The zone grants items one at a time: | |
-| 13a | | repel | repel weapon packet |
-| 13b | | burst | burst weapon packet |
-| 13c | | decoy | decoy weapon packet |
-| 13d | | thor | thor weapon packet |
-| 13e | | rocket | speed above top speed without afterburner energy drain |
-| 13f | | brick | bricks-placed callback |
-| 13g | | portal: drop one, fly away, warp back | not visible to the server: explain, `?next` |
-| 13h | | warp (back to spawn) | large position jump to a spawn point |
-| 13i | | stealth, cloak, x-radar, antiwarp toggles | status bits in position packets |
-| 14 | Screen | **Reveal stat box.** Names, bounty; cycling the box. | none (pause; `?next`) |
-| 15 | Screen | **Reveal chat.** Say something in public chat. | chat message callback (public) |
-| 16 | Screen | Team chat (`//`), private chat (`:name:`). | team message; private message to the teammate bot |
-| 17 | Screen | Macros: what they are and where they're set (Continuum: options menu; Dare client: its own). | not checkable: explain, `?next` |
-| 18 | Objectives | Change team: join the teammate bot's team. | freq change callback |
-| 19 | Objectives | Attach to the teammate bot. | attach callback |
-| 20 | Objectives | Change ship, then back to the Warbird. | ship change callbacks |
-| 21 | Objectives | Flags: pick up the flag. | flag gain callback |
-| 22 | Objectives | Ball: pick up, shoot, score in the goal. | ball pickup, shoot, goal callbacks |
-| 23 | Objectives | Short duel with the fighter bot. | the player kills it (or `?next` after a while) |
-| 24 | Objectives | The zone's own features: `?go <arena>`, `?bots` (which pilots are bots), arena editor and `?makearena` on the website, `?tutorial` to replay. | none |
-| 25 | | Ending: covers off, move on (see Afterwards). | |
+**Act 1: Controls** (only the ship and the mentor box are visible)
 
-The table is the intended order and content; the builder may reorder within an act,
-merge small steps or drop a check that proves unreliable (falling back to `?next`), and
-notes each change in the plan.
+| # | What happens | Check |
+|---|--------------|-------|
+| 1 | Mentor introduces themselves; the skip/leave popup appears (Continuum) or the buttons glow (browser). Player is in a Warbird. | none (moves on after the line) |
+| 2 | "Turn with ← and →." | rotation goes through a full turn |
+| 3 | "↑ thrusts, ↓ reverses. Fly to the beacon." (a marker on the map) | position reaches the spot |
+| 4 | Reveal **energy**. "That bar is your life *and* your ammo." | none |
+| 5 | A target bot drifts in. "{gun} fires your guns. Hit it." | bullets fired and the target hit |
+| 6 | "{bomb} drops a bomb. Try it." | bomb fired |
 
-Each step text is short (one or two lines). When a step completes, the zone says so
-briefly ("Nice.") and sends the next one. If the player dies, the current step
-continues after respawn.
+**Act 2: The swarm** (the screen)
 
-### Messages to the player
+| # | What happens | Check |
+|---|--------------|-------|
+| 7 | The zone gives the player **Engine Shutdown**, so they can't move. Mentor: their engines are down, sit tight. Reveal **radar**: red dots closing in. | none |
+| 8 | A swarm of bots flies in, stops in a ring around the player and fires slowly, again and again. | none |
+| 9 | The zone gives **Shields** (and a Repel). Mentor announces "I've given you Shields", with a brief in-character description, then reveals the **item icons**. | none |
+| 10 | "Now {repel}: push them back!" | repel fired |
+| 11 | "Now shoot them down with {gun}." The swarm drifts back in. Bullets are weak, so it's slow. After a few kills, or about 20 s, the mentor taunts that this will take forever. | at least one kill, or the timer |
+| 12 | The zone gives **Super**. Mentor: "This'll help." Player kills the rest. | every swarm bot killed |
+| 13 | Engines come back on. Reveal **stat box**: "That's who's out here with you." | none |
 
-- **Continuum:** each instruction is sent as an arena message to that player only
-  (green text in the chat lines kept visible), naming the default keys.
-- **Dare client:** the zone also sends a structured hint line the client recognises and
-  hides from chat, carrying the step number and count, the instruction text with
-  action placeholders (e.g. `{gun}`, `{afterburner}` from the client's `Action` names),
-  and which HUD part to highlight. The client already reacts to zone notice lines this
-  way (the voice silence notice), and the zone already tells the clients apart
-  (`player.Type == ClientType.Continuum`). The exact line format is left to the builder;
-  it must be ignored harmlessly by any other client.
-- The instruction text is kept in one place on the server, so changing wording never
-  needs a client release.
+Super's exact effect in Continuum is checked in the play-through. If it only makes
+weapons cost no energy and the kills don't speed up noticeably, the zone also gives a
+gun upgrade with it, so the payoff is real.
 
-### Browser extras (dare-client)
+**Act 3: Objectives**
 
-- **Banner:** the current instruction, large, top-centre, with "step n of m", replacing
-  the need to read chat.
-- **Real keys:** placeholders are replaced with the player's own binding for that
-  action (`key_name` already exists).
-- **Highlight:** when a step reveals a HUD part, the client draws a glowing outline
-  around it for a few seconds.
-- **Arena list at the end:** when the zone ends the tutorial with "nobody is on", the
-  client opens its arena list (the same one as the start screen).
-- **Remembering:** the client stores locally that this machine has finished or left the
-  tutorial, for the guest rule above.
-- All of this is inert outside the tutorial: with no hint lines, nothing shows.
+| # | What happens | Check |
+|---|--------------|-------|
+| 14 | "Hurt? Fly into the safe zone, there on your radar." Energy refills. | safe-zone entry |
+| 15 | "Greens are prizes. Grab one." | green picked up |
+| 16 | Reveal **chat**. "Say hi." The teammate bot answers. | public chat line |
+| 17 | "Change ship: Esc, then 1–8." (browser: its own way). Then back to the Warbird. | ship change |
+| 18 | "Flags and balls are what most games are about. Grab the flag." | flag picked up |
+| 19 | "Now the ball: pick it up, shoot it into the goal." | ball goal |
+| 20 | Ending: "That's the basics. **F1** has the full manual. Arena editor: on the website. Want to see this again? ?tutorial." | none |
+
+The builder may merge or reorder steps within an act, or drop a check that proves
+unreliable, provided it moves on with a mentor line instead. Changes are noted in the
+plan. If the player dies, the current step continues after respawn.
+
+### The bots
+
+- **Target bot** (act 1): flies in slowly and sits still, holding fire.
+- **Swarm** (act 2, about 5 bots): a **new behaviour** in the bot program (`oss-bot`,
+  dare-client repo). The bots fly toward a given player, stop at a set distance in a
+  ring, face them and fire slowly, and after being repelled come back to the ring. Low
+  energy so kills land.
+- **Teammate bot** (act 3): answers the chat step with a canned line.
+- The lineup changes per step through the existing bot host: bots spectate when not
+  needed.
 
 ### Afterwards
 
-- The zone switches every cover off, records the outcome, and sends the player to the
-  public arena with the most real pilots (bots and fake players not counted; the
-  existing counting code does this already).
-- If no public arena has a real pilot: Continuum players go to the main public arena
-  and get a line naming arenas that have bots and `?go <name>`; Dare client players get
-  the arena list opened for them.
+- Every cover and mentor object goes off, the outcome is recorded, and a newcomer goes
+  to the public arena with the most real pilots (bots and fake players not counted).
+- If no public arena has a real pilot, Continuum players go to the main public arena and
+  get a line about arenas with bots and how to go there. Dare client players get the
+  arena list opened for them.
 
 ## Constraints
 
-- Plugin code in `src/Dare.Arenas` (a new `Tutorial` partial or module beside it) with
-  rules in `Dare.Arenas.Core` so they are unit-tested without a server, as the rest of
-  the plugin does.
-- `dotnet test` passes; the dare-client change has its own tests (`cargo test`).
-- Played through end to end on a local zone in both Continuum and the browser client.
-- LVZ building uses the zone's own LVZ tooling (`LvzFile.cs`); `tile-editor` is
-  extending LVZ object support in parallel, so coordinate with it before touching the
-  same files.
-- Shipping: own branch, merged into `main` in both repos and pushed; no deploy without
+- Plugin code in `src/Dare.Arenas` (a new `Tutorial` partial or module beside it), with
+  rules in `Dare.Arenas.Core` so they are unit-tested without a server.
+- dare-client: the swarm behaviour in `oss-bot`, and the mentor box, buttons and hint
+  handling in `oss-client`, each with tests (`cargo test`).
+- `dotnet test` passes; played through end to end on a local zone in both Continuum and
+  the browser.
+- Shipping: own branches, merged into `main` in both repos and pushed; no deploy without
   asking Chris.
 
 ## Left to the builder
 
-- Arena naming and config resolution details (within "Who is new" and "The tutorial
-  arena" above).
-- The map layout, cover images and sizes, arena settings values.
-- The hint line format and the client's local storage key.
-- Timeouts, pauses, the "Nice." wording and all instruction wording (short, friendly,
-  plain).
+- Arena naming and config resolution (within the rules above).
+- Map layout, cover and mentor art, the pixel font, arena settings values.
+- All dialogue (in character, short), within the story above.
+- The hint-line format, the LVZ object id ranges, the client's local storage key.
+- Timeouts and pauses.
 - How the bot lineup changes per step, within the existing bot host.
