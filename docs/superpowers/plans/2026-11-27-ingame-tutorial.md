@@ -37,7 +37,7 @@
 **Files:** none committed except notes in this plan's "Spike findings" section below.
 
 - [ ] **Step 1:** Build and run a local zone. Run `dotnet build` and then `deploy/apply-local.sh <zoneDir> out/modules/Dare.Arenas`. Find or make the zone dir per `deploy/README.md`. Start Continuum (`~/Applications/Continuum.app`) and the browser client (`~/oss-src/<worktree>/web`) against it.
-- [ ] **Step 2: Covers.** Hand-make a tiny LVZ with `src/Dare.Arenas/Web/wwwroot/lvz.js`: one black 200×200 screen object, mode ShowAlways (0), layer TopMost (7), id 1000, anchored to the radar's CLV2 reference. Put it in a test arena (`Misc:LevelFiles`). Toggle it off with a throwaway `?objoff`-style call (`ILvzObjects.Toggle`). Record whether Continuum and the browser both hide it, and whether any HUD flashes on entry. If Continuum ignores it: use mode ServerControlled, toggled on in `PlayerAction.EnterArena`, and record which.
+- [ ] **Step 2: Covers.** Hand-make a tiny LVZ with `src/Dare.Arenas/Web/wwwroot/lvz.js`: one black 200×200 screen object, mode ShowAlways (0), layer TopMost (7), id 4000, anchored to the radar's CLV2 reference. Put it in a test arena (`Misc:LevelFiles`). Toggle it off with a throwaway `?objoff`-style call (`ILvzObjects.Toggle`). Record whether Continuum and the browser both hide it, and whether any HUD flashes on entry. If Continuum ignores it: use mode ServerControlled, toggled on in `PlayerAction.EnterArena`, and record which.
 - [ ] **Step 3: `#training` config.** Create `arenas/#training/arena.conf` and enter `#training1`. Record whether the config loads (the server log names the conf). If not, record the fallback used (hidden numbered `training1` via `ArenaStore.Visibility`), which Task 4 then uses.
 - [ ] **Step 4: Super.** `?prize` Super to a Warbird. Record what changes: bullet damage, or energy cost only.
 - [ ] **Step 5: Commands.** Run `?help skip`, `?help leave` and `?help tutorial`. Record any that are already taken; a taken name is replaced by `?tskip` / `?tleave` in every task below.
@@ -45,7 +45,10 @@
 
 ### Spike findings
 
-(filled in by Task 0)
+- **Covers in Continuum: unverified.** Chris declined computer access to Continuum (Wine on the Mac). Ruling: covers are **ServerControlled**, toggled **on** for the player in `PlayerAction.EnterArena` of a tutorial arena, then off as revealed. This is the standard objon/objoff use, which works in every client, and the HUD isn't drawn before the map download finishes, so no flash is expected. Task 5 makes covers mode 5 (ServerControlled) instead of ShowAlways; Task 7 toggles them on at entry. Chris checks it in Continuum at the end.
+- **`#training` config: works.** `arenas/#training/arena.conf` is used for `#training1`, `#training2`… (checked with oss-bot: the conf's map was sent). The server caches a conf it has opened, so edits need a new arena or restart. No fallback needed: `ArenaBase = "#training"`.
+- **Super: not measured** (no rendering client available here). Ruling: step 12 grants `Super` and `Gun` together, as the spec's fallback allows.
+- **Commands:** `?skip`, `?leave`, `?tutorial`, `?tutorialclient` are free (no `AddCommand` for them in the server or plugin).
 
 ---
 
@@ -63,7 +66,7 @@
   - `enum CheckKind { None, Rotate, Reach, Weapon, Kills, KillAll, SafeZone, Green, PublicChat, ShipChange, Flag, BallGoal }`
   - `record TutorialCheck(CheckKind Kind, int X = 0, int Y = 0, int Radius = 0, string? Weapon = null, int Count = 0, int OrAfterSeconds = 0)`. `Weapon` is one of `bullet|bomb|mine|repel`; `Reach` uses tiles.
   - `record CastLine(string Role, string Seat, string Script)`. Role is `target|swarm|teammate`, Seat is `in|spec`, Script holds oss-bot script lines.
-  - `record TutorialLine(int Index, string Text)`. `Index` is global, in file order, and is used as LVZ id `3000 + Index`.
+  - `record TutorialLine(int Index, string Text)`. `Index` is global, in file order, and is used as LVZ id `5000 + Index`.
   - `record TutorialStep(string Id, int Act, IReadOnlyList<TutorialLine> Lines, IReadOnlyList<HudPart> Reveal, IReadOnlyList<string> Grant, bool EngineOff, TutorialCheck Check, int PauseSeconds, IReadOnlyList<CastLine> Cast, IReadOnlyList<CastLine> LeanCast)`. `Grant` holds `SS.Packets.Game.Prize` names, kept as strings in Core.
   - `record TutorialScript(string MentorName, IReadOnlyDictionary<string,string> ContinuumKeys, IReadOnlyList<TutorialStep> Steps, IReadOnlyList<TutorialLine> Prompts)`. `Prompts` holds the skip/leave popup, the "Try the tutorial" prompt and the ending lines.
   - `static TutorialScript TutorialScript.Parse(string json)`, which throws `FormatException` naming the step on bad input.
@@ -224,17 +227,17 @@
 **Interfaces:**
 - Consumes: `src/Dare.Arenas/Web/wwwroot/lvz.js` (read/write model `{version, files, images, objects}`), and `tests/js` mapgen/lvl helpers to build the map.
 - Produces, as fixed object ids the zone uses:
-  - covers `1000 + HudPart` (Radar 1000, Energy 1001, StatBox 1002, Items 1003, Chat 1004), plus `1005` for the upper chat area in Continuum;
-  - mentor frame `2000`, portrait frames `2001`/`2002`, skip popup `2010`, "Try the tutorial" popup `2011`, beacon map object `2100`;
-  - line `3000 + TutorialLine.Index`; prompt lines continue the same numbering.
-  - Mode is ShowAlways for covers (or per the spike) and ServerControlled for everything else. Screen anchors: mentor objects use the chat CLV2 anchor with negative y.
+  - covers `4000 + HudPart` (Radar 4000, Energy 4001, StatBox 4002, Items 4003, Chat 4004), plus `4005` for the upper chat area in Continuum;
+  - mentor frame `4100`, portrait frames `4101`/`4102`, skip popup `4110`, "Try the tutorial" popup `4111`, beacon map object `4200` (ids 2000–2999 belong to game modes);
+  - line `5000 + TutorialLine.Index`; prompt lines continue the same numbering.
+  - Every object is ServerControlled (covers too, per the spike findings). Screen anchors: mentor objects use the chat CLV2 anchor with negative y.
   - `node tools/tutorial-lvz/build.js` writes `deploy/arenas/#training/tutorial.lvz` from `script.json`, and the two portrait frames to `site/tutorial-mentor.png` (used by Task 8), putting Continuum keys in via the same `{action}` rule as `TutorialScript.ForContinuum`.
 
 - [ ] **Step 1: Write failing tests**
 
 ```js
-test("every script line has an object 3000+index and an image", ...)
-test("covers 1000-1005 are TopMost and on from the start", ...)
+test("every script line has an object 5000+index and an image", ...)
+test("covers 4000-4005 are TopMost and server-controlled", ...)
 test("mentor objects are server-controlled and start off", ...)
 test("placeholders are filled with Continuum keys", /* render text of line with {gun} → contains "Ctrl" via the tool's text-layout fn */)
 test("output round-trips through lvz.js", ...)
@@ -302,7 +305,7 @@ and in dare-zone `BotLineupTests`: `HostProblem_AcceptsSwarm`.
     - `enteringPublic = arena.IsPublic`;
     - `firstEntryThisLogin` from a per-player flag.
   - `Start`/`Resume`: `Allocate` an arena and `SendToArena`.
-  - `Offer`: send the "Try the tutorial" prompt (LVZ 2011 for non-capable players, a `~tut~ prompt try` hint for capable ones).
+  - `Offer`: send the "Try the tutorial" prompt (LVZ 4111 for non-capable players, a `~tut~ prompt try` hint for capable ones).
   - Accounts: call `NoteGameLogin` only after `Decide`, so the "no row" case is seen first.
 - [ ] **Step 2: Running a tutorial.**
   - On entering a tutorial arena, make a `TutorialRun`, lean per `Lean(runningFull, FullCasts)`. Wait up to 2 s for `?tutorialclient`, then `Start()`.
@@ -313,13 +316,13 @@ and in dare-zone `BotLineupTests`: `HostProblem_AcceptsSwarm`.
     - other callbacks become their events;
     - a 1 s timer sends `Tick`.
   - Apply effects:
-    - `Say`: an arena message to the player with `ForContinuum` text. Non-capable players get toggles for LVZ 2000, 2001, `3000+idx` on and the previous line off; capable players get a `~tut~ say` hint.
+    - `Say`: an arena message to the player with `ForContinuum` text. Non-capable players get toggles for LVZ 4100, 4101, `5000+idx` on and the previous line off; capable players get a `~tut~ say` hint.
     - `RevealPart`: toggle the cover off, plus a `~tut~ reveal` hint.
     - `Grant`: `GivePrize`.
     - `EngineOff`: `GivePrize(Shutdown)`.
     - `EngineOn`: `ShipReset`.
     - `SetCast`: store the run's lineup.
-    - `ShowSkipPrompt`: LVZ 2010, or the hint.
+    - `ShowSkipPrompt`: LVZ 4110, or the hint.
     - `Finished`: see Step 4.
   - Put the player in Warbird freq 0 on entry. An early ship change before step 17 is put back to the Warbird. Re-apply `Shutdown` after a respawn while act 2 has the engine off.
 - [ ] **Step 3: Bots.**
