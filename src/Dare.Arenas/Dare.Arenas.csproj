@@ -35,6 +35,7 @@
     <EmbeddedResource Include="../../site/header.css;../../site/header.js;../../site/chat.css;../../site/chat.js" LogicalName="wwwroot/%(Filename)%(Extension)" />
     <!-- Stock game graphics, shown as an arena's current graphics until it replaces them. -->
     <EmbeddedResource Include="Web/gfx/*.bm2" LogicalName="gfx/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Web/wwwroot/gamemode-art/*.bmp" LogicalName="gamemode-art/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- The voice-menu phrase table (single source: voice/phrases.json). -->
