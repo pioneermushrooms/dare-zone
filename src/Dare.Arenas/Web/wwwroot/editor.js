@@ -573,7 +573,9 @@ function signedIn() {
   $("undo").addEventListener("click", undo);
   $("redo").addEventListener("click", redo);
 
-  function pickTile(t) { cur = t; if (["erase", "pan", "tidy", "pick", "select", "lasso", "wand"].includes(tool)) setTool("pencil"); drawPalette(); }
+  // tells other panels (lvz-layer.js leaves LVZ placement) that the pilot went back to drawing
+  const toolNote = () => window.dispatchEvent(new CustomEvent("map:tool", { detail: { tool, tile: cur } }));
+  function pickTile(t) { cur = t; if (["erase", "pan", "tidy", "pick", "select", "lasso", "wand"].includes(tool)) setTool("pencil"); drawPalette(); toolNote(); }
   pal.addEventListener("click", (e) => { const t = palTileAt(e); if (t) pickTile(t); });
   mini.addEventListener("click", (e) => {
     const r = mini.getBoundingClientRect();
@@ -594,12 +596,13 @@ function signedIn() {
     }
     view.classList.toggle("panning", t === "pan");
     if (tools) tools.toolOn(t);
+    toolNote();
   }
   // the drawing tools (drawtools.js): shapes, fill, text, selections, all auto-tiled
   const tools = window.DrawTools && DrawTools.mount({
     N, get grid() { return grid; },
     cur: () => cur, tool: () => tool, layout: () => tileLayout(),
-    setTool, pick: (t) => { cur = t; drawPalette(); say(`Drawing with tile ${t}.`, true); },
+    setTool, pick: (t) => { cur = t; drawPalette(); say(`Drawing with tile ${t}.`, true); toolNote(); },
     commit(change) { if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); } draw(); },
     draw: () => draw(), drawTile, say,
   });
