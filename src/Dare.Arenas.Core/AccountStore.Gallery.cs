@@ -204,6 +204,7 @@ public sealed partial class AccountStore
                 if (thumb.Length > MaxGalleryThumbBytes || !IsPngOfSize(thumb, file.ThumbWidth, file.ThumbHeight))
                     return new(false, $"The preview must be a {file.ThumbWidth}×{file.ThumbHeight} PNG of at most {MaxGalleryThumbBytes / 1024} KB.", 0, []);
             }
+            else if (file.ThumbWidth > 0) return new(false, $"{Article(file.Kind.Label)[..1].ToUpperInvariant()}{Article(file.Kind.Label)[1..]} needs its {file.ThumbWidth}×{file.ThumbHeight} preview picture (the Foundry page draws it when you share).", 0, []);
             else thumb = null;
         }
         else thumb = null;

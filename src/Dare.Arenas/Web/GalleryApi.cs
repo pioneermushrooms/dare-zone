@@ -66,21 +66,11 @@ internal sealed partial class WebServer
         file = AccountStore.FindGalleryFileKind(k.Name) is { } f ? f.Extension : null,
     };
 
-    /// <summary>
-    /// Keep for maps and tilesets: into the pilot's own maps or tilesets, the Arena Editor's library
-    /// (the map editor opens and applies them from there). Null for every other kind.
-    /// </summary>
+    /// <summary>Keep for maps and tilesets (into the pilot's maps or tilesets, the Arena Editor's library); null for every other kind.</summary>
     private Reply? KeepInLibrary(string pilot, long itemId)
     {
-        if (_m.Accounts.GalleryImage(itemId) is not { } item) return null;
-        var save = AccountStore.FindGalleryKind(item.Kind)?.Save;
-        if (save is not ("maps" or "tilesets")) return null;
-        Result r;
-        long savedId;
-        if (save == "maps") r = _m.WebStore.SaveMap(pilot, null, item.Name, item.Image, out savedId);
-        else r = _m.WebStore.SaveTileset(pilot, null, item.Name, item.Image, null, out savedId);
-        if (r.Ok) _m.Accounts.CountGallerySave(itemId);
-        return JsonReply(r.Ok ? 200 : 400, new { ok = r.Ok, message = r.Message, kept = r.Ok ? save : null, keptId = savedId });
+        if (_m.Accounts.KeepGalleryInLibrary(itemId, _m.WebStore, pilot) is not { } k) return null;
+        return JsonReply(k.Result.Ok ? 200 : 400, new { ok = k.Result.Ok, message = k.Result.Message, kept = k.Result.Ok ? k.Kept : null, keptId = k.KeptId });
     }
 
     /// <summary>?kind= &amp;ship= &amp;q= &amp;pilot= &amp;before= &amp;limit=: a page of designs, newest first, and the kinds there are.</summary>

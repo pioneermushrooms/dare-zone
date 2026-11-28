@@ -29,13 +29,14 @@ public static class LvlFile
         return 0;
     }
 
-    /// <summary>Whether <paramref name="b"/> reads as a map: a prefix (or none), then whole tile entries.
+    /// <summary>Whether <paramref name="b"/> reads as a map: a prefix with tiles after it, or only tile entries.
     /// A file with no prefix must hold only good tiles (on the grid, not 0), so other files don't pass for one.</summary>
     public static bool Looks(ReadOnlySpan<byte> b)
     {
         var start = TilesStart(b);
-        if (start < 0 || (b.Length - start) % 4 != 0 || b.Length - start < 4) return false;
-        if (start > 0) return true;
+        if (start < 0 || b.Length - start < 4) return false;
+        if (start > 0) return true; // a prefix with tiles after it (Check says when they're cut short)
+        if (b.Length % 4 != 0) return false;
         for (var p = 0; p + 4 <= b.Length; p += 4)
             if (!GoodTile(BinaryPrimitives.ReadUInt32LittleEndian(b[p..(p + 4)]))) return false;
         return true;
@@ -98,11 +99,29 @@ public sealed partial class AccountStore
             IsTilesetFile, CheckTilesetFile, TilesetBytes, Extension: "bm2", ContentType: "image/bmp"),
     ];
 
+    /// <summary>
+    /// Keeps a shared map or tileset in <paramref name="pilot"/>'s maps or tilesets in
+    /// <paramref name="library"/> (the Arena Editor's, where the map editor opens and applies them).
+    /// Null when the item isn't a map or tileset (it is kept by <see cref="SaveGalleryItem"/>).
+    /// </summary>
+    public (Result Result, string Kept, long KeptId)? KeepGalleryInLibrary(long itemId, ArenaStore library, string pilot)
+    {
+        if (GalleryImage(itemId) is not { } item) return null;
+        var save = FindGalleryKind(item.Kind)?.Save;
+        if (save is not ("maps" or "tilesets")) return null;
+        long id;
+        var r = save == "maps"
+            ? library.SaveMap(pilot, null, item.Name, item.Image, out id)
+            : library.SaveTileset(pilot, null, item.Name, item.Image, null, out id);
+        if (r.Ok) CountGallerySave(itemId);
+        return (r, save, id);
+    }
+
     /// <summary>A 304×160 BMP, or a map that carries one.</summary>
     private static bool IsTilesetFile(ReadOnlySpan<byte> b)
     {
         if (b.Length < 26 || b[0] != 'B' || b[1] != 'M') return false;
-        if (LvlFile.TilesStart(b) is var start and > 0 && start < b.Length) return LvlFile.Looks(b) && LvlFile.TilesetOf(b) is not null;
+        if (LvlFile.TilesStart(b) is var start and > 0 && start < b.Length) return LvlFile.Looks(b) && LvlFile.Check(b) is null && LvlFile.TilesetOf(b) is not null;
         return BinaryPrimitives.ReadInt32LittleEndian(b[18..22]) == TilesetFile.Width && Math.Abs(BinaryPrimitives.ReadInt32LittleEndian(b[22..26])) == TilesetFile.Height;
     }
 
