@@ -71,6 +71,12 @@ test("covers 4000-4005 are TopMost and server-controlled", async () => {
       const im = await imageOf(lvz, o);
       // Continuum draws pure black as see-through: a cover must be opaque everywhere
       assert.ok(im.rgba.every((v, i) => i % 4 !== 3 || v === 255), `cover ${id} is opaque`);
+      // ...and looks black: the darkest colour that still isn't black in Continuum's 16-bit (RGB565) colour
+      for (let i = 0; i < im.rgba.length; i += 4) {
+        const [r, g, b] = im.rgba.subarray(i, i + 3);
+        assert.ok((r >> 3) + (g >> 2) + (b >> 3) > 0, `cover ${id} pixel turns black (see-through) in 16-bit colour`);
+        assert.ok(r + g + b <= 4, `cover ${id} pixel ${r},${g},${b} is not black-looking`);
+      }
     }
   }
 });

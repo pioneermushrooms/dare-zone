@@ -35,9 +35,10 @@ const TEXT_CHARS = 46, TEXT_W = TEXT_CHARS * Font.W, TEXT_H = 2 * Font.H;
 const PAD = 8, P = Portrait.SIZE;
 const BOX_W = PAD + P + PAD + TEXT_W + PAD, BOX_H = PAD + P + PAD;
 const POP_W = TEXT_W + 24, POP_H = TEXT_H + 24;
-// Continuum draws pure black as see-through, so "black" covers are a near-black that survives 16-bit colour
+// Continuum draws pure black as see-through, so "black" covers are the darkest colour that isn't black once
+// Continuum's 16-bit (RGB565) colour has had it: the smallest green step, which looks black
 const COL = {
-  cover: [16, 16, 18], text: [234, 238, 242], name: [250, 196, 64],
+  cover: [0, 4, 0], text: [234, 238, 242], name: [250, 196, 64],
   box: [20, 26, 42], boxEdge: [112, 132, 172], boxHi: [52, 64, 96], popEdge: [250, 196, 64], beacon: [80, 232, 255],
 };
 const REF = { topLeft: 0, centre: 1, statBox: 3, specialsTop: 4, belowEnergy: 6, chat: 7, radar: 8, weaponsTop: 10 };
