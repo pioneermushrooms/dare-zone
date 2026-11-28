@@ -169,6 +169,7 @@ public sealed partial class AccountStore : IDisposable
         Exec("CREATE INDEX IF NOT EXISTS ix_accounts_link ON accounts(link_id);");
         CreateWebSessionTable();
         CreateGalleryTables();
+        CreateBannerTables();
         CreateProfileTable();
         CreateWallTable();
         CreateInboxTables();

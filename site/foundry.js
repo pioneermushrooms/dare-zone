@@ -1,4 +1,5 @@
 // The Foundry (/foundry.html): ships and graphics pilots shared for everyone (/account/api/gallery).
+// Banners: pilots' own are cards like any design; the Banner Emporium's library is foundry-banners.js.
 // Anyone can browse and download; a signed-in pilot can keep a copy in their own Shipyard or Armory
 // (other graphics become their own picture for that graphic), share their own, and take theirs down.
 // The server decides what a sheet is from its size and frame grid; this page only asks the pilot
@@ -191,6 +192,7 @@ const KIND_RENDER = {
     tilesetCanvas(it.file ?? it.image).then((ts) => c.getContext("2d").drawImage(ts, 0, 0)).catch(() => c.setAttribute("aria-label", `${it.name} (couldn't be drawn)`));
     return zoomable(c, it);
   },
+  banner: (it) => zoomable(el("img", { class: "sheet banner", src: it.image, alt: `Banner: ${it.name}`, loading: "lazy", width: "96", height: "64" }), it),
 };
 
 function zoomable(art, it) {
@@ -203,7 +205,7 @@ function showZoom(art, it) {
   const box = $("zoom");
   const big = art.tagName === "IMG" ? el("img", { src: art.src, alt: art.alt }) : el("canvas", { width: String(art.width), height: String(art.height), role: "img", "aria-label": art.getAttribute("aria-label") });
   if (big.tagName === "CANVAS") big.getContext("2d").drawImage(art, 0, 0);
-  big.className = "zoomed " + (it.kind === "tileset" ? "tileset" : "map");
+  big.className = "zoomed " + (it.kind === "tileset" || it.kind === "banner" ? it.kind : "map");
   $("zoom-title").textContent = `${it.name} · ${kindText(it)}`;
   $("zoom-art").replaceChildren(big);
   box.showModal();
@@ -253,7 +255,7 @@ function writeAddress() {
   history.replaceState(null, "", location.pathname + (s ? "?" + s : ""));
 }
 
-const PLURAL = { map: "Maps", tileset: "Tilesets" };
+const PLURAL = { map: "Maps", tileset: "Tilesets", banner: "Banners" };
 
 function fillKinds() {
   const sel = $("kind");
@@ -318,9 +320,13 @@ async function load(more = false) {
 
 const filtered = () => !!(filter.q || filter.kind || filter.pilot);
 
+/** Tells the banner library (foundry-banners.js) what the filters are: it shows with Kind = Banners. */
+const announce = () => document.dispatchEvent(new CustomEvent("foundry-filter", { detail: { ...filter } }));
+
 function refresh() {
   writeAddress();
   showActive();
+  announce();
   next = 0;
   void load();
 }
@@ -359,7 +365,13 @@ function card(it) {
   keep.addEventListener("click", () => void keepIt(it, k, keep));
   const dl = el("a", { class: "btn small", href: `${it.file ?? it.image}&download=1`, download: "", text: "Download",
     title: k?.file ? `The .${k.file} file` : undefined });
-  acts.append(keep, dl);
+  acts.append(keep);
+  if (it.kind === "banner") {
+    const use = el("button", { type: "button", class: "btn small", text: "Use as my banner" });
+    use.addEventListener("click", () => void useBanner(it, use));
+    acts.append(use);
+  }
+  acts.append(dl);
   if (viewer && (it.mine || viewer.staff)) {
     const rm = el("button", { type: "button", class: "btn small danger", text: it.mine ? "Take down" : "Take down (staff)" });
     rm.addEventListener("click", () => void takeDown(it, rm));
@@ -389,6 +401,20 @@ async function keepIt(it, k, button) {
       return;
     }
     say(`${it.name}: ${r.message}${k?.save === "graphics" ? "" : " Put it on in the game's Graphics overlay (Esc → G)."}`, "good");
+  } catch (e) {
+    say(e.message, "bad");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Keeps a shared banner in the Armory and makes it the pilot's banner. */
+async function useBanner(it, button) {
+  if (!viewer) { location.href = signInHref(); return; }
+  button.disabled = true;
+  try {
+    const r = await call("/gallery/save", { id: it.id, use: true });
+    say(`${it.name}: ${r.message} It shows beside your name in the game.`, "good");
   } catch (e) {
     say(e.message, "bad");
   } finally {
@@ -491,6 +517,29 @@ async function shipBmpToPng(bytes, w, h) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** A 12×8 picture as a 24-bit BMP (clear pixels black), which the server matches to the game's palette. */
+async function bannerBmp(bytes) {
+  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const c = el("canvas", { width: "12", height: "8" });
+  const g = c.getContext("2d");
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, 12, 8);
+  g.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const px = g.getImageData(0, 0, 12, 8).data;
+  const out = new Uint8Array(54 + 36 * 8);
+  const v = new DataView(out.buffer);
+  out[0] = 0x42; out[1] = 0x4d;
+  v.setUint32(2, out.length, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+  v.setInt32(18, 12, true); v.setInt32(22, 8, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 12; x++) {
+      const s = (y * 12 + x) * 4, d = 54 + (7 - y) * 36 + x * 3;
+      out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s];
+    }
+  return out;
+}
+
 function sizeOf(b) {
   if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50) return { png: true, w: (b[16] << 24 | b[17] << 16 | b[18] << 8 | b[19]) >>> 0, h: (b[20] << 24 | b[21] << 16 | b[22] << 8 | b[23]) >>> 0 };
   if (b.length >= 26 && b[0] === 0x42 && b[1] === 0x4d) {
@@ -524,6 +573,9 @@ async function pickFile(file) {
   const size = sizeOf(bytes);
   if (size && !size.png && size.w % 10 === 0 && size.h === size.w / 10 * 4) {
     try { bytes = await shipBmpToPng(bytes, size.w, size.h); } catch { /* the server will say */ }
+  }
+  if (size?.png && size.w === 12 && size.h === 8) {
+    try { bytes = await bannerBmp(bytes); } catch { /* the server will say */ }
   }
   say("Checking what it is…", "", "share-status");
   try {
@@ -635,4 +687,5 @@ $("zoom-close").addEventListener("click", () => $("zoom").close());
 $("zoom").addEventListener("click", (e) => { if (e.target === $("zoom")) $("zoom").close(); });
 addEventListener("hashchange", () => void showLinked());
 showActive();
+announce();
 void load();

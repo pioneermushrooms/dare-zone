@@ -12,7 +12,7 @@ host=subspacefoundation.com
 files=(
   style.css home.css play.css header.css chat.css chat.js arena-list.js header.js graphics.js graphics-other.js graphics-armory.js loading.js jump.webp sector.png
   arena-owner-reference.html arena-owners.html pilot.html
-  arenas.html index.html build.html foundry.html foundry.css foundry.js
+  arenas.html index.html build.html foundry.html foundry.css foundry.js foundry-banners.js
 )
 for name in "${files[@]}"; do
   [[ -f "$stage/$name" && ! -L "$stage/$name" ]] || { echo "Missing site file: $name" >&2; exit 1; }

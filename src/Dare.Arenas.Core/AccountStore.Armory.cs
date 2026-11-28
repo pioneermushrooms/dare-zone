@@ -7,8 +7,9 @@ public sealed record ArmoryItem(long Id, string Kind, string Name, string Source
 /// A weapon graphic the armory holds: the game's sheet of that name, its exact size (the game
 /// reads frames at fixed cells, so a replacement keeps the stock layout), and whether it can be
 /// set for one ship's shots (projectiles know their ship; repel and rocket effects don't).
+/// <see cref="Generate"/> is false for kinds the ship service doesn't make (banners).
 /// </summary>
-public sealed record ArmoryKind(string Name, string Label, int Width, int Height, bool PerShip, bool Prompt, string Hint);
+public sealed record ArmoryKind(string Name, string Label, int Width, int Height, bool PerShip, bool Prompt, string Hint, bool Generate = true);
 
 /// <summary>
 /// Each pilot name's armory: weapon sheets (bullets, bombs, mines, shrapnel, repel, rocket) they
@@ -29,6 +30,9 @@ public sealed partial class AccountStore
         new("shrapnel", "Shrapnel", 80, 48, true, true, "8×8 frames, 10 to a row. Rows: levels 1–3, then bouncing 1–3."),
         new("repel", "Repel", 480, 192, false, true, "96×96 frames: the repel's ring, growing frame by frame. Every ship's repel looks the same."),
         new("rocket", "Rocket", 312, 48, false, true, "24×24 frames: the rocket's trail, a flash, a glow, then smoke. Every ship's rocket looks the same."),
+        // Not a weapon: the pilot's banner, shown beside their name. Its slot (every ship) is the banner the zone shows.
+        new("banner", "Banner", BannerFile.Width, BannerFile.Height, false, false,
+            "12×8 pixels in the game's 256 colours, shown beside your name in the game. A banner you set in Continuum itself wins over this one.", false),
     ];
 
     public static ArmoryKind? FindArmoryKind(string? name) =>
@@ -72,6 +76,7 @@ public sealed partial class AccountStore
         if (FindArmoryKind(kind) is not { } k) return Fail("That isn't one of the weapons.");
         if (!ShipSources.Contains(source)) return Fail("Unknown source.");
         if (!IsArmorySheet(k, image, out var why)) return Fail(why);
+        if (k.Name == "banner") image = BannerFile.Normalise(image); // the game's own 8-bit file, whatever it came as
         var clean = CleanShipName(string.IsNullOrWhiteSpace(name) ? k.Label : name);
         long id = 0;
         var r = Tx(() =>
@@ -132,6 +137,7 @@ public sealed partial class AccountStore
     public static bool IsArmorySheet(ArmoryKind kind, ReadOnlySpan<byte> image, out string error)
     {
         if (image.Length > MaxArmoryImageBytes) { error = $"That sheet is over {MaxArmoryImageBytes / 1024} KB."; return false; }
+        if (kind.Name == "banner") { error = BannerFile.Check(image) ?? ""; return error.Length == 0; }
         if (!GameGraphics.TryCheckImage(image, out _, out var w, out var h, out error)) return false;
         if (w != kind.Width || h != kind.Height)
         {

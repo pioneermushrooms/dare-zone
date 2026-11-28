@@ -8,6 +8,9 @@
 // layout (rows are weapon levels, EMP, bouncing...), since the game cuts frames at fixed cells.
 // The game is reached through globalThis.dareGraphics (play/start.mjs): `bombs` is the sheet for
 // every ship, `bombs@3` the one for ship 3's shots.
+// The Armory also holds banners (12×8, the game palette): not a weapon the browser game draws, but
+// the picture beside the pilot's name. The one on "every ship" is their banner, which the zone
+// shows (the server keeps it as the game's own 8-bit BMP and sets it as they enter an arena).
 const SHIPS = ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 const API = "/account/api/armory";
 const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "dare-arena" };
@@ -19,7 +22,10 @@ const CELLS = {
   shrapnel: { w: 8, h: 8, row: 10 },
   repel: { w: 96, h: 96 },
   rocket: { w: 24, h: 24 },
+  banner: { w: 12, h: 8, row: 1 },
 };
+const BANNER = "banner";
+const isBanner = (name) => name === BANNER;
 
 const $ = (id) => document.getElementById(id);
 const dialog = $("graphics");
@@ -50,6 +56,8 @@ let shown = null; // { bytes, stem } of the sheet shown as current, for Download
 const kindOf = (name) => kinds.find((k) => k.name === name);
 const gameName = (k, s) => (s ? `${k}@${s}` : k);
 const shipLabel = (s) => (s ? `ship ${s} (${SHIPS[s - 1]})` : "every ship");
+/** What putting an item on the selected weapon does, in words. */
+const putOn = (name, s) => (isBanner(name) ? "wear it as your banner" : `put it on ${shipLabel(s)}`);
 
 // ---- the server --------------------------------------------------------------------------------
 async function call(path, body) {
@@ -93,7 +101,7 @@ async function applyArmory() {
   if (!game || !(await load())) return;
   const jobs = [];
   for (const [name, row] of Object.entries(armory.slots))
-    row.forEach((id, s) => {
+    if (!isBanner(name)) row.forEach((id, s) => {
       if (id) jobs.push(itemBytes(id).then((bytes) => game.set(gameName(name, s), bytes))
         .catch((error) => console.warn(`${gameName(name, s)}:`, error)));
     });
@@ -137,6 +145,24 @@ const sheetFromBytes = (bytes, need) => sheetFromBlob(new Blob([bytes]), need);
 async function pngBytes(sheet) {
   const blob = await new Promise((resolve) => sheet.toBlob(resolve, "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** A banner as a 24-bit BMP (clear pixels black): the server turns it into the game's 8-bit file. */
+function bannerBmp(sheet) {
+  const g = sheet.getContext("2d");
+  const px = g.getImageData(0, 0, 12, 8).data;
+  const out = new Uint8Array(54 + 36 * 8);
+  const v = new DataView(out.buffer);
+  out[0] = 0x42; out[1] = 0x4d;
+  v.setUint32(2, out.length, true); v.setUint32(10, 54, true); v.setUint32(14, 40, true);
+  v.setInt32(18, 12, true); v.setInt32(22, 8, true); v.setUint16(26, 1, true); v.setUint16(28, 24, true);
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 12; x++) {
+      const s = (y * 12 + x) * 4, d = 54 + (7 - y) * 36 + x * 3;
+      if (px[s + 3] < 128) continue; // clear: black
+      out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s];
+    }
+  return out;
 }
 
 /** A file name from a pilot's name for a sheet: "Green plasma" -> "green-plasma". */
@@ -274,6 +300,8 @@ async function showCurrent() {
   $("gfx-a-hint").textContent = k?.hint ?? "";
   $("gfx-a-restore").disabled = busy || !own;
   $("gfx-a-prompted").hidden = !k?.generate?.includes("prompt");
+  $("gfx-a-generate").hidden = !k?.generate?.length;
+  $("gfx-a-restore").textContent = isBanner(kind) ? "No banner" : "Restore default";
   let sheet = null, bytes = null, stem = "";
   try {
     if (item) {
@@ -281,6 +309,8 @@ async function showCurrent() {
       stem = `${kind}-${slug(item.name) || item.id}`;
       sheet = await sheetFromBytes(bytes);
       label.textContent = `${k.label}${where}: ${item.name} (from your armory${own || !ship ? "" : ", for every ship"})`;
+    } else if (isBanner(kind)) {
+      label.textContent = "Banner: none yet. Upload one (12×8), or keep one from the Foundry.";
     } else {
       bytes = await stockBytes(kind);
       stem = kind;
@@ -296,7 +326,7 @@ async function showCurrent() {
   play(current, sheet, kind);
   showSheet(currentSheet, sheet);
   $("gfx-a-note").textContent = armory
-    ? `${k?.label ?? ""} you've saved. Click one to put it on ${k?.perShip ? shipLabel(ship) : "every ship"}.`
+    ? `${k?.label ?? ""}${isBanner(kind) ? "s" : ""} you've saved. Click one to ${putOn(kind, k?.perShip ? ship : 0)}.`
     : "";
 }
 
@@ -311,7 +341,7 @@ function renderList() {
     const pick = document.createElement("button");
     pick.type = "button";
     pick.className = "thumb";
-    pick.title = `${it.name}: put it on ${k?.perShip ? shipLabel(ship) : "every ship"}`;
+    pick.title = `${it.name}: ${putOn(kind, k?.perShip ? ship : 0)}`;
     const art = document.createElement("span");
     art.className = "art";
     const cell = CELLS[kind];
@@ -326,8 +356,8 @@ function renderList() {
     if (on.length) {
       const badge = document.createElement("span");
       badge.className = "on";
-      badge.textContent = on.join(" ");
-      badge.title = `On ${on.map((s) => (s === "all" ? "every ship" : `ship ${s}`)).join(", ")}`;
+      badge.textContent = isBanner(kind) ? "on" : on.join(" ");
+      badge.title = isBanner(kind) ? "Your banner" : `On ${on.map((s) => (s === "all" ? "every ship" : `ship ${s}`)).join(", ")}`;
       pick.append(badge);
     }
     pick.addEventListener("click", () => void useItem(it, ship));
@@ -375,6 +405,7 @@ const FALLBACK_KINDS = [
   { name: "shrapnel", label: "Shrapnel", width: 80, height: 48, perShip: true, generate: ["random", "prompt"], hint: "" },
   { name: "repel", label: "Repel", width: 480, height: 192, perShip: false, generate: ["random", "prompt"], hint: "" },
   { name: "rocket", label: "Rocket", width: 312, height: 48, perShip: false, generate: ["random", "prompt"], hint: "" },
+  { name: "banner", label: "Banner", width: 12, height: 8, perShip: false, generate: [], hint: "" },
 ];
 
 /** Puts a saved item on the selected weapon for ship `s` (0 = every ship): on the account, then in the game. */
@@ -383,6 +414,7 @@ async function useItem(it, s) {
   setBusy(true, `Putting ${it.name} on ${shipLabel(s)}…`);
   try {
     await call("/slot", { kind, ship: s, id: it.id });
+    if (isBanner(kind)) { say(`${it.name} is your banner now.`); return; }
     globalThis.dareGraphics?.set(gameName(kind, s), await itemBytes(it.id));
     await nextFrame();
     say(`${it.name} is on ${shipLabel(s)}.`);
@@ -408,7 +440,7 @@ async function removeItem(it) {
   try {
     const on = (armory.slots[it.kind] ?? []).map((id, s) => (id === it.id ? s : -1)).filter((s) => s >= 0);
     await call("/remove", { id: it.id });
-    for (const s of on) globalThis.dareGraphics?.clear(gameName(it.kind, s));
+    if (!isBanner(it.kind)) for (const s of on) globalThis.dareGraphics?.clear(gameName(it.kind, s));
     await nextFrame();
     say(`Removed ${it.name}.`);
   } catch (error) {
@@ -424,6 +456,7 @@ async function restoreDefault() {
   setBusy(true, "Back to the default…");
   try {
     if (armory) await call("/slot", { kind, ship, id: 0 });
+    if (isBanner(kind)) { say("No banner now."); return; }
     globalThis.dareGraphics?.clear(gameName(kind, ship));
     await nextFrame();
     say(ship ? `${kindOf(kind).label} on ship ${ship}: back to ${armory?.slots?.[kind]?.[0] ? "your every-ship one" : "the default"}.`
@@ -452,7 +485,7 @@ function showReview(next) {
   if (!next) { play(reviewSpin, null, kind); return; }
   play(reviewSpin, next.sheet, kind);
   showSheet(reviewSheet, next.sheet);
-  $("gfx-a-review-note").textContent = `${kindOf(kind).label}: ${next.name}. The preview plays level 1.`;
+  $("gfx-a-review-note").textContent = isBanner(kind) ? `Banner: ${next.name}. Colours become the game's nearest.` : `${kindOf(kind).label}: ${next.name}. The preview plays level 1.`;
   $("gfx-a-again").hidden = !next.again;
   applyTo.value = String(ship);
   $("gfx-a-approve").focus();
@@ -499,14 +532,14 @@ async function approve() {
   const s = Number(applyTo.value) || 0;
   setBusy(true, "Adding it to your armory…");
   try {
-    const bytes = await pngBytes(pending.sheet);
+    const bytes = isBanner(kind) ? bannerBmp(pending.sheet) : await pngBytes(pending.sheet);
     const added = await call("/add", { kind, name: pending.name, source: pending.source, prompt: pending.prompt || undefined, sheet: base64(bytes) });
     await call("/slot", { kind, ship: s, id: added.id });
-    globalThis.dareGraphics?.set(gameName(kind, s), bytes);
+    if (!isBanner(kind)) globalThis.dareGraphics?.set(gameName(kind, s), bytes);
     ship = s;
     showReview(null);
     await nextFrame();
-    say(`Added to your armory and put on ${shipLabel(s)}.`);
+    say(isBanner(kind) ? "Added to your armory; it's your banner now." : `Added to your armory and put on ${shipLabel(s)}.`);
   } catch (error) {
     say(error.message, true);
   } finally {

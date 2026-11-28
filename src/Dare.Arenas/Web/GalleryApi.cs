@@ -25,6 +25,8 @@ internal sealed partial class WebServer
     private async Task<Reply> GalleryRouteAsync(HttpListenerRequest req, string api)
     {
         var method = req.HttpMethod;
+        if (api == "/gallery/banners" || api.StartsWith("/gallery/banners/", StringComparison.Ordinal))
+            return await BannerLibraryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/gallery")
             return method == "GET" ? await GalleryListAsync(req).ConfigureAwait(false) : MethodNotAllowed();
         if (api == "/gallery/image")
@@ -46,6 +48,13 @@ internal sealed partial class WebServer
             case "/gallery/save":
                 if (!_m.GallerySavePerAccount.TryTake("gallery:save:" + id)) return Bad(TooMany, 429);
                 if (KeepInLibrary(cur.Account.Name, Num(body, "id")) is { } kept) return kept;
+                if (IsYes(body, "use"))
+                {
+                    // a shared banner, kept in the Armory and made the pilot's banner
+                    var used = _m.Accounts.UseGalleryBanner(id, Num(body, "id"));
+                    if (used.Ok) await ApplyBannerNowAsync(cur.Account).ConfigureAwait(false);
+                    return ResultReply(used);
+                }
                 return ResultReply(_m.Accounts.SaveGalleryItem(id, Num(body, "id")));
             case "/gallery/remove":
                 var staff = await OnMain(() => _m.IsWebStaff(cur.Account.Name)).ConfigureAwait(false);
