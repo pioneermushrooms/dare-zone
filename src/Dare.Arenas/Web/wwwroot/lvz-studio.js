@@ -422,7 +422,7 @@ window.LvzStudio = (() => {
     }
 
     // ---- lists of what can be opened ----------------------------------------------------------------
-    let libList = [], levelFiles = opts.levelFiles || [];
+    let libList = [], levelFiles = opts.levelFiles || [], opened = false;
     async function loadLists() {
       const r = await fetch(API + "/lvzlib", { credentials: "same-origin" }).catch(() => null);
       const j = r && r.ok ? await r.json().catch(() => null) : null;
@@ -479,7 +479,7 @@ window.LvzStudio = (() => {
       /** The arena editor calls this when the selected arena (or its data) changes. */
       async setArena(name, { owner: own, levelFiles: lf } = {}) {
         await ready;
-        const changed = name !== arena;
+        const changed = name !== arena || !opened; opened = true;
         arena = name || ""; owner = !!own; levelFiles = lf || [];
         await loadLists();
         if (changed) { await loadMapGrid(); if (!dirty && src.from !== "lib") { const first = levelFiles.find((n) => /\.lvz$/i.test(n)); if (first) await openChoice("arena:" + first); else renderAll(); } }
