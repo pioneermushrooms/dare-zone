@@ -142,7 +142,7 @@ names may edit any of its profiles.
 
 ## 6. Build steps (each with `dotnet test`)
 
-1. `people`, `person_id`, migration with backup, `PilotsOf`/`AddPilot`/sign-ups/email merge,
+1. `people`, `person_id`, migration with backup, `PilotsOf`/`AddPilot`/sign-ups/email per account,
    helpers `PersonOf`/`PersonOfName`/`NamesOf`.
 2. AccountStore libraries (armory, shipyard, gallery) by account; loadouts stay per name
    with "load from another name"; profile avatar.
