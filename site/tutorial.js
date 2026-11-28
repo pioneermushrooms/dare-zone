@@ -1,6 +1,8 @@
 // The zone's tutorial, as the home page shows it over the game: the mentor's box bottom-left above
-// the game's chat (portrait, name, "step n of m", one line typed out), with Skip and Leave; the
-// "Try the tutorial" offer; and, when a newcomer's first run ends, a small arena chooser.
+// the game's chat (Vex's portrait, name and call sign, "n/m", one line typed out with the keys on
+// keycaps), with Skip and Leave; the "Try the tutorial" offer; and, when a newcomer's first run ends, a
+// small arena chooser. The look is Chris's approved retro CRT mockup (tutorial.css); the portrait is
+// tutorial-vex.svg, inlined so its eye glow can pulse while Vex talks.
 //
 // The game (play/start.mjs) hands over the zone's hint lines through globalThis.foundationTutorial,
 // and takes the buttons' commands and the player's keys through globalThis.dareTutorial
@@ -22,6 +24,8 @@
 })(typeof self !== "undefined" ? self : this, () => {
   /** The mentor's name: src/Dare.Arenas/tutorial/script.json's "mentor" (hint lines don't carry it). */
   const MENTOR = "Vex";
+  /** The mentor's call sign beside the name (tools/tutorial-lvz/build.js draws the same for Continuum). */
+  const CALL_SIGN = "ACE-IN-WAITING";
   /** Set when a tutorial ends; play/start.mjs then logs a guest in as "guest:done". */
   const DONE_KEY = "dare.tutorial.done";
   const PREFIX = "~tut~ ";
@@ -52,14 +56,34 @@
     }
   }
 
-  /** `text` with each {action} replaced by how the player's keys for it read; the action's own
-   *  name where the game has no answer (an unknown action, or no game yet). */
-  function fillKeys(text, keyFor) {
-    return String(text).replace(/\{([a-z_]+)\}/g, (_, action) => {
+  /** `text` as runs [{ t, key }]: each {action} becomes how the player's keys for it read (key: true,
+   *  shown on a keycap); where the game has no answer (an unknown action, or no game yet), the action's
+   *  own name as plain text. */
+  function keySegments(text, keyFor) {
+    const out = [];
+    const push = (t, key) => {
+      if (!t) return;
+      const last = out[out.length - 1];
+      if (last && !last.key && !key) last.t += t;
+      else out.push({ t, key });
+    };
+    const re = /\{([a-z_]+)\}/g;
+    const s = String(text);
+    let at = 0, m;
+    while ((m = re.exec(s))) {
+      push(s.slice(at, m.index), false);
       let key = "";
-      try { key = typeof keyFor === "function" ? String(keyFor(action) ?? "") : ""; } catch {}
-      return key || action;
-    });
+      try { key = typeof keyFor === "function" ? String(keyFor(m[1]) ?? "") : ""; } catch {}
+      push(key || m[1], !!key);
+      at = re.lastIndex;
+    }
+    push(s.slice(at), false);
+    return out;
+  }
+
+  /** `text` with each {action} replaced by how the player's keys for it read (see keySegments). */
+  function fillKeys(text, keyFor) {
+    return keySegments(text, keyFor).map((s) => s.t).join("");
   }
 
   /** The line a button sends: skip, leave, try (the tutorial), or go to `arena`; null for
@@ -88,9 +112,10 @@
   }
 
   // ---- the page ------------------------------------------------------------------------------
-  const TYPE_MS = 28; // per character
-  const MOUTH_MS = 120; // per mouth frame while typing
+  const TYPE_MS = 40; // per character
+  const TALK_MS = 120; // the eye glow dims and brightens this often while the line types
   const NUDGE_MS = 10000;
+  const PORTRAIT = "/tutorial-vex.svg?v=1";
 
   function mount(win) {
     const doc = win.document;
@@ -116,6 +141,14 @@
     };
     const keyFor = (action) => win.dareTutorial?.keyFor(action);
     const reducedMotion = () => !!win.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Vex's portrait, inlined into each face (the glow's filter id made unique per copy)
+    let faces = 0;
+    const portrait = win.fetch ? win.fetch(PORTRAIT).then((r) => (r.ok ? r.text() : "")).catch(() => "") : Promise.resolve("");
+    const putPortrait = (into) => portrait.then((svg) => {
+      if (!svg.includes("<svg")) return;
+      const id = `vex-glow-${++faces}`;
+      into.insertAdjacentHTML("afterbegin", svg.replaceAll('id="vex-glow"', `id="${id}"`).replaceAll("url(#vex-glow)", `url(#${id})`));
+    });
 
     // the mentor's box
     const box = el("section", "tut tut-box");
@@ -123,16 +156,21 @@
     box.setAttribute("aria-label", "Tutorial");
     const face = el("div", "tut-face");
     face.setAttribute("aria-hidden", "true");
+    putPortrait(face);
     const main = el("div", "tut-main");
     const head = el("div", "tut-head");
     const name = el("span", "tut-name", MENTOR);
+    const callSign = el("span", "tut-callsign", CALL_SIGN);
     const step = el("span", "tut-step");
-    head.append(name, step);
+    head.append(name, callSign, step);
     const line = el("p", "tut-line");
     line.setAttribute("aria-live", "polite");
+    const cursor = el("span", "tut-cursor", "\u2588");
+    cursor.setAttribute("aria-hidden", "true");
     const skip = button("tut-btn", "Skip", () => send(commandFor("skip")));
     skip.title = "Skip this step";
-    const leave = button("tut-btn ghost", "Leave tutorial", () => send(commandFor("leave")));
+    const leave = button("tut-btn ghost", "Leave", () => send(commandFor("leave")));
+    leave.title = "Leave the tutorial";
     const buttons = el("div", "tut-buttons");
     buttons.append(skip, leave);
     main.append(head, line, buttons);
@@ -144,6 +182,7 @@
     offer.setAttribute("aria-label", "Tutorial");
     const offerFace = el("div", "tut-face");
     offerFace.setAttribute("aria-hidden", "true");
+    putPortrait(offerFace);
     const offerMain = el("div", "tut-main");
     const offerButtons = el("div", "tut-buttons");
     offerButtons.append(
@@ -163,31 +202,44 @@
 
     doc.body.append(box, offer, chooser);
 
-    // the line, typed out with the mouth moving
-    let typing = null, mouth = null, nudge = null;
+    // the line, typed out behind a block cursor while Vex's eyes pulse; a key comes up whole, on its keycap
+    let typing = null, talking = null, nudge = null;
     const stopTyping = () => {
-      clearInterval(typing); clearInterval(mouth);
-      typing = mouth = null;
-      face.classList.remove("open");
+      clearInterval(typing); clearInterval(talking);
+      typing = talking = null;
+      face.classList.remove("dim");
+      cursor.remove();
+    };
+    /** The first `count` characters of the line's runs, as nodes. */
+    const typed = (segments, count) => {
+      const out = [];
+      for (const s of segments) {
+        if (count <= 0) break;
+        const chars = [...s.t];
+        out.push(s.key ? el("kbd", "tut-key", s.t) : doc.createTextNode(chars.slice(0, count).join("")));
+        count -= chars.length;
+      }
+      return out;
     };
     function say(text, n, of) {
       stopTyping();
       offer.hidden = true;
       chooser.hidden = true;
       box.hidden = false;
-      step.textContent = `Step ${n} of ${of}`;
-      const full = fillKeys(text, keyFor);
+      step.textContent = `${n}/${of}`;
+      const segments = keySegments(text, keyFor);
+      const full = segments.map((s) => s.t).join("");
+      const total = [...full].length;
       line.setAttribute("aria-label", full);
-      if (reducedMotion()) { line.textContent = full; return; }
-      const chars = [...full];
+      if (reducedMotion() || !total) { line.replaceChildren(...typed(segments, total)); return; }
       let shown = 0;
-      line.textContent = "";
+      line.replaceChildren(cursor);
       typing = setInterval(() => {
         shown += 1;
-        line.textContent = chars.slice(0, shown).join("");
-        if (shown >= chars.length) stopTyping();
+        line.replaceChildren(...typed(segments, shown), cursor);
+        if (shown >= total) stopTyping();
       }, TYPE_MS);
-      mouth = setInterval(() => face.classList.toggle("open"), MOUTH_MS);
+      talking = setInterval(() => face.classList.toggle("dim"), TALK_MS);
     }
 
     function nudgeSkip() {
@@ -245,5 +297,5 @@
     };
   }
 
-  return { MENTOR, DONE_KEY, parseHint, fillKeys, commandFor, arenaChoices, mount };
+  return { MENTOR, CALL_SIGN, DONE_KEY, parseHint, keySegments, fillKeys, commandFor, arenaChoices, mount };
 });

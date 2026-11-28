@@ -1,83 +1,114 @@
-// The mentor's placeholder portrait: two 64x64 pixel-art frames (mouth closed, mouth open), drawn
-// here. A veteran pilot in a helmet with a headset mic and a cocky raised brow. No pure black:
-// Continuum shows black in LVZ images as see-through.
+// The mentor's portrait for Continuum: site/tutorial-vex.svg (the browser's own picture of Vex) rasterised
+// at its native 96x96, one pixel per viewBox unit, as two frames: eye glow bright, eye glow dim.
+// Polygons are filled by pixel centre (even-odd, which is the same as nonzero for these simple shapes),
+// polylines and lines are 1-px Bresenham lines, and each "vex-glow" shape (blurred in the browser) gets a
+// 1-px red halo instead. CRT scanlines darken every third row, as in the box. No pure black: Continuum
+// shows black in LVZ images as see-through.
 "use strict";
 
-const SIZE = 64;
-const C = {
-  bg: [26, 34, 54], bgDot: [34, 44, 70], outline: [14, 16, 24],
-  helmet: [96, 110, 134], helmetHi: [142, 156, 180], visor: [250, 196, 64], stripe: [214, 72, 56],
-  skin: [226, 174, 132], skinShade: [190, 136, 100], brow: [86, 56, 40], eye: [30, 34, 44], eyeHi: [240, 240, 240],
-  mouth: [126, 58, 50], mouthIn: [70, 22, 26], tongue: [200, 92, 96], suit: [84, 100, 64], suitHi: [112, 132, 84], mic: [60, 64, 74],
-};
+const fs = require("node:fs");
+const path = require("node:path");
 
-function image() {
-  const px = new Array(SIZE * SIZE).fill(null);
-  const set = (x, y, c) => { if (x >= 0 && y >= 0 && x < SIZE && y < SIZE) px[y * SIZE + x] = c; };
-  const rect = (x0, y0, w, h, c) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) set(x, y, c); };
-  const ellipse = (cx, cy, rx, ry, c, keep = () => true) => {
-    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++)
-      if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1 && keep(x, y)) set(x, y, c);
-  };
-  return { px, set, rect, ellipse };
+const SIZE = 96;
+const SVG = path.join(__dirname, "../../site/tutorial-vex.svg");
+const BG = [0x1a, 0x0f, 0x00]; // the portrait's well, as in the browser's box
+const SCANLINE = 0.72; // rgba(0,0,0,.28) every third row
+/** Eye glow per frame: the shape's opacity and its halo's. The bright frame is the SVG as drawn. */
+const GLOW = { bright: { fill: 0.9, halo: 0.55 }, dim: { fill: 0.4, halo: 0.2 } };
+
+const hex = (s) => {
+  const m = /^#([0-9a-f]{6})$/i.exec(s || "");
+  return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null;
+};
+const nums = (s) => String(s).trim().split(/[\s,]+/).map(Number);
+const pairs = (s) => { const n = nums(s), out = []; for (let i = 0; i + 1 < n.length; i += 2) out.push([n[i], n[i + 1]]); return out; };
+
+/** The shapes of an SVG written as tutorial-vex.svg is: [{ kind, points, fill, stroke, opacity, glow }]. */
+function parseSvg(text) {
+  const shapes = [];
+  for (const m of text.matchAll(/<(polygon|polyline|line)\b([^>]*)\/?>/g)) {
+    const attr = {};
+    for (const a of m[2].matchAll(/([\w-]+)="([^"]*)"/g)) attr[a[1]] = a[2];
+    const points = m[1] === "line" ? [[+attr.x1, +attr.y1], [+attr.x2, +attr.y2]] : pairs(attr.points);
+    shapes.push({
+      kind: m[1] === "polygon" ? "fill" : "stroke",
+      points, fill: hex(attr.fill), stroke: hex(attr.stroke),
+      opacity: attr.opacity === undefined ? 1 : Number(attr.opacity),
+      glow: /\bvex-glow\b/.test(attr.class || ""),
+    });
+  }
+  return shapes;
 }
 
-function frame(open) {
-  const im = image();
-  // shoulders and flight suit
-  im.ellipse(32, 66, 28, 14, C.suit);
-  im.rect(22, 54, 20, 2, C.suitHi);
-  im.rect(28, 50, 8, 6, C.skinShade); // neck
-  // helmet behind the face, with a stripe
-  im.ellipse(32, 28, 21, 21, C.helmet);
-  im.ellipse(27, 18, 8, 5, C.helmetHi);
-  im.rect(30, 7, 4, 14, C.stripe);
-  // face
-  im.ellipse(32, 35, 13, 15, C.skin);
-  im.ellipse(32, 41, 12, 9, C.skinShade, (x, y) => y > 44);
-  // visor pushed up on the helmet
-  im.rect(18, 20, 28, 5, C.visor);
-  im.rect(18, 20, 28, 1, C.helmetHi);
-  // eyes and brows (the left brow raised)
-  for (const ex of [25, 36]) { im.rect(ex, 31, 3, 3, C.eye); im.set(ex, 31, C.eyeHi); }
-  im.rect(24, 27, 5, 1, C.brow); im.set(23, 28, C.brow);
-  im.rect(35, 29, 5, 1, C.brow);
-  im.set(31, 37, C.skinShade); im.set(32, 38, C.skinShade); // nose
-  // mouth: a smirk, or open mid-word
-  if (open) {
-    im.rect(28, 42, 8, 5, C.mouthIn);
-    im.rect(29, 45, 6, 2, C.tongue);
-    im.rect(28, 42, 8, 1, C.mouth);
-  } else {
-    im.rect(28, 44, 7, 1, C.mouth);
-    im.set(35, 43, C.mouth);
+function inside(points, x, y) {
+  let odd = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i], [xj, yj] = points[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) odd = !odd;
   }
-  // headset mic
-  im.rect(14, 30, 5, 9, C.mic);
-  for (let i = 0; i < 7; i++) im.set(19 + i, 40 + (i >> 1), C.mic);
-  im.rect(25, 43, 2, 2, C.mic);
+  return odd;
+}
 
-  // outline: shape pixels next to the background
-  const px = im.px.slice();
-  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-    if (!im.px[y * SIZE + x]) continue;
-    const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-      const nx = x + dx, ny = y + dy;
-      return nx >= 0 && ny >= 0 && nx < SIZE && ny < SIZE && !im.px[ny * SIZE + nx];
-    });
-    if (edge) px[y * SIZE + x] = C.outline;
+function line([x0, y0], [x1, y1], plot) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    plot(x0, y0);
+    if (x0 === x1 && y0 === y1) return;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
   }
-  // background with a faint dot grid, and a frame
-  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-    if (x === 0 || y === 0 || x === SIZE - 1 || y === SIZE - 1) px[y * SIZE + x] = C.helmetHi;
-    else if (!px[y * SIZE + x]) px[y * SIZE + x] = x % 6 === 3 && y % 6 === 3 ? C.bgDot : C.bg;
+}
+
+/** One frame, { width, height, rgb } (3 bytes per pixel, rows top-down), with the eye glow `glow`. */
+function render(shapes, glow) {
+  const px = [];
+  for (let i = 0; i < SIZE * SIZE; i++) px.push([...BG]);
+  const blend = (x, y, c, a) => {
+    if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return;
+    const p = px[y * SIZE + x];
+    for (let k = 0; k < 3; k++) p[k] = p[k] * (1 - a) + c[k] * a;
+  };
+  for (const s of shapes) {
+    if (s.kind === "stroke") {
+      if (!s.stroke) continue;
+      const seen = new Set();
+      for (let i = 1; i < s.points.length; i++) line(s.points[i - 1], s.points[i], (x, y) => {
+        if (!seen.has(y * SIZE + x)) { seen.add(y * SIZE + x); blend(x, y, s.stroke, s.opacity); }
+      });
+      continue;
+    }
+    if (!s.fill) continue;
+    const mask = new Uint8Array(SIZE * SIZE);
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) if (inside(s.points, x + 0.5, y + 0.5)) mask[y * SIZE + x] = 1;
+    const a = s.glow ? glow.fill : s.opacity;
+    if (s.glow) { // the blur, as a 1-px halo round the shape
+      for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+        if (mask[y * SIZE + x]) continue;
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < SIZE && ny < SIZE && mask[ny * SIZE + nx]) { near = true; break; }
+        }
+        if (near) blend(x, y, s.fill, glow.halo);
+      }
+    }
+    for (let i = 0; i < mask.length; i++) if (mask[i]) blend(i % SIZE, (i / SIZE) | 0, s.fill, a);
   }
   const rgb = new Uint8Array(SIZE * SIZE * 3);
-  px.forEach((c, i) => rgb.set(c, i * 3));
+  px.forEach((p, i) => {
+    const dark = ((i / SIZE) | 0) % 3 === 0 ? SCANLINE : 1;
+    rgb.set(p.map((v) => Math.round(v * dark)), i * 3);
+  });
   return { width: SIZE, height: SIZE, rgb };
 }
 
-/** [mouth closed, mouth open], each { width, height, rgb } (rgb: 3 bytes per pixel, rows top-down). */
-const frames = () => [frame(false), frame(true)];
+/** [eye glow bright, eye glow dim], each { width, height, rgb }. */
+function frames(svgText = fs.readFileSync(SVG, "utf8")) {
+  const shapes = parseSvg(svgText);
+  return [render(shapes, GLOW.bright), render(shapes, GLOW.dim)];
+}
 
-module.exports = { SIZE, frames };
+module.exports = { SIZE, SVG, parseSvg, frames };

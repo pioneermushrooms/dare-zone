@@ -4,13 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const zlib = require("node:zlib");
 
 const ROOT = path.join(__dirname, "../..");
 const Lvz = require(path.join(ROOT, "src/Dare.Arenas/Web/wwwroot/lvz.js"));
 const Build = require(path.join(ROOT, "tools/tutorial-lvz/build.js"));
 const TrainingMap = require(path.join(ROOT, "tools/tutorial-lvz/map.js"));
 const Font = require(path.join(ROOT, "tools/tutorial-lvz/font.js"));
+const Portrait = require(path.join(ROOT, "tools/tutorial-lvz/portrait.js"));
 
 const ARENA = path.join(ROOT, "deploy/arenas/#training");
 const script = JSON.parse(fs.readFileSync(path.join(ROOT, "src/Dare.Arenas/tutorial/script.json"), "utf8"));
@@ -29,11 +29,59 @@ const imageOf = async (lvz, o) => {
   return Lvz.decodeBmp(await Lvz.fileData(f));
 };
 const overlaps = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-const rect = async (lvz, o, w, h) => {
+
+// ---- where the HUD really is ------------------------------------------------------------------------
+// The Dare client's layout, copied from crates/oss-client/src/game/hud.rs in dare-client (UI scale 1), whose
+// anchors were measured against Continuum at 1888x1016 (hud.rs the_lvz_anchors_match_continuum_at_1888x1016).
+// If hud.rs changes, change these and re-check the covers in build.js.
+const RADAR_MARGIN = 6; // hud.rs RADAR_MARGIN
+const radarDim = (w) => (Math.floor(Math.floor(w / 6) / 4) * 8) / 2; // hud.rs small_radar_dim (u32 maths)
+const iconsTop = (h) => Math.floor(h * 0.57 + 1 - 100) - 20; // hud.rs icons_top, ICONS_TOP_MEASURED_SHIFT 20
+const ICON_PITCH = 25, SPECIALS = 7, WEAPONS = 6, ICON = [26, 24]; // hud.rs draw_items (icons 26x24, 25 apart)
+const COUNT_TAB_RIGHT = 23 + 11; // draw_items: the icondoor count, 11 wide at x 23
+const BAR_HALF = 240, GAUGE_H = 28; // hud.rs BAR_HALF; the hlthbar frame, 116x28 at y 0
+const DIGIT = [16, 24], ENERGY_DIGITS = 4; // draw_energy's engyfont; this arena's Warbird has 3000
+const RADAR_TEXT_UP = 16, GLYPH = [8, 12]; // draw_radar: the clock line's top 16px above the radar, 8x12 font
+const LONGEST_RADAR_LINE = "12:59pm  T20"; // radar_text: clock_text, two spaces, map_coordinate
+// chat.rs visible_rows (no chat-lines setting); sandbox.rs: chat_top = view_h - 16 - rows * 12
+const chatTopOf = (h) => h - 16 - (Math.floor(h / 100) + 1) * 12;
+const chatRight = (w) => 4 + 8 * Math.max(16, Math.floor((w - radarDim(w) - 12) / 8)); // sandbox.rs draw_log, chat_width
+// statbox.rs, Names view: BORDER 3, HEADER_HEIGHT 14, ROW 12, width 108; sandbox.rs draw_statbox puts reference 3
+// at (x + w + 3, y + h): (114, 19 + 12 * rows)
+const statboxCorner = (rows) => [3 + 108 + 3, 3 + 14 + 2 + 12 * rows];
+const TUTORIAL_PILOTS = 8; // the player, the target, the 5-bot swarm and the teammate
+
+/** The twelve anchors (hud.rs screen_refs) and each HUD part's rectangles [x0, y0, x1, y1] on a w x h screen.
+ *  `over` swaps in Continuum's own numbers where they differ. */
+function hud(w, h, over = {}) {
+  const dim = radarDim(w), rx = w - dim - RADAR_MARGIN, ry = h - dim - RADAR_MARGIN, top = iconsTop(h), cx = Math.floor(w / 2);
+  const corner = over.statbox ?? statboxCorner(TUTORIAL_PILOTS), chatTop = over.chatTop ?? chatTopOf(h);
+  const line = over.radarLine ?? LONGEST_RADAR_LINE, textLeft = rx + dim - GLYPH[0] * line.length;
+  const refs = [[0, 0], [cx, Math.floor(h / 2)], [w, h], corner, [26, top], [26, top + SPECIALS * ICON_PITCH], [cx, GAUGE_H],
+    [0, chatTop], [rx, ry], [textLeft, ry - RADAR_TEXT_UP], [w - 26, top], [w - 26, top + WEAPONS * ICON_PITCH]];
+  const parts = {
+    radar: [Math.min(rx - 1, textLeft), ry - RADAR_TEXT_UP, rx + dim + 1, ry + dim + 1], // with its border and clock line
+    energy: [cx - BAR_HALF, 0, cx + BAR_HALF, GAUGE_H],
+    energynumber: [w - DIGIT[0] * ENERGY_DIGITS, 0, w, DIGIT[1]],
+    statbox: [over.statbox ? 0 : 3, over.statbox ? 0 : 3, corner[0], corner[1]],
+    items: [0, top, over.countTabRight ?? COUNT_TAB_RIGHT, top + (SPECIALS - 1) * ICON_PITCH + ICON[1]],
+    weapons: [w - ICON[0], top, w, top + (WEAPONS - 1) * ICON_PITCH + ICON[1]],
+    chat: [0, chatTop, chatRight(w), h],
+  };
+  return { w, h, refs, parts };
+}
+// Continuum, as measured at 1888x1016 (hud.rs the_lvz_anchors_match_continuum_at_1888x1016): the player list's
+// corner at (109, 29), the chat's top at 992 and the clock line "4:53pm  A1"; its specials count tab reaches 37
+// (hud.rs screen_refs: "icon (26) plus the count tab beside it").
+const continuum = () => hud(1888, 1016, { statbox: [109, 29], chatTop: 992, radarLine: "4:53pm  A1", countTabRight: 37 });
+const LAYOUTS = [["Dare 1024x768", () => hud(1024, 768)], ["Dare 1920x1080", () => hud(1920, 1080)], ["Continuum 1888x1016", continuum]];
+
+const rect = async (lvz, o, layout) => {
   const im = await imageOf(lvz, o);
-  const x = Lvz.anchor(o.xRef, w, h)[0] + o.x, y = Lvz.anchor(o.yRef, w, h)[1] + o.y;
+  const x = layout.refs[o.xRef][0] + o.x, y = layout.refs[o.yRef][1] + o.y;
   return [x, y, x + im.width / (lvz.images[o.image].cols || 1), y + im.height / (lvz.images[o.image].rows || 1)];
 };
+const onScreen = (r, L) => [Math.max(0, r[0]), Math.max(0, r[1]), Math.min(L.w, r[2]), Math.min(L.h, r[3])];
 
 test("every script line has an object 5000+index and an image", async () => {
   const lvz = await model();
@@ -45,7 +93,8 @@ test("every script line has an object 5000+index and an image", async () => {
     assert.equal(o.map, false);
     const im = await imageOf(lvz, o);
     assert.equal(im.width, Build.TEXT_W);
-    assert.equal(im.height, 2 * Font.H);
+    // popup prompts are just the two rows; box lines have the step's row above them
+    assert.equal(im.height, ["skip_popup", "try_tutorial"].includes(l.id) ? Build.TEXT_H : Build.LINE_H, `line ${l.index} height`);
     assert.ok(im.rgba.some((v, i) => i % 4 === 3 && v), `line ${l.index} has visible text`);
   }
   assert.equal(byId(lvz, 5000 + lines.length).length, 0);
@@ -81,29 +130,51 @@ test("covers 4000-4005 are TopMost and server-controlled", async () => {
   }
 });
 
-test("covers sit over their HUD part at 1024x768 and 1920x1080", async () => {
+test("the HUD model is hud.rs's: it gives the anchors measured against Continuum", () => {
+  // hud.rs the_lvz_anchors_match_continuum_at_1888x1016, with the same inputs
+  const L = hud(1888, 1016, { statbox: [109, 29], chatTop: 992, radarLine: "4:53pm  A1" });
+  assert.equal(radarDim(1888), 312);
+  assert.deepEqual(L.refs, [[0, 0], [944, 508], [1888, 1016], [109, 29], [26, 460], [26, 635], [944, 28], [0, 992],
+    [1570, 698], [1802, 682], [1862, 460], [1862, 610]]);
+});
+
+test("each cover hides its whole HUD part, with at most 8px to spare, in the Dare client and Continuum", async () => {
   const lvz = await model();
-  for (const [w, h] of [[1024, 768], [1920, 1080]]) {
-    const at = (ref) => Lvz.anchor(ref, w, h);
-    const pt = (p) => [p[0], p[1], p[0] + 1, p[1] + 1];
-    const parts = { // a point inside each part, from the reference points
-      4000: [pt([at(8)[0] + 60, at(8)[1] + 60]), pt(at(9))], // radar and its text
-      4001: [pt([w / 2, at(6)[1] - 10])], // energy bar, just above "below energy bar"
-      4002: [pt([at(3)[0] - 20, at(3)[1] - 10])], // stat box, above its lower right
-      4003: [pt([at(4)[0] - 10, at(4)[1] + 20]), pt([at(5)[0] - 10, at(5)[1] - 10]), pt([at(10)[0] + 10, at(10)[1] + 20])], // items left, weapons right
-      4004: [pt([20, at(7)[1] + 10]), pt([at(8)[0] - 20, at(7)[1] + 30])], // chat lines
-      4005: [pt([20, at(7)[1] - 20])], // above the chat lines
-    };
-    for (const [id, pts] of Object.entries(parts)) {
-      const rs = await Promise.all(byId(lvz, +id).map((o) => rect(lvz, o, w, h)));
-      for (const p of pts) assert.ok(rs.some((r) => overlaps(r, p)), `${w}x${h}: cover ${id} misses ${p}`);
+  const SLACK = 8;
+  for (const [name, layoutOf] of LAYOUTS) {
+    const L = layoutOf();
+    for (const o of lvz.objects.filter((x) => x.id >= 4000 && x.id <= 4005)) {
+      const what = lvz.images[o.image].file.replace(/^cover_|\.bmp$/g, "");
+      const r = onScreen(await rect(lvz, o, L), L);
+      if (what === "upperchat") continue; // a band, not a part: checked below
+      const part = L.parts[what];
+      assert.ok(part, `cover ${o.id} (${what}) has a part`);
+      const where = `${name}: cover ${o.id} (${what}) ${r} over ${part}`;
+      assert.ok(r[0] <= part[0] && r[1] <= part[1] && r[2] >= part[2] && r[3] >= part[3], `${where}: part shows`);
+      for (let k = 0; k < 2; k++) assert.ok(part[k] - r[k] <= SLACK, `${where}: ${part[k] - r[k]}px spare`);
+      for (let k = 2; k < 4; k++) assert.ok(r[k] - part[k] <= SLACK, `${where}: ${r[k] - part[k]}px spare`);
     }
+    // every part has a cover with its id: radar 4000, energy 4001, list 4002, items 4003, chat 4004
+    const idOf = { radar: 4000, energy: 4001, energynumber: 4001, statbox: 4002, items: 4003, weapons: 4003, chat: 4004 };
+    for (const [what, id] of Object.entries(idOf))
+      assert.ok(byId(lvz, id).some((o) => lvz.images[o.image].file === `cover_${what}.bmp`), `${name}: ${what} has cover ${id}`);
+    // 4005: the room for four more chat lines, straight above the chat cover and as wide
+    const [band] = byId(lvz, 4005), [chat] = byId(lvz, 4004).filter((o) => lvz.images[o.image].file === "cover_chat.bmp");
+    const [b, c] = [await rect(lvz, band, L), await rect(lvz, chat, L)];
+    assert.deepEqual([b[0], b[2], b[3], b[3] - b[1]], [c[0], c[2], c[1], 4 * GLYPH[1]], `${name}: band above the chat`);
+  }
+});
+
+test("covers don't overlap each other or the ship", async () => {
+  const lvz = await model();
+  for (const [name, layoutOf] of LAYOUTS) {
+    const L = layoutOf();
     // a revealed part is not hidden by a cover that stays on longer: no two different covers overlap
     const all = [];
-    for (let id = 4000; id <= 4005; id++) for (const o of byId(lvz, id)) all.push([id, await rect(lvz, o, w, h)]);
-    for (const [ia, a] of all) for (const [ib, b] of all) if (ia < ib) assert.ok(!overlaps(a, b), `${w}x${h}: covers ${ia} and ${ib} overlap`);
-    // the ship in the middle of the screen stays visible
-    for (const [id, r] of all) assert.ok(!overlaps(r, [w / 2 - 20, h / 2 - 20, w / 2 + 20, h / 2 + 20]), `${w}x${h}: cover ${id} hides the ship`);
+    for (let id = 4000; id <= 4005; id++) for (const o of byId(lvz, id)) all.push([id, onScreen(await rect(lvz, o, L), L)]);
+    for (const [ia, a] of all) for (const [ib, b] of all) if (ia < ib) assert.ok(!overlaps(a, b), `${name}: covers ${ia} and ${ib} overlap`);
+    const [cx, cy] = L.refs[1];
+    for (const [id, r] of all) assert.ok(!overlaps(r, [cx - 20, cy - 20, cx + 20, cy + 20]), `${name}: cover ${id} hides the ship`);
   }
 });
 
@@ -127,18 +198,20 @@ test("mentor objects are server-controlled and start off", async () => {
   for (const id of [4101, 4102, ...lines.filter((l) => !l.id || l.id === "arena_pointer").map((l) => 5000 + l.index)]) {
     const o = byId(lvz, id)[0];
     assert.deepEqual([o.xRef, o.yRef, o.layer], [7, 7, TOPMOST], `object ${id}`);
-    const [r, b] = [await rect(lvz, o, 1024, 768), await rect(lvz, box, 1024, 768)];
+    const [r, b] = [await rect(lvz, o, hud(1024, 768)), await rect(lvz, box, hud(1024, 768))];
     assert.ok(r[0] >= b[0] && r[1] >= b[1] && r[2] <= b[2] && r[3] <= b[3], `object ${id} inside the box`);
   }
-  // the box covers nothing meant to be seen: not the radar, energy or ship
-  for (const [w, h] of [[1024, 768], [1920, 1080]]) {
-    const b = await rect(lvz, box, w, h);
-    assert.ok(b[2] < Lvz.anchor(8, w, h)[0] && b[3] <= Lvz.anchor(7, w, h)[1] && b[1] > h / 2 + 40, `${w}x${h}: box ${b}`);
+  // the box covers nothing meant to be seen: not the radar, items, chat (nor the band above it) or ship
+  for (const [name, layoutOf] of LAYOUTS) {
+    const L = layoutOf(), b = await rect(lvz, box, L);
+    for (const part of ["radar", "items", "weapons", "chat", "statbox", "energy"]) assert.ok(!overlaps(b, L.parts[part]), `${name}: box ${b} over the ${part}`);
+    assert.ok(!overlaps(b, await rect(lvz, byId(lvz, 4005)[0], L)), `${name}: box over the upper chat band`);
+    assert.ok(b[0] >= 0 && b[1] > L.refs[1][1] + 40, `${name}: box ${b} clear of the ship`);
   }
   // popup prompts sit inside their popups
   for (const [pid, popup] of [["skip_popup", 4110], ["try_tutorial", 4111]]) {
     const l = lines.find((x) => x.id === pid);
-    const [r, p] = [await rect(lvz, byId(lvz, 5000 + l.index)[0], 1024, 768), await rect(lvz, byId(lvz, popup)[0], 1024, 768)];
+    const [r, p] = [await rect(lvz, byId(lvz, 5000 + l.index)[0], hud(1024, 768)), await rect(lvz, byId(lvz, popup)[0], hud(1024, 768))];
     assert.ok(r[0] >= p[0] && r[1] >= p[1] && r[2] <= p[2] && r[3] <= p[3], `${pid} inside popup ${popup}`);
   }
   // portrait frames: same spot, different pictures
@@ -195,17 +268,66 @@ test("output round-trips through lvz.js and matches the checked-in file", async 
   assert.deepEqual(await shape(disk), want, "deploy/arenas/#training/tutorial.lvz is stale: run node tools/tutorial-lvz/build.js");
 });
 
-test("the portrait sheet for the browser is a 128x64 PNG matching the build", () => {
-  const png = fs.readFileSync(path.join(ROOT, "site/tutorial-mentor.png"));
-  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-  assert.equal(png.readUInt32BE(16), 128);
-  assert.equal(png.readUInt32BE(20), 64);
-  const pixels = (b) => { // the inflated IDAT data (zlib output may differ between builds of zlib; the pixels may not)
-    const parts = [];
-    for (let p = 8; p < b.length; p += 12 + b.readUInt32BE(p)) if (b.toString("latin1", p + 4, p + 8) === "IDAT") parts.push(b.subarray(p + 8, p + 8 + b.readUInt32BE(p)));
-    return zlib.inflateSync(Buffer.concat(parts));
-  };
-  assert.deepEqual(pixels(png), pixels(Build.portraitPng()), "site/tutorial-mentor.png is stale: run node tools/tutorial-lvz/build.js");
+test("the portrait is the browser's SVG, two frames that differ only in the eye glow", async () => {
+  const lvz = await model();
+  const svg = fs.readFileSync(path.join(ROOT, "site/tutorial-vex.svg"), "utf8");
+  const shapes = Portrait.parseSvg(svg);
+  assert.ok(shapes.length > 20);
+  assert.equal(shapes.filter((x) => x.glow).length, 2, "two eye glows");
+  // every shape is one portrait.js draws: a polygon with a fill, or a line with a stroke
+  assert.equal((svg.match(/<(polygon|polyline|line)\b/g) || []).length, shapes.length);
+  for (const x of shapes) assert.ok(x.kind === "fill" ? x.fill : x.stroke, JSON.stringify(x));
+  const [bright, dim] = await Promise.all([4101, 4102].map((id) => imageOf(lvz, byId(lvz, id)[0])));
+  assert.deepEqual([bright.width, bright.height], [Portrait.SIZE, Portrait.SIZE]);
+  const red = (im, i) => im.rgba[i] - im.rgba[i + 1];
+  let differ = 0;
+  for (let i = 0; i < bright.rgba.length; i += 4) {
+    if (bright.rgba[i] === dim.rgba[i] && bright.rgba[i + 1] === dim.rgba[i + 1] && bright.rgba[i + 2] === dim.rgba[i + 2]) continue;
+    differ++;
+    const [x, y] = [(i / 4) % Portrait.SIZE, Math.floor(i / 4 / Portrait.SIZE)];
+    assert.ok(x >= 33 && x <= 63 && y >= 38 && y <= 48, `frames differ outside the eyes at ${x},${y}`);
+    assert.ok(red(bright, i) > red(dim, i), `the bright frame is redder at ${x},${y}`);
+  }
+  assert.ok(differ > 20, `${differ} eye pixels change`);
+});
+
+test("the box, popups, portrait and lines use only colours Continuum shows (black is see-through)", async () => {
+  const lvz = await model();
+  const black565 = (im, i) => (im.rgba[i] >> 3) + (im.rgba[i + 1] >> 2) + (im.rgba[i + 2] >> 3) === 0;
+  for (const id of [4100, 4101, 4102, 4110]) {
+    const im = await imageOf(lvz, byId(lvz, id)[0]);
+    for (let y = 0; y < im.height; y++) for (let x = 0; x < im.width; x++) {
+      // only the corners the hard shadow leaves empty (top-right and bottom-left) are see-through
+      const corner = id !== 4101 && id !== 4102 && ((x >= im.width - 4 && y < 4) || (x < 4 && y >= im.height - 4));
+      const i = (y * im.width + x) * 4;
+      if (corner) assert.equal(im.rgba[i + 3], 0, `object ${id} corner ${x},${y}`);
+      else assert.ok(im.rgba[i + 3] === 255 && !black565(im, i), `object ${id} pixel ${x},${y} would show through`);
+    }
+  }
+  // the box: the amber border and its shadow, as in the browser
+  const box = await imageOf(lvz, byId(lvz, 4100)[0]);
+  const at = (x, y) => [...box.rgba.subarray((y * box.width + x) * 4, (y * box.width + x) * 4 + 3)];
+  assert.deepEqual(at(1, 1), Build.COL.edge);
+  assert.deepEqual(at(box.width - 2, box.height - 2), Build.COL.shadow);
+});
+
+test("keys sit on amber keycaps in the Continuum lines", async () => {
+  const lvz = await model();
+  assert.deepEqual(Build.keySpans("Press {gun} now", { gun: "Ctrl" }), [{ row: 0, from: 6, to: 10 }]);
+  assert.deepEqual(Build.keySpans("{nope} and plain", { gun: "Ctrl" }), []);
+  // a key keeps its place through the wrap
+  const long = `${"x".repeat(40)} then {repel}!`;
+  assert.deepEqual(Build.layoutLine(long, script.continuumKeys), ["x".repeat(40) + " then", "Shift+Ctrl!"]);
+  assert.deepEqual(Build.keySpans(long, script.continuumKeys), [{ row: 1, from: 0, to: 10 }]);
+  // in the built image: the keycap's amber behind the key, dark keycap text on it
+  const l = lines.find((x) => x.text.startsWith("{repel}"));
+  const im = await imageOf(lvz, byId(lvz, 5000 + l.index)[0]);
+  const top = Build.LINE_H - Build.TEXT_H; // the first row, below the step's row
+  const colours = new Set();
+  for (let y = top; y < top + Font.H; y++) for (let x = 0; x < 10 * Font.W; x++) colours.add(im.rgba.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3).join());
+  assert.ok(colours.has(Build.COL.keycap.join()) && colours.has(Build.COL.keycapText.join()), [...colours].join(" "));
+  // ...and the step it is said in, at the right of the row above
+  assert.ok(im.rgba.subarray(0, im.width * 4 * Font.H).some((v, i) => i % 4 === 3 && v), "step number drawn");
 });
 
 test("the map has the training features and matches the checked-in .lvl", () => {

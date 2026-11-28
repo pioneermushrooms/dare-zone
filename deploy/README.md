@@ -40,7 +40,7 @@ Tests: `deploy/test-live-guard.sh`.
 ## Shipping the in-game tutorial
 
 The tutorial spans the zone (plugin and `arenas/#training`), the static site (`tutorial.js`,
-`tutorial.css`, `tutorial-mentor.png`, `index.html`) and the browser client (its `?tutorialclient`
+`tutorial.css`, `tutorial-vex.svg`, `index.html`) and the browser client (its `?tutorialclient`
 hints). Ship **the zone first, or together with the client and site**: a client or page that
 arrives before the zone sends `?tutorialclient` to a zone that doesn't know it, and the page's
 mentor box waits for hints that never come. `site/index.html` bumps the `start.mjs?v=` cache

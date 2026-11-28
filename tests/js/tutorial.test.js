@@ -22,6 +22,16 @@ test("an action the game can't name, or no game yet, reads as the action", () =>
   assert.equal(Tutorial.fillKeys("a {not one} b {}", keyFor), "a {not one} b {}");
 });
 
+test("the player's keys go on keycaps; an action the game can't name is plain text", () => {
+  assert.deepEqual(Tutorial.keySegments("{repel}! Shove them off you.", keyFor), [{ t: "Shift+Ctrl", key: true }, { t: "! Shove them off you.", key: false }]);
+  assert.deepEqual(Tutorial.keySegments("{left} and {right} turn.", (a) => ({ left: "Left", right: "Right" })[a]),
+    [{ t: "Left", key: true }, { t: " and ", key: false }, { t: "Right", key: true }, { t: " turn.", key: false }]);
+  assert.deepEqual(Tutorial.keySegments("Press {warp} now.", keyFor), [{ t: "Press warp now.", key: false }]);
+  assert.deepEqual(Tutorial.keySegments("", keyFor), []);
+  // fillKeys reads the same runs as one string
+  assert.equal(Tutorial.fillKeys("{repel}! Shove them off you.", keyFor), "Shift+Ctrl! Shove them off you.");
+});
+
 test("each button sends its one command", () => {
   assert.equal(Tutorial.commandFor("skip"), "?skip");
   assert.equal(Tutorial.commandFor("leave"), "?leave");
@@ -69,6 +79,7 @@ test("the chooser offers the open arenas, busiest first, and not the training on
   assert.deepEqual(Tutorial.arenaChoices(undefined), []);
 });
 
-test("the mentor's name is in one place", () => {
+test("the mentor's name is in one place, and the call sign matches Continuum's box", () => {
   assert.equal(Tutorial.MENTOR, "Vex");
+  assert.equal(Tutorial.CALL_SIGN, require("../../tools/tutorial-lvz/build.js").CALL_SIGN);
 });

@@ -132,11 +132,13 @@ function wrap(text, maxChars) {
   return out;
 }
 
-/** Draw text with set(x, y) for each ink pixel, the first cell's top-left at (x0, y0). */
-function draw(text, x0, y0, set) {
+/** Draw text with set(x, y) for each ink pixel, the first cell's top-left at (x0, y0); `scale` makes each
+ *  font pixel a scale x scale block (cells W*scale wide). */
+function draw(text, x0, y0, set, scale = 1) {
   [...text].forEach((ch, i) => {
     const bits = glyph(ch);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (bits[y * W + x]) set(x0 + i * W + x, y0 + y);
+    for (let y = 0; y < H * scale; y++) for (let x = 0; x < W * scale; x++)
+      if (bits[((y / scale) | 0) * W + ((x / scale) | 0)]) set(x0 + i * W * scale + x, y0 + y);
   });
 }
 
