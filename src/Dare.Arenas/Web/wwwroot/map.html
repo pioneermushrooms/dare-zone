@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map editor — SubSpace Foundation</title>
 <link rel="stylesheet" href="/arena/style.css">
+<link rel="stylesheet" href="/arena/lvz.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/autotile.js" defer></script>
 <script src="/arena/lvlgen.js" defer></script>
@@ -13,6 +14,8 @@
 <script src="/arena/tileart.js" defer></script>
 <script src="/arena/drawtools.js" defer></script>
 <script src="/arena/editor.js" defer></script>
+<script src="/arena/lvz.js" defer></script>
+<script src="/arena/lvz-layer.js" defer></script>
 </head>
 <body class="editor">
 <header class="edbar">
@@ -70,6 +73,7 @@
     <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
     <label class="hint">Use your own tileset (.bm2/.bmp; stays in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
     <div id="tileart"></div>
+    <section id="lvzpanel" aria-label="LVZ objects"></section>
     <p class="kicker">Special tiles</p>
     <div id="specials" class="specials"></div>
     <p class="kicker">Whole map</p>

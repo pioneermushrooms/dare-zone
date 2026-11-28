@@ -347,10 +347,61 @@
     c.getContext("2d").drawImage(bmp, 0, 0);
     return c;
   }
+  /**
+   * Browser only: each image definition's picture, for drawing. Returns [{ canvas, fw, fh, missing }]
+   * per image: the whole sheet, one frame's size, and missing when its file isn't in this .lvz.
+   */
+  async function pictures(lvz) {
+    const byName = new Map(lvz.files.map((f) => [f.name.toLowerCase(), f]));
+    const cache = new Map(), out = [];
+    for (const im of lvz.images) {
+      const key = im.file.toLowerCase();
+      if (!cache.has(key)) {
+        const f = byName.get(key);
+        let canvas = null;
+        if (f) { try { canvas = await imageCanvas(f.name, await fileData(f)); } catch { canvas = null; } }
+        cache.set(key, canvas);
+      }
+      const canvas = cache.get(key), cols = Math.max(1, im.cols || 1), rows = Math.max(1, im.rows || 1);
+      out.push(canvas ? { canvas, fw: Math.max(1, Math.floor(canvas.width / cols)), fh: Math.max(1, Math.floor(canvas.height / rows)), missing: false }
+        : { canvas: null, fw: 32, fh: 32, missing: true });
+    }
+    return out;
+  }
+  /** Draw frame k (counted across rows) of picture p at (x, y), scaled by z; a missing one as a labelled box. */
+  function drawFrame(ctx, p, im, k, x, y, z, label) {
+    if (!p || !p.canvas) {
+      ctx.save(); ctx.strokeStyle = "#ff8f8f"; ctx.setLineDash([3, 3]); ctx.strokeRect(x + 0.5, y + 0.5, 32 * z, 32 * z);
+      if (z >= 0.5) { ctx.fillStyle = "#ff8f8f"; ctx.font = "10px sans-serif"; ctx.fillText(label || "?", x + 3, y + 12, 32 * z - 4); }
+      ctx.restore(); return;
+    }
+    const cols = Math.max(1, im.cols || 1), n = cols * Math.max(1, im.rows || 1), f = ((k % n) + n) % n;
+    ctx.drawImage(p.canvas, (f % cols) * p.fw, Math.floor(f / cols) * p.fh, p.fw, p.fh, x, y, p.fw * z, p.fh * z);
+  }
+  /** Which frame an animated image shows at time t (ms): the period is the image's time in 1/100 s for the whole run. */
+  const frameAt = (im, t) => { const n = Math.max(1, im.cols || 1) * Math.max(1, im.rows || 1); if (n < 2 || !(im.time > 0)) return 0; return Math.floor((t / (im.time * 10)) * n) % n; };
+  // Where the HUD reference points sit on a w x h screen. Approximate: taken from the LVZ Toolkit's
+  // refpoints picture (Continuum at 889 x 667); the real spots move with the player's HUD settings.
+  function anchor(ref, w, h) {
+    switch (ref) {
+      case 1: return [w / 2, h / 2];
+      case 2: return [w, h];
+      case 3: return [155, 30];
+      case 4: return [36, Math.round(h / 2 - 68)];
+      case 5: return [36, Math.round(h / 2 + 175)];
+      case 6: return [w / 2, 38];
+      case 7: return [0, h - 45];
+      case 8: return [w - 155, h - 155];
+      case 9: return [w - 130, h - 170];
+      case 10: return [w - 36, Math.round(h / 2 - 68)];
+      case 11: return [w - 36, Math.round(h / 2 + 142)];
+      default: return [0, 0];
+    }
+  }
   const isImageName = (n) => /\.(bmp|bm2|png|gif|jpe?g)$/i.test(n);
   /** A safe file name for inside an .lvz: letters, digits, . _ - ; at most 64. */
   const safeName = (n) => (String(n).replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(-64) || "image.png");
 
   return { LAYERS, MODES, REFS, MAP_PIXELS, read, write, fileData, parseObjects, objectBytes, blank, putFile, removeImage, newObject,
-    fromIni, toIni, decodeBmp, imageCanvas, isImageName, safeName, sections };
+    fromIni, toIni, decodeBmp, imageCanvas, pictures, drawFrame, frameAt, anchor, isImageName, safeName, sections };
 });
