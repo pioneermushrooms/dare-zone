@@ -1,6 +1,6 @@
 # One account per person: saved items and editing rights follow the person, not the name
 
-Status: design, revised with Chris's answers (2026-11-27), waiting for a final OK. Nothing built.
+Status: built (branch claude/sleepy-bose-8a4a38), approved by Chris 2026-11-27. See "As built" at the end.
 
 Chris: switching to another fly-as pilot name, or renaming, must not change what you can see,
 edit or own. Every name on the account gets the same game/arena editing powers and the same
@@ -167,3 +167,26 @@ names may edit any of its profiles.
 ## Still to confirm
 
 - Staff address for the "request more arenas" email (`[DareArenas] StaffEmail`).
+
+## As built (differences from the plan above)
+
+- **Email already used by another account:** confirming the code **joins the two accounts**
+  instead of refusing (refusing would break attaching an old imported pilot name to your
+  account, which works today). Joining moves the names and every row with a `person_id`
+  (any table in the db, so `pilot_game_modes` too) onto one account; max 10 names.
+- **Arenas:** no `person_id` columns on `arenas`/`drafts`/`comods`/`draft_invites`. They keep
+  the shown name, and every check asks "same account?" (`ArenaStore.SameAccount`,
+  `NamesOfAccount`, `RoleIn`, `RolesFor`, `OwnedArenas`, limits). A name's entries are handed
+  to another name of the account before the name is deleted (`ArenaStore.HandOverName`), so
+  they always point at a live name of the owning account and a freed name inherits nothing.
+- **Libraries in ArenaStore** keep their `string owner` method signatures; inside, rows match by
+  the `person_id` of that name's account (`owner` = made by). Old rows were given a person once
+  (`account_meta` key `library_persons_v1`); rows of names deleted before that stay hidden.
+- **Helpers:** `AccountStore.PersonOf(long accountId)`, `PersonOfName(string)`, `NamesOf(long person)`;
+  `ArenaStore.PersonOfName(string)`, `SameAccount(a, b)`, `NamesOfAccount(name)`.
+- **Load from another name:** one panel on the account page ("Copy a setup between names"):
+  ships in slots, armory equipped, own graphics, keys and macros; `AccountStore.CopyLoadout`.
+- **Limit:** `ArenaStore.MaxArenasPerAccount = 10`, tables `arena_limits`, `arena_limit_requests`;
+  `/arena/api/arenas/more`, `/arena/api/staff/limit`; a card on the staff page. The email goes to
+  `[DareArenas] StaffEmail` when set (not set yet); online staff always get a mod message.
+- Migration backup: `data/dare-arenas.db.before-persons` (written once, before the first grouping).
