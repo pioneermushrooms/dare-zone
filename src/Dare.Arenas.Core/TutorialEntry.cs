@@ -33,4 +33,13 @@ public static class TutorialEntry
 
         return enteringPublic && capacityLeft ? (TutorialStart.Start, 0) : (TutorialStart.Offer, 0);
     }
+
+    /// <summary>The act a <c>?tutorial</c> name starts at: controls 1, swarm 2, objectives 3; null for anything else.</summary>
+    public static int? ActNamed(string name) => name.Trim().ToLowerInvariant() switch
+    {
+        "controls" => 1,
+        "swarm" => 2,
+        "objectives" => 3,
+        _ => null,
+    };
 }

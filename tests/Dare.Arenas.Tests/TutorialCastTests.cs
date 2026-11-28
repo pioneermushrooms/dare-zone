@@ -76,3 +76,68 @@ public class TutorialCastTests
     [Fact] public void PickNames_ZeroCount_IsEmpty() =>
         Assert.Empty(TutorialCast.PickNames(0, new Random(1).Next, _ => false));
 }
+
+public class TutorialWholeCastTests
+{
+    private static CastLine L(string role, string seat = "in", string script = "ship 2") => new(role, seat, script);
+
+    private static readonly IReadOnlyList<CastLine>[] Steps =
+    [
+        [],
+        [L("target", script: "ship 2\npoint 1 1")],
+        [L("swarm"), L("swarm"), L("swarm")],
+        [L("teammate", script: "ship 1")],
+    ];
+
+    [Fact] public void WholeCast_OneBotPerRoleSlot_AllSpectating()
+    {
+        var whole = TutorialCast.WholeCast(Steps, shareRoles: false);
+        Assert.Equal(["target", "swarm", "swarm", "swarm", "teammate"], whole.Select(c => c.Role));
+        Assert.All(whole, c => Assert.Equal("spec", c.Seat));
+        Assert.Equal("ship 2\npoint 1 1", whole[0].Script);
+        Assert.Equal("ship 1", whole[4].Script);
+    }
+
+    [Fact] public void WholeCast_Lean_SharesOneBotAcrossRoles()
+    {
+        IReadOnlyList<CastLine>[] lean = [[L("target")], [L("swarm")], [L("teammate", script: "ship 1")]];
+        var whole = TutorialCast.WholeCast(lean, shareRoles: true);
+        Assert.Single(whole);
+        Assert.Equal("target", whole[0].Role);
+        Assert.Equal("spec", whole[0].Seat);
+    }
+
+    [Fact] public void ForStep_SeatsTheStepsRoles_OthersSpectate()
+    {
+        var whole = TutorialCast.WholeCast(Steps, false);
+        var now = TutorialCast.ForStep(whole, Steps[2], false);
+        Assert.Equal(["target", "swarm", "swarm", "swarm", "teammate"], now.Select(c => c.Role));
+        Assert.Equal(["spec", "in", "in", "in", "spec"], now.Select(c => c.Seat));
+    }
+
+    [Fact] public void ForStep_EmptyStep_EveryoneSpectates()
+    {
+        var whole = TutorialCast.WholeCast(Steps, false);
+        Assert.All(TutorialCast.ForStep(whole, [], false), c => Assert.Equal("spec", c.Seat));
+    }
+
+    [Fact] public void ForStep_Lean_TheBotTakesTheStepsRoleAndScript()
+    {
+        IReadOnlyList<CastLine>[] lean = [[L("target")], [L("teammate", script: "ship 1")]];
+        var whole = TutorialCast.WholeCast(lean, true);
+        var now = TutorialCast.ForStep(whole, lean[1], true);
+        Assert.Equal(new CastLine("teammate", "in", "ship 1"), Assert.Single(now));
+    }
+
+    [Fact] public void ForStep_LineupsKeepTheSameNamesAcrossSteps()
+    {
+        var whole = TutorialCast.WholeCast(Steps, false);
+        string[] names = ["A", "B", "C", "D", "E"];
+        var a = TutorialCast.Lineup("#training1", TutorialCast.ForStep(whole, Steps[1], false), names);
+        var b = TutorialCast.Lineup("#training1", TutorialCast.ForStep(whole, Steps[3], false), names);
+        Assert.Equal(a.Select(x => x.Bot.Label), b.Select(x => x.Bot.Label));
+        Assert.Equal(BotSeat.In, a[0].Placement.Seat);
+        Assert.Equal(BotSeat.Spectating, b[0].Placement.Seat);
+        Assert.Equal((BotSeat.In, 0), (b[4].Placement.Seat, b[4].Placement.Team));
+    }
+}

@@ -57,6 +57,53 @@ public static class TutorialCast
         return lineup;
     }
 
+    /// <summary>
+    /// Every bot a run needs over all its steps, all spectating: per role, as many as the step that uses most of
+    /// that role (a step's cast is the whole set wanted then). With <paramref name="shareRoles"/> (lean casts) the
+    /// bots are shared between roles: as many as the step with the most lines. Each takes the first line seen for it.
+    /// </summary>
+    public static IReadOnlyList<CastLine> WholeCast(IEnumerable<IReadOnlyList<CastLine>> casts, bool shareRoles)
+    {
+        var slots = new List<CastLine>();
+        foreach (var cast in casts)
+        {
+            for (var i = 0; i < cast.Count; i++)
+            {
+                var line = cast[i];
+                var nth = shareRoles ? i : Nth(cast, i);
+                var have = shareRoles ? slots.Count : slots.Count(s => s.Role == line.Role);
+                if (nth < have) continue;
+                var spec = line with { Seat = "spec" };
+                // a new slot of a role goes after that role's others, so a role's bots stay together
+                var after = shareRoles ? -1 : slots.FindLastIndex(s => s.Role == line.Role);
+                if (after < 0) slots.Add(spec);
+                else slots.Insert(after + 1, spec);
+            }
+        }
+        return slots;
+    }
+
+    /// <summary>
+    /// The <see cref="WholeCast"/> as one step wants it: each bot the step uses takes that step's line (seat, script and,
+    /// when shared, role); the rest spectate as they are. Same order as the whole cast, so names stay with their bots.
+    /// </summary>
+    public static IReadOnlyList<CastLine> ForStep(IReadOnlyList<CastLine> whole, IReadOnlyList<CastLine> step, bool shareRoles)
+    {
+        var now = new List<CastLine>(whole.Count);
+        for (var i = 0; i < whole.Count; i++)
+        {
+            var slot = whole[i];
+            CastLine? line = shareRoles
+                ? i < step.Count ? step[i] : null
+                : step.Where(c => c.Role == slot.Role).ElementAtOrDefault(Nth(whole, i));
+            now.Add(line ?? slot with { Seat = "spec" });
+        }
+        return now;
+    }
+
+    // How many lines of the same role come before cast[i].
+    private static int Nth(IReadOnlyList<CastLine> cast, int i) => cast.Take(i).Count(c => c.Role == cast[i].Role);
+
     /// <summary>Up to <paramref name="count"/> distinct guest-style names that <paramref name="taken"/> says are free.</summary>
     public static IReadOnlyList<string> PickNames(int count, Func<int, int> next, Func<string, bool> taken)
     {

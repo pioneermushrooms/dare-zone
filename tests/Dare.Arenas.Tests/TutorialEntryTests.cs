@@ -40,3 +40,15 @@ public class TutorialEntryTests
     [Fact] public void NotFirstEntry_No() => Assert.Equal((TutorialStart.No, 0), D(EntryKind.Account, first: false));
     [Fact] public void NoCapacity_Offer() => Assert.Equal((TutorialStart.Offer, 0), D(EntryKind.Account, room: false));
 }
+
+public class TutorialActNameTests
+{
+    [Theory]
+    [InlineData("controls", 1)]
+    [InlineData("SWARM", 2)]
+    [InlineData(" objectives ", 3)]
+    public void ActNamed_Known(string name, int act) => Assert.Equal(act, TutorialEntry.ActNamed(name));
+
+    [Theory][InlineData("")][InlineData("1")][InlineData("flags")]
+    public void ActNamed_Unknown_Null(string name) => Assert.Null(TutorialEntry.ActNamed(name));
+}
