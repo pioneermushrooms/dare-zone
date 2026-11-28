@@ -28,7 +28,7 @@
 
 ## Review Focus
 
-1. **The game mode was saved from a different pilot name on the same account.** The second name sees, edits and applies it, and a name on another account can't see it. Pinned in Task 1 (`second_name_on_same_person_sees_mode`). The real person key replaces the stand-in in Task 5.
+1. **The game mode was saved from a different pilot name on the same account.** The second name sees, edits and applies it, and a name on another account can't see it. Pinned in Task 1 (`second_name_on_same_person_sees_mode`). Task 5 checks it end to end.
 2. **Applying to an arena whose allow-list lacks some generated keys.** Only keys in that arena's editable settings are sent, so nothing is skipped for being off-list. Pinned in Task 2 (`settings_only_includes_keys_with_specs`).
 3. **Fine-tune values typed out of range, or an old saved tweak whose limits changed.** They're clamped on every recompute, never sent raw. Pinned in Task 2 (`tweaks_are_clamped_to_spec`).
 4. **Starting items above a ship's cap (e.g. Items "None" and Repel 3).** The start is limited to the cap, and a role needing an item keeps a cap of at least its start. Pinned in Task 2 (`start_items_never_exceed_cap`).
@@ -248,7 +248,7 @@ test("only deployer and anchor carry turrets; every role lets pilots attach at o
   - `GET /arena/api/gamemodes/get?id=` → `{ok,id,name,madeBy,data,settings}` (`data` is the stored JSON object, not a string)
   - `POST /arena/api/gamemodes/save {id?, name, data, settings}` → `{ok,message,id}`
   - `POST /arena/api/gamemodes/rename {id,name}`, `/duplicate {id}` → `{ok,message,id}`, `/remove {id}`
-  - `private long? PersonKey(HttpListenerRequest req)`: the only place the person is resolved. In this task it returns `CurrentAccount(req)?.Account.Id`, with a `// TODO(account-person)` comment; Task 5 swaps it for `_m.Accounts.PersonOf(...)`. A null result means 401 with "Sign in with your account to keep game modes."
+  - `private long? PersonKey(HttpListenerRequest req)`: the only place the person is resolved. It returns `CurrentAccount(req) is { } cur ? _m.Accounts.PersonOf(cur.Account.Id) : null` (the account-person key, on `main` since 6a397a2). A null result means 401 with "Sign in with your account to keep game modes."
 
 - [ ] **Step 1: Implement the routes.**
   - `data` is posted as a JSON object; serialize it with `GetRawText()` before `SaveGameMode`.
@@ -309,12 +309,9 @@ What the tab does (layout as in the mockup):
 - [ ] **Step 3: Check at 375 px width: no horizontal scroll, and the cards wrap to 2 columns.**
 - [ ] **Step 4: Commit**: "Game mode tab: game modes and the Ships panel (roles, pace, items, upgrades, fine-tune, apply)".
 
-### Task 5: Real person key, fly-test, merge
+### Task 5: Two-name check, fly-test, merge
 
-**Files:**
-- Modify: `src/Dare.Arenas/Web/GameModesApi.cs` (`PersonKey`)
-
-- [ ] **Step 1:** Wait until the account-person work is on `origin/main` (session `local_65a4db04-ff69-46f2-a140-bd5c84bced93`). Then `git merge origin/main`, and change `PersonKey` to `CurrentAccount(req) is { } cur ? _m.Accounts.PersonOf(cur.Account.Id) : null`, using whatever name that work landed.
+- [ ] **Step 1:** `git merge origin/main`. The person key is already in use from Task 3.
 - [ ] **Step 2:** In the browser, make two pilot names on one account. Save a mode as name A, switch to name B, and check B sees and edits it. A name on another account must not see it.
 - [ ] **Step 3:** Fly each role on the local zone in the game client (Dare client or Continuum). Tune the role numbers in `gamemode-ships.js` where a role doesn't feel like its name. Rerun `node --test tests/js`.
 - [ ] **Step 4:** Run `dotnet test` and `node --test tests/js`. Both must pass.
