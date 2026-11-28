@@ -4,6 +4,8 @@
 cmd_approvearena
 cmd_declinearena
 cmd_createarena
+; the in-game tutorial's counts (?tutorialstats)
+cmd_tutorialstats
 
 ; Owner/co-mod commands for global staff who own or co-mod an arena. The module never grants
 ; arena groups to global staff (that would override their global group in the arena), so they

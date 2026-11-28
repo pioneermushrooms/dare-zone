@@ -39,7 +39,9 @@
     return {
       objective: "fight",
       teams: { count: 2, perTeam: 8, even: true, private: false, ships: 255, shipChangeSec: 0 },
-      scoring: { kill: "bounty", fixedKill: 10, teamKills: false, winReward: 5000, split: false, turfPoints: 100, turfEverySec: 60, goalReward: 1000, kingReward: 1000 },
+      scoring: { kill: "bounty", fixedKill: 10, teamKills: false, winReward: 5000, split: false, turfPoints: 100, turfEverySec: 60, goalReward: 1000, kingReward: 1000,
+        // "flat": pay the number as written; "players": scale like the server, (pilots)^2 * number / 1000
+        winScale: "flat", goalScale: "flat", kingScale: "flat" },
       time: { minutes: 0, warnings: [60, 30, 10] },
       flags: { count: 6, holdSec: 180, dropCenter: false, dropAfterSec: 0, carrierOnRadar: true, carrierSpeed: 0 },
       ball: { count: 1, layout: "LeftRight", bounce: true, guns: true, bombs: false, winBy: 0 },
@@ -96,7 +98,10 @@
       "Misc:ShipChangeInterval": ticks(t.shipChangeSec),
       "Kill:FixedKillReward": s.kill === "fixed" ? +s.fixedKill : -1,
       "Misc:TeamKillPoints": b(s.teamKills),
-      "Misc:TimedGame": Math.round(Math.max(0, +g.time.minutes || 0) * 6000),
+      // The plugin's round clock (ArenaOwnership.FlagHold.cs), not Misc:TimedGame: a flag win can start the next
+      // round, and at zero the team with the most flags wins. TimedGame 0 so the server's clock stays out of it.
+      "Misc:TimedGame": 0,
+      "GameMode:RoundTime": Math.round(Math.max(0, +g.time.minutes || 0) * 6000),
       "Misc:TimerWarnings": g.time.warnings.map((w) => Math.round(+w)).filter((w) => w > 0).join(","),
       "GameMode:Attach": attach(g).join(", ") || "None",
     };
@@ -112,6 +117,7 @@
           "Flag:FlagCount": g.objective === "rabbit" ? 1 : +f.count,
           "Flag:WinDelay": ticks(f.holdSec),
           "Flag:FlagReward": +s.winReward,
+          "GameMode:FlatFlagReward": b(s.winScale !== "players"), // the plugin's flag rule pays it (ArenaOwnership.FlagHold.cs)
           "Flag:SplitPoints": b(s.split),
           "Flag:DropOwned": 1,
           "Flag:DropCenter": b(f.dropCenter),
@@ -129,14 +135,16 @@
         break;
       case "powerball":
         Object.assign(v, noFlags, noPeriodic, {
-          "Soccer:BallCount": +ball.count, "Soccer:Mode": ball.layout, "Soccer:Reward": +s.goalReward,
+          "Soccer:BallCount": +ball.count, "Soccer:Mode": ball.layout, "Soccer:Reward": s.goalScale === "players" ? +s.goalReward : -Math.abs(+s.goalReward), // negative: as written
           "Soccer:WinBy": +ball.winBy, "Soccer:BallBounce": b(ball.bounce), "Soccer:AllowGuns": b(ball.guns),
           "Soccer:AllowBombs": b(ball.bombs),
         });
         break;
       case "king":
         Object.assign(v, noFlags, noBall, noPeriodic, {
-          "King:DeathCount": +k.deaths, "King:MinPlayers": +k.minPlayers, "King:RewardFactor": +s.kingReward, "King:AutoStart": 1,
+          "King:DeathCount": +k.deaths, "King:MinPlayers": +k.minPlayers, // as written: Koth pays nothing and the plugin pays GameMode:KingReward (ArenaOwnership.KingReward.cs)
+          "King:RewardFactor": s.kingScale === "players" ? +s.kingReward : 0,
+          "GameMode:KingReward": s.kingScale === "players" ? 0 : +s.kingReward, "King:AutoStart": 1,
         });
         break;
       default:
@@ -186,19 +194,23 @@
     const banned = Ships.SHIPS.filter((_, i) => !((+t.ships >> i) & 1));
     if (banned.length) teams += `, no ${banned.join(" or ")}`;
     parts.push(teams + ".");
-    const win = num(s.winReward);
+    const pays = (n, scale) => scale === "players" ? `points that grow with more pilots (${num(n)} × pilots² ÷ 1,000)` : `${num(n)} points`;
+    const win = pays(s.winReward, s.winScale);
     switch (g.objective) {
-      case "carryall": parts.push(`Carry all ${f.count} flags for ${dur(f.holdSec)} to win: ${win} points.`); break;
-      case "ownall": parts.push(`Own all ${f.count} dropped flags for ${dur(f.holdSec)} to win: ${win} points.`); break;
-      case "rabbit": parts.push(`One flag: kill the carrier to take it; hold it for ${dur(f.holdSec)} to win ${win} points.`); break;
+      case "carryall": parts.push(`Carry all ${f.count} flags for ${dur(f.holdSec)} to win ${win}.`); break;
+      case "ownall": parts.push(`Own all ${f.count} dropped flags for ${dur(f.holdSec)} to win ${win}.`); break;
+      case "rabbit": parts.push(`One flag: kill the carrier to take it; hold it for ${dur(f.holdSec)} to win ${win}.`); break;
       case "turf": parts.push(`Turf: ${num(s.turfPoints)} points for each flag held, every ${dur(s.turfEverySec)}.`); break;
-      case "powerball": parts.push(`Powerball with ${word(+g.ball.count)} ball${+g.ball.count === 1 ? "" : "s"}: ${num(s.goalReward)} points a goal.`); break;
-      case "king": parts.push(`King of the hill: the last crowned pilot wins.`); break;
+      case "powerball": parts.push(`Powerball with ${word(+g.ball.count)} ball${+g.ball.count === 1 ? "" : "s"}: ${pays(s.goalReward, s.goalScale)} a goal.`); break;
+      case "king": parts.push(`King of the hill: the last crowned pilot wins ${pays(s.kingReward, s.kingScale)}.`); break;
       default: parts.push("Just fight.");
     }
     parts.push(s.kill === "fixed" ? `Kills score ${num(s.fixedKill)} points.` : "Kills score the killed pilot's bounty.");
     const min = Math.round(+g.time.minutes || 0);
-    parts.push(min ? `${min}-minute rounds; nothing happens at zero yet.` : "No time limit.");
+    const flagWin = ["carryall", "ownall", "rabbit"].includes(g.objective);
+    if (!min) parts.push("No time limit.");
+    else if (flagWin) parts.push(`${min}-minute rounds; a flag win starts the next one, and when time runs out the team with the most flags wins (a tie is a draw).`);
+    else parts.push(`${min}-minute rounds.`);
     if (ships) parts.push(`${PACE[ships.pace] || "Standard"} pace, ${ships.items || "standard"} items.`);
     return parts.join(" ");
   }

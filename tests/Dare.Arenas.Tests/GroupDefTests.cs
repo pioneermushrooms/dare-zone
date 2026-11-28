@@ -71,4 +71,17 @@ public class GroupDefTests
         foreach (var file in new[] { "arenaowner", "arenamod", "arenacaps", "arenastaff" })
             Assert.DoesNotContain("changesettings", Caps(file));
     }
+
+    /// <summary>The tutorial's own commands are every player's (guests too); its counts are staff-only.</summary>
+    [Fact]
+    public void every_player_can_play_the_tutorial_and_staff_see_its_counts()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Dare.sln"))) dir = dir.Parent;
+        var lines = File.ReadAllLines(Path.Combine(dir!.FullName, "deploy", "default-caps.txt")).Select(l => l.Trim()).ToList();
+        foreach (var cap in new[] { "cmd_tutorial", "cmd_skip", "cmd_leave", "cmd_tutorialclient" })
+            Assert.Contains(cap, lines);
+        Assert.DoesNotContain("cmd_tutorialstats", lines);
+        Assert.Contains("cmd_tutorialstats", Caps("arenastaff"));
+    }
 }

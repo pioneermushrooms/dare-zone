@@ -272,8 +272,8 @@ const GameModeTab = (() => {
   // Which keys each panel shows under "What this changes"; anything else lands under Objective.
   const PANEL_KEYS = {
     teams: (k) => k.startsWith("Team:") || k.startsWith("LegalShip:") || k === "Misc:ShipChangeInterval",
-    scoring: (k) => k.startsWith("Kill:") || ["Misc:TeamKillPoints", "Flag:FlagReward", "Flag:SplitPoints", "Periodic:RewardPoints", "Soccer:Reward", "King:RewardFactor"].includes(k),
-    time: (k) => k === "Misc:TimedGame" || k === "Misc:TimerWarnings",
+    scoring: (k) => k.startsWith("Kill:") || ["Misc:TeamKillPoints", "Flag:FlagReward", "Flag:SplitPoints", "GameMode:FlatFlagReward", "Periodic:RewardPoints", "Soccer:Reward", "King:RewardFactor", "GameMode:KingReward"].includes(k),
+    time: (k) => k === "Misc:TimedGame" || k === "GameMode:RoundTime" || k === "Misc:TimerWarnings",
     flags: (k) => (k.startsWith("Flag:") && !["Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagReward", "Flag:SplitPoints"].includes(k)) || (k.startsWith("Soccer:") && k !== "Soccer:Reward") || (k.startsWith("King:") && k !== "King:RewardFactor"),
   };
   function changes(id) {
@@ -353,18 +353,21 @@ const GameModeTab = (() => {
 
   function scoringPanel() {
     const g = game(), s = g.scoring, o = g.objective;
+    // Each reward: the number as written, or scaled like the server, (pilots)^2 * number / 1000.
+    const SCALE = [["flat", "As written"], ["players", "Grows with pilots"]];
+    const scale = (key, label) => choice(SCALE, s[key] === "players" ? "players" : "flat", (v) => setG((x) => { x.scoring[key] = v; }), label);
     return [
       el("p", { class: "gmq", text: "How do pilots score?" }),
       row("Points for a kill", "The killed pilot's bounty, or the same number every time.",
         choice([["bounty", "Their bounty"], ["fixed", "Fixed"]], s.kill, (v) => setG((x) => { x.scoring.kill = v; }), "Points for a kill"),
         s.kill === "fixed" ? numBox(s.fixedKill, 0, 100000, (v) => setG((x) => { x.scoring.fixedKill = v; }), "Fixed kill points", "points") : null),
       row("Team kills score", "Points for killing a teammate.", yesNo(s.teamKills, (v) => setG((x) => { x.scoring.teamKills = v; }), "Team kills score")),
-      ["carryall", "ownall", "rabbit"].includes(o) ? row("Win reward", "Points for winning the flag game.", numBox(s.winReward, 0, 1000000, (v) => setG((x) => { x.scoring.winReward = v; }), "Win reward", "points")) : null,
+      ["carryall", "ownall", "rabbit"].includes(o) ? row("Win reward", "Points for winning the flag game, as written or growing with the number of pilots.", numBox(s.winReward, 0, 1000000, (v) => setG((x) => { x.scoring.winReward = v; }), "Win reward", "points"), scale("winScale", "How the win reward pays")) : null,
       ["carryall", "ownall", "rabbit"].includes(o) ? row("Split the reward", "Share it across the team instead of each getting it all.", yesNo(s.split, (v) => setG((x) => { x.scoring.split = v; }), "Split the reward")) : null,
       o === "turf" ? row("Points per flag", "For each flag a team holds, each time.", numBox(s.turfPoints, 0, 100000, (v) => setG((x) => { x.scoring.turfPoints = v; }), "Points per flag", "points")) : null,
       o === "turf" ? row("Every", "How often turf points are handed out.", numBox(s.turfEverySec, 10, 3600, (v) => setG((x) => { x.scoring.turfEverySec = v; }), "Turf interval", "seconds")) : null,
-      o === "powerball" ? row("Goal reward", "Points for scoring a goal.", numBox(s.goalReward, 0, 1000000, (v) => setG((x) => { x.scoring.goalReward = v; }), "Goal reward", "points")) : null,
-      o === "king" ? row("Winner's reward", "Grows with the number of pilots.", numBox(s.kingReward, 0, 100000, (v) => setG((x) => { x.scoring.kingReward = v; }), "King reward")) : null,
+      o === "powerball" ? row("Goal reward", "Points for scoring a goal, as written or growing with the number of pilots.", numBox(s.goalReward, 0, 1000000, (v) => setG((x) => { x.scoring.goalReward = v; }), "Goal reward", "points"), scale("goalScale", "How the goal reward pays")) : null,
+      o === "king" ? row("Winner's reward", "Points for the last crowned pilot, as written or growing with the number of pilots.", numBox(s.kingReward, 0, 100000, (v) => setG((x) => { x.scoring.kingReward = v; }), "King reward", "points"), scale("kingScale", "How the King reward pays")) : null,
       soonRow("First to N points", "End the game when a team reaches a score."),
     ];
   }
@@ -380,7 +383,9 @@ const GameModeTab = (() => {
       row("Time limit", "0 for no limit. Pilots see the time left with ?time.", numBox(t.minutes, 0, 600, (v) => setG((g) => { g.time.minutes = v; }), "Time limit", "minutes")),
       +t.minutes ? row("Warnings", "Seconds before the end, separated by commas.", warn) : null,
       soonRow("When time runs out", "Points to the leader, restart, or warp everyone to spawn."),
-      +t.minutes ? el("p", { class: "dim small", text: "The server does nothing when the timer ends today: the countdown shows, then the game carries on." }) : null,
+      +t.minutes ? el("p", { class: "dim small", text: ["carryall", "ownall", "rabbit"].includes(game().objective)
+        ? "When time runs out, the team with the most flags wins the flag reward (a tie is a draw), and the next round starts. A flag win starts the next round too."
+        : "When time runs out, the next round starts; nothing else happens yet." }) : null,
     ];
   }
 

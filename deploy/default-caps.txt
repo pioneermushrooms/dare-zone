@@ -14,3 +14,7 @@ cmd_bots
 cmd_quickfix
 cmd_getsettings
 cmd_settingseditor
+cmd_tutorial
+cmd_skip
+cmd_leave
+cmd_tutorialclient

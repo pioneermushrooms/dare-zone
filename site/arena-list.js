@@ -124,6 +124,9 @@ for (const b of document.querySelectorAll(".sortby button")) {
   });
 }
 
+// the open arenas as this list has them ({ value, name, players, mine }), for the tutorial's chooser
+globalThis.foundationArenaRows = () => read();
+
 // start.mjs refills the select whenever it fetches the arenas or the pilot's own; follow along
 new MutationObserver(render).observe(picker, { childList: true, subtree: true, characterData: true });
 picker.addEventListener("change", render);

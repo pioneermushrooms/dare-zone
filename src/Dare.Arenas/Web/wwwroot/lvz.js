@@ -393,9 +393,12 @@
   }
   /** Which frame an animated image shows at time t (ms): the period is the image's time in 1/100 s for the whole run. */
   const frameAt = (im, t) => { const n = Math.max(1, im.cols || 1) * Math.max(1, im.rows || 1); if (n < 2 || !(im.time > 0)) return 0; return Math.floor((t / (im.time * 10)) * n) % n; };
-  // Where the HUD reference points sit on a w x h screen. Approximate: taken from the LVZ Toolkit's
-  // refpoints picture (Continuum at 889 x 667); the real spots move with the player's HUD settings.
+  // Where the HUD reference points sit on a w x h screen: our client's own (lvz-screen.js, from
+  // oss-client hud.rs) when that's loaded; else approximate, from the LVZ Toolkit's refpoints picture
+  // (Continuum at 889 x 667). The real spots move with the player's HUD settings.
   function anchor(ref, w, h) {
+    const S = typeof self !== "undefined" ? self.LvzScreen : null;
+    if (S) return (S.anchors(w, h)[ref] || [0, 0]).slice();
     switch (ref) {
       case 1: return [w / 2, h / 2];
       case 2: return [w, h];

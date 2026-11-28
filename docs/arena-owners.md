@@ -213,7 +213,9 @@ For a zone install, set `OSS_BOT_LINUX` to the Linux x86-64 `oss-bot` executable
 when running `deploy/deploy.sh`. The deploy bundles it with the plugin. The
 `[DareArenas]` settings `BotProgram`, `BotServer`, and `MaxBots` override the
 bundled executable, loopback game address, and zone-wide cap (30 by default).
-Set `MaxBots = 0` to disable launches.
+Set `MaxBots = 0` to disable launches. The in-game tutorial's bots are separate:
+they don't count against `MaxBots` and have their own `[Tutorial]` settings
+(`deploy/README.md`, "Zone settings: the tutorial and bots").
 
 ### Optional generated bot banter
 

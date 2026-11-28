@@ -192,12 +192,12 @@ public sealed class FoundationAuth : IModule, IAuth
         // a guest, unless an old account really is named "guest"
         if (string.Equals(name, AccountRules.GuestLogin, StringComparison.OrdinalIgnoreCase) && store.Find(name) is null)
         {
-            LetGuestIn(authRequest, store);
+            LetGuestIn(authRequest, store, password);
             return;
         }
 
-        // the zone's own bots: a one-time pass from the bot supervisor
-        if (store.IsBotLogin(name))
+        // the zone's own bots (arena bots and the tutorial's): a one-time pass from the bot supervisor
+        if (store.IsBotLogin(name) || (TutorialBots.Holds(name) && store.Find(name) is null))
         {
             result.Authenticated = BotPasses.Redeem(name, password);
             if (result.Authenticated) BotPasses.MarkSession(player);
@@ -270,11 +270,15 @@ public sealed class FoundationAuth : IModule, IAuth
         c.Request.Done();
     }
 
-    /// <summary>Mainloop: lets a guest in, unauthenticated, under a random space name nobody online or on file has.</summary>
-    private void LetGuestIn(IAuthRequest request, AccountStore store)
+    /// <summary>
+    /// Mainloop: lets a guest in, unauthenticated, under a random space name nobody online or on file has. The password
+    /// <see cref="TutorialGuests.DonePassword"/> is a Dare client saying this guest already left or finished the tutorial.
+    /// </summary>
+    private void LetGuestIn(IAuthRequest request, AccountStore store, string password)
     {
         var result = request.Result;
-        var picked = GuestNames.PickFree(Random.Shared.Next, n => _playerData.FindPlayer(n) is not null || store.Find(n) is not null || store.BotNameTaken(n));
+        var picked = GuestNames.PickFree(Random.Shared.Next, n => _playerData.FindPlayer(n) is not null || store.Find(n) is not null ||
+            store.BotNameTaken(n) || TutorialBots.Holds(n));
         if (picked is null)
         {
             Refuse(request, request.Player?.Type == ClientType.Continuum, null);
@@ -286,6 +290,7 @@ public sealed class FoundationAuth : IModule, IAuth
         result.Code = AuthCode.OK;
         result.SetName(picked);
         result.SetSendName(picked);
+        if (request.Player is { } player) TutorialGuests.Mark(player, password == TutorialGuests.DonePassword);
         Log(LogLevel.Info, $"Guest login: flying as '{picked}'.");
         request.Done();
     }
@@ -315,6 +320,7 @@ public sealed class FoundationAuth : IModule, IAuth
     {
         if (isNew) return;
         lock (_pendingLock) _pending.Remove(player);
+        TutorialGuests.Forget(player);
     }
 
     private static string Decode(ReadOnlySpan<byte> bytes) => StringUtils.DefaultEncoding.GetString(bytes);

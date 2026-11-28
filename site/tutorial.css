@@ -1,0 +1,69 @@
+/* The zone's tutorial over the game (tutorial.js): the mentor's box bottom-left above the game's chat,
+   the "Try the tutorial" offer in the same spot, and the arena chooser when a first run ends. Clear of the
+   radar (bottom-right); within a 16px gutter on a phone.
+   The look is Chris's approved retro CRT mockup (2026-11-28): an amber panel on #120a00 with faint scanlines,
+   a 3px amber border and a hard 4px shadow, square corners, VT323 for the words and Press Start 2P for the
+   name and buttons (index.html loads both). tools/tutorial-lvz/build.js draws the same box for Continuum. */
+.tut { --tut-bottom: calc(18vh + 40px); --amber: #ffb000; --amber-dim: #c98a00; --amber-deep: #5a3a00; --amber-ink: #1a0f00;
+  position: fixed; left: 16px; bottom: var(--tut-bottom); z-index: 20;
+  width: min(500px, calc(100vw - 32px)); max-width: calc(100vw - 32px); color: #ffd36b;
+  font: 22px/24px VT323, ui-monospace, monospace; background-color: #120a00;
+  background-image: repeating-linear-gradient(0deg, rgba(255, 176, 0, .06) 0, rgba(255, 176, 0, .06) 1px, transparent 1px, transparent 3px);
+  border: 3px solid var(--amber); border-radius: 0; box-shadow: 4px 4px 0 var(--amber-deep);
+  user-select: none; -webkit-user-select: none; }
+.tut[hidden], body:not(.playing) .tut { display: none; }
+.tut, .tut * { box-sizing: border-box; }
+
+.tut-box, .tut-offer { display: grid; grid-template-columns: 112px 1fr; gap: 14px; padding: 12px; }
+/* tutorial-vex.svg, inlined; CRT scanlines over it */
+.tut-face { box-sizing: content-box; position: relative; width: 112px; height: 112px; overflow: hidden;
+  background: var(--amber-ink); border: 2px solid var(--amber-deep); }
+.tut-face svg { display: block; width: 100%; height: 100%; }
+.tut-face::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, .28) 0, rgba(0, 0, 0, .28) 1px, transparent 1px, transparent 3px); }
+/* talking: the eye glow drops to this and back every 120ms while the line types */
+.tut-face.dim .vex-glow { opacity: .4; }
+.tut-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tut-head { display: flex; align-items: baseline; gap: 10px; font: 14px 'Press Start 2P', ui-monospace, monospace; color: var(--amber); }
+.tut-name { text-transform: uppercase; }
+.tut-callsign, .tut-step { font: 18px VT323, ui-monospace, monospace; color: var(--amber-dim); }
+.tut-callsign { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tut-step { margin-left: auto; white-space: nowrap; }
+.tut-line { margin: 0; min-height: 48px; overflow-wrap: anywhere; }
+.tut-key { font: inherit; color: var(--amber-ink); background: var(--amber); padding: 0 5px; }
+.tut-cursor { color: var(--amber); animation: tut-blink .9s steps(1) infinite; }
+@keyframes tut-blink { 50% { visibility: hidden; } }
+.tut-buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.tut-btn { font: 10px 'Press Start 2P', ui-monospace, monospace; text-transform: uppercase; min-height: 32px; padding: 0 12px;
+  color: var(--amber-ink); background: var(--amber); border: 0; border-radius: 0; cursor: pointer; touch-action: manipulation; }
+.tut-btn:hover { background: #ffd36b; }
+.tut-btn.ghost { color: var(--amber); background: transparent; border: 2px solid var(--amber); }
+.tut-btn.ghost:hover { color: #ffd36b; border-color: #ffd36b; background: transparent; }
+/* the zone says a step is taking a while: Skip is pointed out */
+.tut-btn.nudge { animation: tut-nudge 1s ease-in-out infinite; }
+@keyframes tut-nudge { 50% { box-shadow: 0 0 0 4px #ffb00066; } }
+
+.tut-choose { display: grid; gap: 8px; padding: 12px; width: min(320px, calc(100vw - 32px)); }
+.tut-arenas { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: min(40vh, 260px); overflow-y: auto; }
+.tut-arena { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 4px 10px; min-height: 36px; cursor: pointer;
+  color: #ffd36b; background: transparent; border: 2px solid var(--amber-deep); border-radius: 0; font: 20px/1 VT323, ui-monospace, monospace;
+  touch-action: manipulation; align-items: center; }
+.tut-arena:hover { border-color: var(--amber); }
+.tut-arena .aname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tut-arena .acount { color: var(--amber-dim); }
+.tut-arena .acount.live { color: var(--amber); }
+.tut-none { color: var(--amber-dim); font-size: 18px; }
+.tut-choose > .tut-btn { justify-self: start; }
+
+@media (max-width: 560px) {
+  .tut { --tut-bottom: calc(14vh + 32px); font-size: 20px; line-height: 22px; }
+  .tut-box, .tut-offer { grid-template-columns: 64px 1fr; gap: 10px; padding: 10px; }
+  .tut-face { width: 64px; height: 64px; }
+  .tut-head { font-size: 12px; }
+  .tut-line { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tut-btn.nudge { animation: none; box-shadow: 0 0 0 3px #ffb00066; }
+  .tut-cursor { animation: none; }
+}

@@ -140,5 +140,8 @@ a.mention:hover { text-decoration: underline; }
 @view-transition { navigation: auto; }
 header.bar .brand { view-transition-name: brand; }
 header.bar .topright { view-transition-name: topbar; }
+/* view-transition-name makes .topright its own layer: lift it so the pilot menu opens over the page (and the docked chat),
+   but under a full-screen editor (z 60) */
+header.bar .topright { position: relative; z-index: 50; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
 @media (prefers-reduced-motion: reduce) { .toast, .inboxbtn { animation: none; transition: none; } ::view-transition-group(*) { animation: none; } }

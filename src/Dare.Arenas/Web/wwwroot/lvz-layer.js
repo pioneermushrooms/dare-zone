@@ -22,17 +22,20 @@
     <p class="hint lzp-tip">Select an LVZ image, then click the map to place it.</p>
     <div class="lzp-where" role="radiogroup" aria-label="Where new images go">
       <label class="hint"><input type="radio" name="lzpwhere" value="map" checked> <b>On the map</b>: at a spot in the arena; it scrolls with the map</label>
-      <label class="hint dim" title="Coming next: a game screen to drop images onto"><input type="radio" name="lzpwhere" value="screen" disabled> On the screen: fixed on every pilot's screen (coming soon)</label>
+      <label class="hint"><input type="radio" name="lzpwhere" value="screen"> <b>On the screen</b>: fixed on every pilot's screen; place it on a game screen</label>
     </div>
     <div class="lzp-pal" aria-label="Images: select one, then click the map to place it"></div>
     <div class="row"><label class="btn ghost small" title="PNG, BMP or GIF from your computer">Upload…<input type="file" class="lzp-addimg" accept=".png,.bmp,.bm2,.gif,.jpg,.jpeg" multiple hidden></label>
       <select class="lzp-from" aria-label="Add images from your Armory or another .lvz"><option value="">From your Armory…</option></select></div>
+    <details class="lzp-stock" hidden><summary class="hint">Stock images</summary><div class="lzp-stockgrid"></div></details>
     <label class="hint"><input type="checkbox" class="lzp-edit"> Place and move LVZ (instead of drawing walls)</label>
-    <div class="row"><label class="hint"><input type="checkbox" class="lzp-show" checked> Show them</label>
+    <div class="row"><label class="hint" title="Hide them to work on the map underneath; nothing is removed"><input type="checkbox" class="lzp-show" checked> Show LVZ</label>
       <label class="hint"><input type="checkbox" class="lzp-snap" checked> Snap to tiles</label>
       <select class="lzp-layer" aria-label="Layer for new images" title="Layer for new images"></select></div>
     <div class="lzp-sel" hidden>
+      <label class="lzp-f lzp-scr" title="The game point its x is measured from">X from <select data-f="xRef"></select></label>
       <label class="lzp-f">X <input type="number" data-f="x" min="0" max="16384"></label>
+      <label class="lzp-f lzp-scr" title="The game point its y is measured from">Y from <select data-f="yRef"></select></label>
       <label class="lzp-f">Y <input type="number" data-f="y" min="0" max="16384"></label>
       <label class="lzp-f">Layer <select data-f="layer"></select></label>
       <label class="lzp-f">Shown <select data-f="mode"></select></label>
@@ -43,15 +46,16 @@
     </div>
     <details class="lzp-placed"><summary class="hint">Placed <span class="lzp-pn"></span></summary><ul class="lzp-list"></ul></details>
     <div class="row"><button type="button" class="small lzp-save" title="Keep these placements with the map; the map's Publish puts them in the arena">Save LVZ</button>
-      <a class="btn ghost small lzp-full" href="/arena/me#lvz" title="Screen objects, image timing and more">LVZ tab</a></div>
+      <a class="btn ghost small lzp-full" href="/arena/me#lvz" title="Image timing, .ini import and export, and more in the arena editor's LVZ (Advanced) tab">Advanced</a></div>
     <p class="lzp-msg" role="status"></p>
     <details class="lzp-more"><summary class="hint">Kept in <b class="lzp-fname"></b></summary>
       <select class="lzp-src" aria-label="Which .lvz file the placements are kept in"></select>
       <p class="hint">An arena can have several .lvz files; the placements above are kept in this one. Switching keeps your changes.</p></details>
-    <p class="hint">Drag to move, Alt+drag to copy, Del deletes, arrows nudge, Esc or another tool goes back to walls. Map images don't block ships.</p>`;
+    <p class="hint">Drag to move, Alt+drag to copy, Del deletes, arrows nudge, Esc or another tool goes back to walls. On the screen, drag an image from above onto the game screen; it snaps to the game's points (Shift: no snap) and keeps its place at every window size. Map images don't block ships.</p>`;
   const q = (c) => panel.querySelector("." + c), F = (k) => q("lzp-sel").querySelector(`[data-f=${k}]`);
   Lvz.LAYERS.forEach((l, i) => { const t = l.replace(/([a-z])([A-Z])/g, "$1 $2"); q("lzp-layer").append(new Option(t, i)); F("layer").append(new Option(t, i)); });
   MODE_TEXT.forEach((m, i) => F("mode").append(new Option(m, i)));
+  Lvz.REFS.forEach(([, t], i) => { F("xRef").append(new Option(t, i)); F("yRef").append(new Option(t, i)); });
   q("lzp-layer").value = 2;
 
   let lvz = null, pics = [], src = null, sel = -1, img = -1, dirty = false, role = null, levelFiles = [], drag = null, space = false;
@@ -111,7 +115,7 @@
     if (i < 0) {
       if (!lvz.images.length || !lvz.images[img]) { say(lvz.images.length ? "Select an LVZ image, then click the map to place it." : "Upload an image (or add one from your Armory) first, then click the map to place it.", false); return; }
       const p = pics[img], fw = p ? p.fw : 32, fh = p ? p.fh : 32;
-      lvz.objects.push(Lvz.newObject({ map: true, image: img, x: clamp(snap(px - fw / 2)), y: clamp(snap(py - fh / 2)), layer: +q("lzp-layer").value, id: nextId() }));
+      lvz.objects.push(Lvz.newObject({ map: true, image: img, x: clamp(snap(px - fw / 2)), y: clamp(snap(py - fh / 2)), layer: +q("lzp-layer").value, id: nextId(), time: showTime(img) }));
       i = lvz.objects.length - 1; setDirty(true);
     }
     const o = lvz.objects[i];
@@ -134,7 +138,7 @@
     if (!q("lzp-edit").checked || e.target.closest?.("input, select, textarea, dialog")) return;
     if (e.key === "Escape" && !document.querySelector("dialog[open]")) { e.preventDefault(); e.stopImmediatePropagation(); setPlacing(false, "Placement off: back to drawing walls."); return; }
     if (!lvz || sel < 0) return;
-    const o = lvz.objects[sel]; if (!o) return;
+    const o = lvz.objects[sel]; if (!o || !o.map) return;
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
     if (d) { stop(); const k = e.shiftKey ? 16 : 1; o.x = clamp(o.x + d[0] * k); o.y = clamp(o.y + d[1] * k); setDirty(true); showSel(); redraw(); }
@@ -145,12 +149,13 @@
   // ---- placement mode: on while placing objects, off as soon as the pilot picks a tool or tile, or presses Esc
   const badge = document.createElement("div");
   badge.className = "lzp-badge"; badge.hidden = true; badge.setAttribute("role", "status");
-  badge.append(Object.assign(document.createElement("span"), { textContent: "LVZ placement: clicks place and move objects, not walls" }));
+  const badgeText = Object.assign(document.createElement("span"), { textContent: "LVZ placement: clicks place and move objects, not walls" });
+  badge.append(badgeText);
   const done = Object.assign(document.createElement("button"), { type: "button", className: "small", textContent: "Done (Esc)", title: "Back to drawing walls" });
   badge.append(done);
   view.parentElement.append(badge);
   done.addEventListener("click", () => setPlacing(false, "Placement off: back to drawing walls."));
-  function setPlacing(on, note) {
+  function setPlacing(on, note, keepPalette) {
     on = !!on && q("lzp-show").checked;
     q("lzp-edit").checked = on;
     if (on) q("lzp-show").checked = true;
@@ -158,11 +163,33 @@
     document.body.classList.toggle("lvzplacing", on);
     q("lzp-edit").closest("label").classList.toggle("lzp-on", on);
     if (!on) { drag = null; if (sel >= 0) { sel = -1; showSel(); showList(); } }
-    showPalette();
+    showScreen(on && where() === "screen");
+    if (!keepPalette) showPalette(); // not mid-drag: rebuilding would drop the image being dragged
     if (note) say(note, true);
     redraw();
   }
   window.addEventListener("map:tool", () => { if (q("lzp-edit").checked) setPlacing(false, "Placement off: drawing walls again."); });
+
+  // ---- on the screen: a mimic game screen over the map (lvz-screen.js) ----------------------------------
+  const where = () => (panel.querySelector("input[name=lzpwhere]:checked") || {}).value || "map";
+  const setWhere = (w) => { const r = panel.querySelector(`input[name=lzpwhere][value=${w}]`); if (r) r.checked = true; };
+  const screen = window.LvzScreen ? LvzScreen.mount(view.parentElement, {
+    lvz: () => lvz, pics: () => pics, image: () => img, visible: () => q("lzp-show").checked,
+    selected: () => sel, select: (i) => { sel = i; showSel(); showList(); },
+    make: (f) => Lvz.newObject(Object.assign({ id: nextId(), mode: 0, time: showTime(f.image) }, f)),
+    changed: (live) => { setDirty(true); showSel(); if (!live) count(); },
+    say,
+  }) : null;
+  function showScreen(on) {
+    if (!screen) return;
+    screen.show(on);
+    badgeText.textContent = on ? "LVZ on the screen: drop or click images onto the game screen" : "LVZ placement: clicks place and move objects, not walls";
+  }
+  for (const r of panel.querySelectorAll("input[name=lzpwhere]")) r.addEventListener("change", () => {
+    if (!screen && where() === "screen") { setWhere("map"); say("The screen view didn't load.", false); return; }
+    if (sel >= 0) { sel = -1; showSel(); showList(); }
+    setPlacing(true, where() === "screen" ? "Drag an image onto the game screen, or select one and click there." : "Select an LVZ image, then click the map to place it.");
+  });
 
   // ---- panel ------------------------------------------------------------------------------------------
   const nextId = () => Lvz.nextId(lvz);
@@ -171,6 +198,7 @@
     q("lzp-count").textContent = lvz ? `${m} on the map${s ? `, ${s} on the screen` : ""}` : "";
     q("lzp-pn").textContent = lvz ? `(${lvz.objects.length})` : "";
     showList();
+    if (screen) screen.redraw();
   }
   // every placed object: map ones select and jump there; screen ones are listed (placed in the LVZ tab for now)
   function showList() {
@@ -191,8 +219,16 @@
       });
       li.append(b); ul.append(li);
     }
-    if (scr.length) head("On the screen (edit these in the LVZ tab for now)");
-    for (const [o] of scr) { const li = document.createElement("li"); li.className = "hint"; li.textContent = `${name(o)} · ${o.x}, ${o.y}`; ul.append(li); }
+    if (scr.length) head("On the screen");
+    for (const [o, i] of scr) {
+      const li = document.createElement("li"), b = document.createElement("button");
+      b.type = "button"; b.className = "ghost small" + (i === sel ? " on" : "");
+      const ref = (Lvz.REFS[o.xRef] || Lvz.REFS[0])[1];
+      b.textContent = `${name(o)} · ${ref} ${o.x >= 0 ? "+" : ""}${o.x}, ${o.y >= 0 ? "+" : ""}${o.y}${Lvz.isReserved(o.id) ? " ⚙" : ""}`;
+      b.title = `Id ${o.id}: select it on the game screen`;
+      b.addEventListener("click", () => { if (where() !== "screen" || !q("lzp-edit").checked) { setWhere("screen"); setPlacing(true); } sel = i; showSel(); showList(); if (screen) screen.redraw(); });
+      li.append(b); ul.append(li);
+    }
     if (!map.length && !scr.length) { const li = document.createElement("li"); li.className = "hint"; li.textContent = "Nothing placed yet."; ul.append(li); }
   }
   function showPalette() {
@@ -207,33 +243,38 @@
       if (p && p.canvas) { const z = Math.min(40 / p.fw, 40 / p.fh, 4); Lvz.drawFrame(ctx, p, im, 0, (40 - p.fw * z) / 2, (40 - p.fh * z) / 2, z); }
       else Lvz.drawFrame(ctx, null, im, 0, 4, 4, 1, "?");
       b.append(c);
+      b.draggable = true;
+      b.addEventListener("dragstart", (e) => { e.dataTransfer.setData("application/x-lvz-image", String(i)); e.dataTransfer.effectAllowed = "copy"; img = i; if (where() !== "screen" || !q("lzp-edit").checked) { setWhere("screen"); setPlacing(true, "Drop it on the game screen.", true); } });
       b.addEventListener("click", () => {
         img = i;
         if (sel >= 0) { sel = -1; showSel(); showList(); }
-        setPlacing(true, `Placing ${im.file}: click the map. Esc or Done when finished.`); showPalette();
+        setPlacing(true, where() === "screen" ? `Placing ${im.file}: click the game screen, or drag it there. Esc or Done when finished.` : `Placing ${im.file}: click the map. Esc or Done when finished.`); showPalette();
       });
       box.append(b);
     });
   }
   function showSel() {
     const o = lvz && lvz.objects[sel];
-    q("lzp-sel").hidden = !o || !o.map;
-    if (!o || !o.map) return;
+    q("lzp-sel").hidden = !o;
+    if (!o) return;
     q("lzp-gm").hidden = !Lvz.isReserved(o.id);
+    for (const l of panel.querySelectorAll(".lzp-scr")) l.hidden = o.map;
+    for (const k of ["x", "y"]) { F(k).min = o.map ? 0 : -2048; F(k).max = o.map ? 16384 : 2047; }
+    F("xRef").value = o.xRef || 0; F("yRef").value = o.yRef || 0;
     F("x").value = o.x; F("y").value = o.y; F("layer").value = o.layer; F("mode").value = o.mode; F("time").value = (o.time / 10).toFixed(1); F("id").value = o.id;
   }
   q("lzp-sel").addEventListener("change", (e) => {
     const o = lvz && lvz.objects[sel], k = e.target.dataset.f; if (!o || !k) return;
     const v = +e.target.value;
     if (k === "time") o.time = Math.max(0, Math.min(4095, Math.round(v * 10)));
-    else if (k === "x" || k === "y") o[k] = clamp(Math.round(v) || 0);
+    else if (k === "x" || k === "y") o[k] = o.map ? clamp(Math.round(v) || 0) : Math.max(-2048, Math.min(2047, Math.round(v) || 0));
     else if (k === "id") o.id = Math.max(0, Math.min(32767, Math.round(v) || 0));
     else o[k] = Math.round(v) || 0;
-    setDirty(true); showList(); redraw();
+    setDirty(true); showList(); redraw(); if (screen) screen.redraw();
   });
   q("lzp-dup").addEventListener("click", () => {
     const o = lvz && lvz.objects[sel]; if (!o) return;
-    const c = Object.assign({}, o, { id: nextId(), x: clamp(o.x + 16), y: clamp(o.y + 16) }); delete c.fromClv1;
+    const c = Object.assign({}, o, { id: nextId(), x: o.map ? clamp(o.x + 16) : Math.min(2047, o.x + 16), y: o.map ? clamp(o.y + 16) : Math.min(2047, o.y + 16) }); delete c.fromClv1;
     lvz.objects.push(c); sel = lvz.objects.length - 1; setDirty(true); showSel(); count(); redraw();
   });
   q("lzp-del").addEventListener("click", () => {
@@ -295,6 +336,54 @@
       }
     } catch (err) { say(err.message, false); }
   });
+
+  // ---- stock images (gamemode-art.js, made for the game creator): click one to add it, then place it ----------
+  const STOCK = window.GameModeArt ? GameModeArt.ITEMS : [];
+  const STOCK_KINDS = [["digit", "Digits"], ["countdown", "Countdowns"], ["banner", "Banners"], ["icon", "Team icons"]];
+  // a countdown shows once: its display time covers every frame (else LVZ loops it back to the start)
+  function showTime(image) {
+    const im = lvz && lvz.images[image], it = im && STOCK.find((x) => x.kind === "countdown" && x.file.toLowerCase() === im.file.toLowerCase());
+    return it ? Math.min(4095, Math.ceil(it.frames * it.frameMs / 100)) : 0;
+  }
+  function showStock() {
+    const box = q("lzp-stockgrid"); box.replaceChildren();
+    q("lzp-stock").hidden = !STOCK.length;
+    for (const [kind, title] of STOCK_KINDS) {
+      const items = STOCK.filter((x) => x.kind === kind); if (!items.length) continue;
+      const h = document.createElement("p"); h.className = "lzp-sh"; h.textContent = title; box.append(h);
+      const row = document.createElement("div"); row.className = "lzp-srow";
+      for (const it of items) {
+        const b = document.createElement("button"); b.type = "button";
+        b.title = `${it.label} (${it.use === "both" ? "screen or map" : it.use === "map" ? "map" : "screen"}${it.frames ? `, ${it.frames} frames` : ""})`;
+        b.setAttribute("aria-label", `Add ${it.label}`);
+        const im = document.createElement("img"); im.alt = ""; im.src = GameModeArt.url(it); im.loading = "lazy";
+        if (it.frames) { im.style.objectFit = "cover"; im.style.objectPosition = "left"; im.style.aspectRatio = `${it.frameW} / ${it.h}`; }
+        b.append(im);
+        b.addEventListener("click", () => addStock(it));
+        row.append(b);
+      }
+      box.append(row);
+    }
+  }
+  async function addStock(it) {
+    ensureLvz();
+    try {
+      let i = lvz.images.findIndex((x) => x.file.toLowerCase() === it.file.toLowerCase());
+      if (i < 0) {
+        const f = await fetchBytes(GameModeArt.url(it));
+        if (!f) { say(`Couldn't load ${it.label}.`, false); return; }
+        Lvz.putFile(lvz, it.file, f.bytes);
+        lvz.images.push(GameModeArt.lvzImage(it)); i = lvz.images.length - 1;
+        pics = await Lvz.pictures(lvz); setDirty(true);
+      }
+      img = i;
+      if (it.use === "screen" && where() !== "screen") setWhere("screen");
+      else if (it.use === "map" && where() !== "map") setWhere("map");
+      const on = where() === "screen";
+      setPlacing(true, `${it.label}: ${on ? "click the game screen, or drag it from the images above" : "click the map"} to place it.${it.kind === "countdown" ? " It shows once, then goes." : ""}`);
+    } catch (err) { say(err.message, false); }
+  }
+  showStock();
 
   // ---- which file, save, publish ------------------------------------------------------------------------------
   const srcValue = () => (!src ? "" : src.from === "lib" ? "lib:" + src.libId : src.from === "arena" ? "arena:" + src.name : "new:");

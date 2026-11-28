@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" shape-rendering="crispEdges">
+<!-- Vex, the tutorial's mentor: "cracked visor" (Chris's approved mockup, 2026-11-28). The browser's mentor box
+     inlines this (site/tutorial.js), and tools/tutorial-lvz/build.js rasterises it for Continuum: keep to
+     polygon, polyline and line, with fill, stroke, stroke-width, opacity and class. The two eye glows are
+     class "vex-glow": the page dims them in turn while Vex talks; Continuum gets them as a 1-px halo. -->
+<defs><filter id="vex-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter></defs>
+<polygon points="0,96 12,76 34,68 48,73 62,68 84,76 96,96" fill="#3a2500"/>
+<polyline points="12,77 34,69 40,71" fill="none" stroke="#c98a00" stroke-width="1"/>
+<polyline points="84,77 62,69 56,71" fill="none" stroke="#7a4a00" stroke-width="1"/>
+<line x1="16" y1="84" x2="20" y2="80" stroke="#ffb000" stroke-width="1"/>
+<line x1="20" y1="86" x2="24" y2="82" stroke="#ffb000" stroke-width="1"/>
+<line x1="24" y1="88" x2="28" y2="84" stroke="#ffb000" stroke-width="1"/>
+<polygon points="36,70 48,79 60,70 58,62 38,62" fill="#7a4a00"/>
+<polygon points="28,26 10,10 20,30 26,36" fill="#ffb000"/>
+<polygon points="68,26 86,10 76,30 70,36" fill="#c98a00"/>
+<polygon points="26,46 28,26 36,14 48,9 60,14 68,26 70,46 64,60 54,67 42,67 32,60" fill="#c98a00"/>
+<polygon points="48,9 60,14 68,26 70,46 64,60 54,67 48,67" fill="#7a4a00" opacity=".6"/>
+<polygon points="40,12 48,9 56,12 51,24 45,24" fill="#ffe28a"/>
+<line x1="32" y1="22" x2="38" y2="28" stroke="#7a4a00" stroke-width="1"/>
+<line x1="33" y1="27" x2="36" y2="30" stroke="#7a4a00" stroke-width="1"/>
+<polygon points="29,33 48,40 67,33 65,45 48,51 31,45" fill="#120800"/>
+<polyline points="30,34 48,41 66,34" fill="none" stroke="#ffb000" stroke-width="1"/>
+<polygon class="vex-glow" points="35,40 45,43 44,46 35,43" fill="#ff3b1f" filter="url(#vex-glow)" opacity=".9"/>
+<polygon class="vex-glow" points="61,40 51,43 52,46 61,43" fill="#ff3b1f" filter="url(#vex-glow)" opacity=".9"/>
+<polygon points="36,41 44,43.5 43.5,45 36,42.5" fill="#ffd2c4"/>
+<polygon points="60,41 52,43.5 52.5,45 60,42.5" fill="#ffd2c4"/>
+<polyline points="57,35 53,40 56,43 52,48" fill="none" stroke="#ffe28a" stroke-width="0.8"/>
+<polygon points="37,53 48,57 59,53 57,63 48,66 39,63" fill="#3a2500"/>
+<line x1="44" y1="59" x2="44" y2="63" stroke="#c98a00" stroke-width="1"/>
+<line x1="48" y1="60" x2="48" y2="64" stroke="#c98a00" stroke-width="1"/>
+<line x1="52" y1="59" x2="52" y2="63" stroke="#c98a00" stroke-width="1"/>
+<polyline points="32,60 42,67 54,67 64,60" fill="none" stroke="#ffe28a" stroke-width="1" opacity=".8"/>
+</svg>

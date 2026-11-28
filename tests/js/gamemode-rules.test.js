@@ -6,14 +6,14 @@ const R = require("../../src/Dare.Arenas/Web/wwwroot/gamemode-rules.js");
 
 // Specs like the arena's /api/me settings list: every key the rules module may write.
 const INT_KEYS = ["Team:DesiredTeams", "Team:MaxPerTeam", "Team:MaxFrequency", "Team:MaxTeamDifference", "LegalShip:ArenaMask",
-  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "Flag:CarryFlags", "Flag:FlagCount",
+  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "GameMode:RoundTime", "Flag:CarryFlags", "Flag:FlagCount",
   "Flag:WinDelay", "Flag:FlagReward", "Flag:FlagDropDelay", "Flag:FlaggerSpeedAdjustment", "Soccer:BallCount", "Soccer:Reward",
-  "Soccer:WinBy", "Periodic:RewardDelay", "Periodic:RewardPoints", "King:DeathCount", "King:MinPlayers", "King:RewardFactor"];
-const BOOL_KEYS = ["Team:ForceEvenTeams", "Misc:TeamKillPoints", "Flag:SplitPoints", "Flag:DropOwned", "Flag:DropCenter",
+  "Soccer:WinBy", "GameMode:KingReward", "Periodic:RewardDelay", "Periodic:RewardPoints", "King:DeathCount", "King:MinPlayers", "King:RewardFactor"];
+const BOOL_KEYS = ["GameMode:FlatFlagReward", "Team:ForceEvenTeams", "Misc:TeamKillPoints", "Flag:SplitPoints", "Flag:DropOwned", "Flag:DropCenter",
   "Flag:FlaggerOnRadar", "Flag:PersistentTurfOwners", "Soccer:BallBounce", "Soccer:AllowGuns", "Soccer:AllowBombs", "King:AutoStart"];
 function specs(extra = {}) {
   const s = {};
-  for (const k of INT_KEYS) s[k] = { type: "int", min: k === "Kill:FixedKillReward" ? -1 : 0, max: k === "LegalShip:ArenaMask" ? 255 : k === "Flag:FlagCount" ? 256 : k === "Soccer:BallCount" ? 8 : 1000000 };
+  for (const k of INT_KEYS) s[k] = { type: "int", min: k === "Kill:FixedKillReward" ? -1 : k === "Soccer:Reward" ? -1000000 : 0, max: k === "LegalShip:ArenaMask" ? 255 : k === "Flag:FlagCount" ? 256 : k === "Soccer:BallCount" ? 8 : 1000000 };
   for (const k of BOOL_KEYS) s[k] = { type: "bool" };
   s["Misc:TimerWarnings"] = { type: "text" };
   s["GameMode:Attach"] = { type: "flags" };
@@ -77,8 +77,24 @@ test("attach words per objective", () => {
 
 test("minutes to ticks and warnings as text", () => {
   const out = R.settings(game("fight", { time: { minutes: 30, warnings: [60, 10] } }), specs());
-  assert.equal(out["Misc:TimedGame"], "180000");
+  assert.equal(out["GameMode:RoundTime"], "180000");
   assert.equal(out["Misc:TimerWarnings"], "60,10");
+});
+
+test("rounds run on the plugin's clock, so a flag win can start the next one", () => {
+  // Misc:TimedGame can't be restarted after a flag win; GameMode:RoundTime can, and decides who wins at zero.
+  for (const o of ["fight", "carryall", "ownall", "rabbit", "powerball"]) {
+    const out = R.settings(game(o, { time: { minutes: 30 } }), specs());
+    assert.equal(out["Misc:TimedGame"], "0", o);
+    assert.equal(out["GameMode:RoundTime"], "180000", o);
+  }
+  assert.equal(R.settings(game("fight", { time: { minutes: 0 } }), specs())["GameMode:RoundTime"], "0");
+});
+
+test("the summary says what happens when a flag round runs out", () => {
+  assert.match(R.summary(game("carryall", { time: { minutes: 30 } })), /most flags wins/i);
+  assert.doesNotMatch(R.summary(game("carryall", { time: { minutes: 30 } })), /nothing happens/i);
+  assert.match(R.summary(game("fight", { time: { minutes: 30 } })), /30-minute rounds/);
 });
 
 test("free-for-all is one per team; private teams off caps MaxFrequency", () => {
@@ -149,4 +165,28 @@ test("summary mentions the objective, teams and time", () => {
   assert.match(s, /two teams/i);
   assert.match(s, /fast pace/i);
   assert.match(R.summary(game("fight", { teams: { count: 0 } })), /everyone for themselves/i);
+});
+
+test("rewards pay as written by default", () => {
+  const flags = R.settings(game("carryall", { scoring: { winReward: 5000 } }), specs());
+  assert.equal(flags["Flag:FlagReward"], "5000"); assert.equal(flags["GameMode:FlatFlagReward"], "1");
+  const ball = R.settings(game("powerball", { scoring: { goalReward: 1000 } }), specs());
+  assert.equal(ball["Soccer:Reward"], "-1000"); // the server pays a negative Soccer:Reward as written
+  const king = R.settings(game("king", { scoring: { kingReward: 800 } }), specs());
+  assert.equal(king["King:RewardFactor"], "0"); assert.equal(king["GameMode:KingReward"], "800"); // the plugin pays it
+});
+
+test("rewards can scale with the number of pilots, as the server does", () => {
+  const sc = { winScale: "players", goalScale: "players", kingScale: "players", winReward: 5000, goalReward: 1000, kingReward: 800 };
+  assert.equal(R.settings(game("ownall", { scoring: sc }), specs())["GameMode:FlatFlagReward"], "0");
+  assert.equal(R.settings(game("powerball", { scoring: sc }), specs())["Soccer:Reward"], "1000");
+  const king = R.settings(game("king", { scoring: sc }), specs());
+  assert.equal(king["King:RewardFactor"], "800"); assert.equal(king["GameMode:KingReward"], "0");
+});
+
+test("the summary says how a reward pays", () => {
+  assert.match(R.summary(game("carryall", { scoring: { winReward: 5000 } })), /5,000 points/);
+  assert.match(R.summary(game("carryall", { scoring: { winReward: 5000, winScale: "players" } })), /more pilots/i);
+  assert.match(R.summary(game("king", { scoring: { kingReward: 800 } })), /800 points/);
+  assert.match(R.summary(game("powerball", { scoring: { goalReward: 1000, goalScale: "players" } })), /more pilots/i);
 });

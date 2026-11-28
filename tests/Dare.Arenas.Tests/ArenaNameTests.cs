@@ -35,6 +35,8 @@ public class ArenaNameTests
     [InlineData("general")]
     [InlineData("General")]
     [InlineData("grouppasswords")]
+    [InlineData("training")]
+    [InlineData("Training")]
     [InlineData("")]
     public void Invalid_names_are_rejected_with_an_error(string input)
     {

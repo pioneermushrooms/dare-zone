@@ -417,6 +417,9 @@ internal sealed partial class WebServer : IDisposable
             return await AccountRouteAsync(req, path).ConfigureAwait(false);
         if (IsPilotPath(path))
             return PilotRoute(req, path);
+        // Stock LVZ images (gamemode-art.js lists them): only the embedded files answer, by exact name.
+        if (path.StartsWith("/gamemode-art/", StringComparison.Ordinal))
+            return Get(method, () => Static(path[1..]));
 
         switch (path)
         {
@@ -475,8 +478,10 @@ internal sealed partial class WebServer : IDisposable
             case "/lvz.js": return Get(method, () => Static("lvz.js"));
             case "/lvz-studio.js": return Get(method, () => Static("lvz-studio.js"));
             case "/lvz-layer.js": return Get(method, () => Static("lvz-layer.js"));
+            case "/lvz-screen.js": return Get(method, () => Static("lvz-screen.js"));
             case "/lvz.css": return Get(method, () => Static("lvz.css"));
             case "/gamemode.js": return Get(method, () => Static("gamemode.js"));
+            case "/gamemode-art.js": return Get(method, () => Static("gamemode-art.js"));
             case "/gamemode-ships.js": return Get(method, () => Static("gamemode-ships.js"));
             case "/gamemode-rules.js": return Get(method, () => Static("gamemode-rules.js"));
             case "/elvl.js": return Get(method, () => Static("elvl.js"));
@@ -1190,10 +1195,10 @@ internal sealed partial class WebServer : IDisposable
     }
 
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
-    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz-screen.js", "lvz.css"];
 
     /// <summary>The Game mode tab of /arena/me (docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md).</summary>
-    private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js", "gamemode-rules.js", "elvl.js", "labels-layer.js"];
+    private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js", "gamemode-rules.js", "elvl.js", "labels-layer.js", "gamemode-art.js"];
 
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {
@@ -1214,6 +1219,14 @@ internal sealed partial class WebServer : IDisposable
                 _ => "application/octet-stream",
             };
             map[name] = (ms.ToArray(), type);
+        }
+        // tools/gamemode-art/make.mjs: the stock LVZ images, served at /arena/gamemode-art/<file>.
+        foreach (var res in asm.GetManifestResourceNames().Where(n => n.StartsWith("gamemode-art/", StringComparison.Ordinal)))
+        {
+            using var s = asm.GetManifestResourceStream(res)!;
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            map[res] = (ms.ToArray(), "image/bmp");
         }
         return map;
     }
