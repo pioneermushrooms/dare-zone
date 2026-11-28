@@ -66,7 +66,11 @@ public class TutorialScriptTests
         var s = TutorialScript.Parse(Embedded());
         Assert.Equal("Ctrl", s.ContinuumKeys["gun"]);
         Assert.Equal("Tab", s.ContinuumKeys["bomb"]);
-        var known = new[] { "gun", "bomb", "repel", "afterburner" };
+        Assert.Equal("Left", s.ContinuumKeys["left"]);
+        Assert.Equal("Right", s.ContinuumKeys["right"]);
+        Assert.Equal("Up", s.ContinuumKeys["forward"]);
+        Assert.Equal("Down", s.ContinuumKeys["backward"]);
+        var known = new[] { "gun", "bomb", "repel", "afterburner", "left", "right", "forward", "backward" };
         foreach (var l in s.AllLines())
             foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(l.Text, @"\{(\w+)\}"))
                 Assert.Contains(m.Groups[1].Value, known);
@@ -82,8 +86,8 @@ public class TutorialScriptTests
         Assert.Equal(CheckKind.Kills, s.Steps[4].Check.Kind);
         Assert.Equal(1, s.Steps[4].Check.Count);
         Assert.Equal(CheckKind.Kills, s.Steps[10].Check.Kind);
-        Assert.Equal(2, s.Steps[10].Check.Count);
-        Assert.Equal(20, s.Steps[10].Check.OrAfterSeconds);
+        Assert.Equal(1, s.Steps[10].Check.Count);
+        Assert.Equal(5, s.Steps[10].Check.OrAfterSeconds);
         Assert.Equal(5, s.Steps[7].Cast.Count(c => c.Role == "swarm"));
         Assert.Single(s.Steps[7].LeanCast);
     }
