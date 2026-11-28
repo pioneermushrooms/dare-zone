@@ -320,4 +320,33 @@ public class TutorialRunTests
         Assert.Contains("Repel", TutorialRun.ActGrants(s, repel));
         Assert.Contains("Shield", TutorialRun.ActGrants(s, repel));
     }
+
+    [Fact] public void Enter_WarpsThePlayer_OnlyForAStepWithWarpPlayer()
+    {
+        var s = Script(Step("a", 1, new(CheckKind.None)) with { WarpPlayer = new TileSpot(460, 462) }, Step("b", 1, new(CheckKind.None)));
+        var (run, _) = Run(s);
+        Assert.Equal(new TileSpot(460, 462), Assert.Single(run.Start().OfType<Warp>()).To);
+        Assert.Empty(run.Handle(new Skip()).OfType<Warp>());
+    }
+
+    [Fact] public void ActWarp_TheActsLastWarpUpToTheStep_NotLaterOnesOrOtherActs()
+    {
+        var s = Script(
+            Step("a", 1, new(CheckKind.None)) with { WarpPlayer = new TileSpot(1, 1) },
+            Step("b", 2, new(CheckKind.None)),
+            Step("c", 2, new(CheckKind.None)) with { WarpPlayer = new TileSpot(2, 2) },
+            Step("d", 2, new(CheckKind.None)),
+            Step("e", 2, new(CheckKind.None)) with { WarpPlayer = new TileSpot(3, 3) });
+        Assert.Equal(new TileSpot(1, 1), TutorialRun.ActWarp(s, 0));
+        Assert.Null(TutorialRun.ActWarp(s, 1));
+        Assert.Equal(new TileSpot(2, 2), TutorialRun.ActWarp(s, 3));
+        Assert.Equal(new TileSpot(3, 3), TutorialRun.ActWarp(s, 4));
+        Assert.Null(TutorialRun.ActWarp(s, 9));
+    }
+
+    [Fact] public void ActWarp_ShippedScript_SwarmStepsGoBackToTheRing()
+    {
+        var s = TutorialScript.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "tutorial.script.json")));
+        Assert.Equal(new TileSpot(460, 462), TutorialRun.ActWarp(s, s.Steps.ToList().FindIndex(x => x.Id == "repel")));
+    }
 }

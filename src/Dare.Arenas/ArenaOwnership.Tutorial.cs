@@ -97,6 +97,8 @@ public sealed partial class ArenaOwnership
         public DateTimeOffset EnteredAt;
         public int TimedResends;
         public readonly HashSet<HudPart> Revealed = new();
+        /// <summary>Which bots were warped to their spots as they took their seats (mainloop).</summary>
+        public readonly TutorialSeats Seats = new();
     }
 
     /// <summary>A player on the way to a training arena, and how the run there starts.</summary>
@@ -591,6 +593,10 @@ public sealed partial class ArenaOwnership
                     break;
                 case SetCast cast:
                     s.CastNow = TutorialCast.ForStep(s.WholeCast, cast.Cast, s.Lean);
+                    WarpSeatedBots(s);
+                    break;
+                case Warp warp:
+                    _game.WarpTo(player, (short)warp.To.X, (short)warp.To.Y);
                     break;
                 case ShowSkipPrompt:
                     ShowSkipPopup(s);
@@ -797,7 +803,13 @@ public sealed partial class ArenaOwnership
     private void Tutorial_BallGoal(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates) =>
         OnRun(player, run => Feed(run, new ScoredGoal()));
 
-    private void Tutorial_ShipFreq(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq) =>
+    private void Tutorial_ShipFreq(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+    {
+        if (IsBot(player))
+        {
+            BotSeatChanged(player, newShip, oldShip, newFreq != oldFreq);
+            return;
+        }
         OnRun(player, run =>
         {
             var shipStep = _tutorialScript!.Steps.ToList().FindIndex(st => st.Check.Kind == CheckKind.ShipChange);
@@ -811,6 +823,49 @@ public sealed partial class ArenaOwnership
             if (newFreq != 0) _game.SetFreq(player, 0);
             if (newShip != oldShip && shipStepReached) Feed(run, new ChangedShip((int)newShip));
         });
+    }
+
+    /// <summary>
+    /// One of a run's bots changed ship or freq: as it takes its seat it is warped to its cast line's spot
+    /// (<see cref="TutorialSeats"/> says when), since it spawns round the ring and flies straight at the player.
+    /// </summary>
+    private void BotSeatChanged(Player bot, ShipType newShip, ShipType oldShip, bool freqChanged)
+    {
+        if (bot.Name is not { } name) return;
+        var now = DateTimeOffset.UtcNow;
+        _mainloop.QueueMainWorkItem(_ =>
+        {
+            foreach (var s in _tutorials.Values)
+            {
+                var i = BotIndex(s, name);
+                if (i < 0 || !string.Equals(bot.Arena?.Name, s.Arena, StringComparison.OrdinalIgnoreCase)) continue;
+                var line = i < s.CastNow.Count ? s.CastNow[i] : null;
+                if (s.Seats.Changed(i, oldShip == ShipType.Spec, newShip == ShipType.Spec, freqChanged, line, now) is { } to)
+                    _game.WarpTo(bot, (short)to.X, (short)to.Y);
+                return;
+            }
+        }, 0);
+    }
+
+    /// <summary>A step set the cast: a bot already in its ship that sat down just now, or was never warped, goes to its spot.</summary>
+    private void WarpSeatedBots(TutorialSession s)
+    {
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < s.BotNames.Count && i < s.CastNow.Count; i++)
+        {
+            if (_playerData.FindPlayer(s.BotNames[i]) is not { } bot || !IsBot(bot) || bot.Status != PlayerState.Playing ||
+                !string.Equals(bot.Arena?.Name, s.Arena, StringComparison.OrdinalIgnoreCase)) continue;
+            if (s.Seats.StepStarted(i, bot.Ship != ShipType.Spec, s.CastNow[i], now) is { } to)
+                _game.WarpTo(bot, (short)to.X, (short)to.Y);
+        }
+    }
+
+    private static int BotIndex(TutorialSession s, string name)
+    {
+        for (var i = 0; i < s.BotNames.Count; i++)
+            if (string.Equals(s.BotNames[i], name, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
+    }
 
     private void Tutorial_Spawn(Player player, SpawnCallback.SpawnReason reason)
     {
@@ -820,6 +875,8 @@ public sealed partial class ArenaOwnership
         OnRun(player, run =>
         {
             if (!run.EngineOff || run.Run.Done) return;
+            // and put them back where the act put them (the ring), or they sit at the start where the swarm can't reach
+            if (TutorialRun.ActWarp(_tutorialScript!, run.Run.StepIndex) is { } to) _game.WarpTo(player, (short)to.X, (short)to.Y);
             _game.GivePrize(player, Prize.Shutdown, 1);
             foreach (var grant in TutorialRun.ActGrants(_tutorialScript!, run.Run.StepIndex)) GiveGrant(player, grant);
         });

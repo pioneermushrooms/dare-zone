@@ -30,6 +30,54 @@ public class TutorialScriptTests
     [Fact] public void ForContinuum_FillsKeys() => Assert.Equal("Ctrl fires.", TutorialScript.ForContinuum("{gun} fires.", new Dictionary<string,string>{["gun"]="Ctrl"}));
     [Fact] public void ForContinuum_KeepsUnknownPlaceholder() => Assert.Equal("{zap}", TutorialScript.ForContinuum("{zap}", new Dictionary<string,string>()));
 
+    private const string Spots = """
+    {
+      "mentor": "Vex",
+      "steps": [
+        { "id": "shoot", "act": 1, "warpPlayer": "460 462", "lines": ["Shoot."], "check": { "kind": "none" },
+          "cast": [{ "role": "target", "seat": "in", "script": "idle", "at": "468 456" }, { "role": "swarm", "seat": "in", "script": "idle" }] }
+      ]
+    }
+    """;
+
+    [Fact]
+    public void Parse_ReadsWarpPlayerAndCastAt_BothOptional()
+    {
+        var step = TutorialScript.Parse(Spots).Steps[0];
+        Assert.Equal(new TileSpot(460, 462), step.WarpPlayer);
+        Assert.Equal(new TileSpot(468, 456), step.Cast[0].At);
+        Assert.Null(step.Cast[1].At);
+        Assert.Null(TutorialScript.Parse(Sample).Steps[0].WarpPlayer);
+    }
+
+    [Theory]
+    [InlineData("\"460\"")]
+    [InlineData("\"460 462 1\"")]
+    [InlineData("\"1024 5\"")]
+    [InlineData("\"-1 5\"")]
+    [InlineData("\"a b\"")]
+    [InlineData("[460, 462]")]
+    public void Parse_RejectsBadSpots_NamingTheStep(string bad)
+    {
+        Assert.Contains("'shoot' warpPlayer", Assert.Throws<FormatException>(() => TutorialScript.Parse(Spots.Replace("\"460 462\"", bad))).Message);
+        Assert.Contains("'shoot' at", Assert.Throws<FormatException>(() => TutorialScript.Parse(Spots.Replace("\"468 456\"", bad))).Message);
+    }
+
+    [Fact]
+    public void ShippedScript_WarpsThePlayerIntoTheRing_AndPlacesTheShootingAndSwarmBots()
+    {
+        var s = TutorialScript.Parse(Embedded());
+        TutorialStep St(string id) => s.Steps.Single(x => x.Id == id);
+        Assert.Equal(new TileSpot(460, 462), St("shoot").WarpPlayer);
+        Assert.Equal(new TileSpot(460, 462), St("shutdown").WarpPlayer);
+        Assert.All(St("shoot").Cast.Concat(St("shoot").LeanCast), c => Assert.Equal(new TileSpot(468, 456), c.At));
+        foreach (var id in new[] { "swarm", "shields", "repel", "shootswarm", "super" })
+        {
+            Assert.Equal(5, St(id).Cast.Select(c => c.At).Distinct().Count(a => a is not null));
+            Assert.Equal(new TileSpot(474, 462), St(id).LeanCast.Single().At);
+        }
+    }
+
     [Fact]
     public void ShippedScript_Parses_AndEveryLineFitsOneBubble()
     {

@@ -25,6 +25,8 @@ public sealed record RevealPart(HudPart Part) : TutorialEffect;
 public sealed record Grant(string Prize) : TutorialEffect;
 public sealed record EngineOff : TutorialEffect;
 public sealed record EngineOn : TutorialEffect;
+/// <summary>Warp the player to a tile (the step's <see cref="TutorialStep.WarpPlayer"/>).</summary>
+public sealed record Warp(TileSpot To) : TutorialEffect;
 /// <summary>The full set of bots that should exist now; the zone diffs it against what is running.</summary>
 public sealed record SetCast(IReadOnlyList<CastLine> Cast) : TutorialEffect;
 public sealed record ShowSkipPrompt : TutorialEffect;
@@ -75,6 +77,19 @@ public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> cloc
         var from = stepIndex;
         while (from > 0 && s.Steps[from - 1].Act == act) from--;
         return s.Steps.Skip(from).Take(stepIndex - from + 1).SelectMany(st => st.Grant).ToList();
+    }
+
+    /// <summary>
+    /// Where a respawned player belongs: the last <see cref="TutorialStep.WarpPlayer"/> of the act so far (up to and
+    /// including <paramref name="stepIndex"/>), or null. A player killed with the engines off would otherwise be stuck at the start.
+    /// </summary>
+    public static TileSpot? ActWarp(TutorialScript s, int stepIndex)
+    {
+        if (stepIndex < 0 || stepIndex >= s.Steps.Count) return null;
+        var act = s.Steps[stepIndex].Act;
+        for (var i = stepIndex; i >= 0 && s.Steps[i].Act == act; i--)
+            if (s.Steps[i].WarpPlayer is { } to) return to;
+        return null;
     }
 
     public IReadOnlyList<TutorialEffect> Start() => Enter();
@@ -179,6 +194,7 @@ public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> cloc
         fx.AddRange(step.Grant.Select(g => new Grant(g)));
         fx.Add(step.EngineOff ? new EngineOff() : new EngineOn());
         fx.Add(new SetCast(lean ? step.LeanCast : step.Cast));
+        if (step.WarpPlayer is { } to) fx.Add(new Warp(to));
         fx.AddRange(step.Lines.Select(l => new Say(l, StepIndex + 1, script.Steps.Count)));
         return fx;
     }

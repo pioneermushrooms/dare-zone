@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -10,8 +11,18 @@ public enum CheckKind { None, Rotate, Reach, Weapon, Kills, KillAll, SafeZone, G
 /// <summary>What the server watches for before a step moves on. <see cref="Weapon"/> is bullet|bomb|mine|repel; Reach is in tiles.</summary>
 public sealed record TutorialCheck(CheckKind Kind, int X = 0, int Y = 0, int Radius = 0, string? Weapon = null, int Count = 0, int OrAfterSeconds = 0);
 
-/// <summary>A bot the step needs. Role target|swarm|teammate, Seat in|spec, Script is oss-bot script lines.</summary>
-public sealed record CastLine(string Role, string Seat, string Script);
+/// <summary>A map tile, 0-1023 each way.</summary>
+public readonly record struct TileSpot(int X, int Y);
+
+/// <summary>
+/// A bot the step needs. Role target|swarm|teammate, Seat in|spec, Script is oss-bot script lines. <see cref="At"/>, when
+/// set, is where the zone warps the bot as it takes its seat (JSON <c>"at": "x y"</c>): bots spawn round the ring and
+/// can't path round walls.
+/// </summary>
+public sealed record CastLine(string Role, string Seat, string Script)
+{
+    public TileSpot? At { get; init; }
+}
 
 /// <summary>
 /// One mentor line. <see cref="Index"/> is global in file order (steps, then prompts) and is the LVZ
@@ -21,7 +32,11 @@ public sealed record TutorialLine(int Index, string Text, string? Id = null);
 
 public sealed record TutorialStep(
     string Id, int Act, IReadOnlyList<TutorialLine> Lines, IReadOnlyList<HudPart> Reveal, IReadOnlyList<string> Grant,
-    bool EngineOff, TutorialCheck Check, int PauseSeconds, IReadOnlyList<CastLine> Cast, IReadOnlyList<CastLine> LeanCast);
+    bool EngineOff, TutorialCheck Check, int PauseSeconds, IReadOnlyList<CastLine> Cast, IReadOnlyList<CastLine> LeanCast)
+{
+    /// <summary>Where the player is warped as the step starts (JSON <c>"warpPlayer": "x y"</c>), so the step's bots can reach them.</summary>
+    public TileSpot? WarpPlayer { get; init; }
+}
 
 /// <summary>
 /// The in-game tutorial script (<c>tutorial/script.json</c>): steps, mentor lines, reveals, grants, checks and
@@ -63,7 +78,7 @@ public sealed partial record TutorialScript(
             steps.Add(new TutorialStep(id, Int(s, "act", id), lines, reveal, grant,
                 s.TryGetProperty("engineOff", out var eo) && eo.ValueKind == JsonValueKind.True,
                 Check(s, id), s.TryGetProperty("pauseSeconds", out _) ? Int(s, "pauseSeconds", id) : 0,
-                Cast(s, "cast", id), Cast(s, "leanCast", id)));
+                Cast(s, "cast", id), Cast(s, "leanCast", id)) { WarpPlayer = Spot(s, "warpPlayer", id) });
         }
 
         var prompts = new List<TutorialLine>();
@@ -98,9 +113,20 @@ public sealed partial record TutorialScript(
             if (role is not ("target" or "swarm" or "teammate")) throw Bad(id, $"unknown cast role '{role}'");
             var seat = Text(c, "seat", id);
             if (seat is not ("in" or "spec")) throw Bad(id, $"unknown cast seat '{seat}'");
-            list.Add(new CastLine(role, seat, Text(c, "script", id)));
+            list.Add(new CastLine(role, seat, Text(c, "script", id)) { At = Spot(c, "at", id) });
         }
         return list;
+    }
+
+    // An optional "x y" tile, each 0-1023.
+    private static TileSpot? Spot(JsonElement e, string name, string id)
+    {
+        if (!e.TryGetProperty(name, out var v)) return null;
+        var parts = v.ValueKind == JsonValueKind.String ? v.GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries) : [];
+        return parts.Length == 2 && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var x) &&
+               int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var y) && x is >= 0 and <= 1023 && y is >= 0 and <= 1023
+            ? new TileSpot(x, y)
+            : throw Bad(id, $"{name} must be \"x y\", tiles 0-1023");
     }
 
     private static bool Enum<T>(string name, string id, string what, out T value) where T : struct, System.Enum

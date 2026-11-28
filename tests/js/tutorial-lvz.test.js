@@ -367,6 +367,23 @@ test("script coordinates and arena.conf point at the map's spots", () => {
       assert.ok(Math.hypot(x - S.beacon.x, y - S.beacon.y) < S.ringRadius - 2, `${s.id}: point ${x} ${y} is inside the ring`);
     }
   }
+  // warps (the player's at a step, each bot's as it takes its seat) land on open tiles inside the ring, where the
+  // swarm brain (no pathfinding) can reach the player
+  const grid = TrainingMap.build();
+  const spots = [];
+  for (const s of script.steps) {
+    if (s.warpPlayer !== undefined) spots.push([`${s.id}: warpPlayer`, s.warpPlayer]);
+    for (const c of [...(s.cast || []), ...(s.leanCast || [])]) if (c.at !== undefined) spots.push([`${s.id}: ${c.role} at`, c.at]);
+  }
+  assert.ok(spots.length >= 14, `${spots.length} warp spots`);
+  for (const [what, at] of spots) {
+    const m = /^(\d+) (\d+)$/.exec(at);
+    assert.ok(m, `${what} "${at}" is "x y"`);
+    const [x, y] = [+m[1], +m[2]];
+    assert.ok(Math.hypot(x - S.beacon.x, y - S.beacon.y) < S.ringRadius - 2, `${what} ${x} ${y} is inside the ring`);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      assert.equal(grid[(y + dy) * 1024 + x + dx], 0, `${what} ${x} ${y} is open`);
+  }
   // the bots the pilot shoots fly Javelins, the ship arena.conf makes weak (Warbirds have 3000 energy here)
   for (const s of script.steps) for (const c of [...(s.cast || []), ...(s.leanCast || [])])
     if (c.role !== "teammate") assert.match(c.script, /^ship 2$/m, `${s.id}: ${c.role} flies a Javelin`);
