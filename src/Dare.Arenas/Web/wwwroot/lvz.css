@@ -72,3 +72,8 @@ body.lvzplacing #drawtools [data-tool].on { opacity:.45; }
 .lvzscreen .lzs-canvas { border:1px solid #6b86a8; box-shadow:0 0 0 1px #000; cursor:copy; touch-action:none; image-rendering:pixelated; }
 .lvzscreen .lzs-canvas:focus { outline:2px solid #ffcf7a88; }
 .lvzpanel .lzp-pal button[draggable=true] { cursor:grab; }
+.lvzpanel .lzp-stockgrid { display:flex; flex-direction:column; gap:3px; max-height:260px; overflow:auto; padding-top:4px; }
+.lvzpanel .lzp-sh { margin:2px 0 0; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
+.lvzpanel .lzp-srow { display:flex; flex-wrap:wrap; gap:3px; }
+.lvzpanel .lzp-srow button { padding:2px; background:#000; border:1px solid var(--line); min-width:0; height:32px; }
+.lvzpanel .lzp-srow img { display:block; height:26px; width:auto; max-width:120px; image-rendering:pixelated; }

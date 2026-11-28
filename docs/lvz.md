@@ -7,7 +7,10 @@ player's screen (placed from one of twelve HUD reference points).
 ## Where
 
 - **Map editor** (`/arena/map`, panel "LVZ images", `lvz-layer.js`): where LVZ is placed.
-  - Images come from Upload (PNG/BMP/GIF), the pilot's Armory, or the images of another `.lvz`.
+  - Images come from Upload (PNG/BMP/GIF), the pilot's Armory, the images of another `.lvz`, or
+    **Stock images** (the game creator's, `gamemode-art.js`: digits, countdowns, banners, team
+    icons). A stock image picks On the screen or On the map when it's only for one; a countdown's
+    objects get a display time covering every frame, so it shows once instead of looping.
     Select one, then click to place; drag to move, Alt+drag to copy, Del deletes, arrows nudge,
     Ctrl/Cmd+D copies; Esc, Done or picking any drawing tool or tile goes back to walls.
   - **On the map**: drawn at its layer (BelowAll and AfterBackground under the tiles, the rest

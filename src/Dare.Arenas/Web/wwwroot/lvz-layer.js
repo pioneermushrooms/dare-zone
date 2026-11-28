@@ -27,6 +27,7 @@
     <div class="lzp-pal" aria-label="Images: select one, then click the map to place it"></div>
     <div class="row"><label class="btn ghost small" title="PNG, BMP or GIF from your computer">Upload…<input type="file" class="lzp-addimg" accept=".png,.bmp,.bm2,.gif,.jpg,.jpeg" multiple hidden></label>
       <select class="lzp-from" aria-label="Add images from your Armory or another .lvz"><option value="">From your Armory…</option></select></div>
+    <details class="lzp-stock" hidden><summary class="hint">Stock images</summary><div class="lzp-stockgrid"></div></details>
     <label class="hint"><input type="checkbox" class="lzp-edit"> Place and move LVZ (instead of drawing walls)</label>
     <div class="row"><label class="hint" title="Hide them to work on the map underneath; nothing is removed"><input type="checkbox" class="lzp-show" checked> Show LVZ</label>
       <label class="hint"><input type="checkbox" class="lzp-snap" checked> Snap to tiles</label>
@@ -114,7 +115,7 @@
     if (i < 0) {
       if (!lvz.images.length || !lvz.images[img]) { say(lvz.images.length ? "Select an LVZ image, then click the map to place it." : "Upload an image (or add one from your Armory) first, then click the map to place it.", false); return; }
       const p = pics[img], fw = p ? p.fw : 32, fh = p ? p.fh : 32;
-      lvz.objects.push(Lvz.newObject({ map: true, image: img, x: clamp(snap(px - fw / 2)), y: clamp(snap(py - fh / 2)), layer: +q("lzp-layer").value, id: nextId() }));
+      lvz.objects.push(Lvz.newObject({ map: true, image: img, x: clamp(snap(px - fw / 2)), y: clamp(snap(py - fh / 2)), layer: +q("lzp-layer").value, id: nextId(), time: showTime(img) }));
       i = lvz.objects.length - 1; setDirty(true);
     }
     const o = lvz.objects[i];
@@ -175,7 +176,7 @@
   const screen = window.LvzScreen ? LvzScreen.mount(view.parentElement, {
     lvz: () => lvz, pics: () => pics, image: () => img, visible: () => q("lzp-show").checked,
     selected: () => sel, select: (i) => { sel = i; showSel(); showList(); },
-    make: (f) => Lvz.newObject(Object.assign({ id: nextId(), mode: 0, time: 0 }, f)),
+    make: (f) => Lvz.newObject(Object.assign({ id: nextId(), mode: 0, time: showTime(f.image) }, f)),
     changed: (live) => { setDirty(true); showSel(); if (!live) count(); },
     say,
   }) : null;
@@ -335,6 +336,54 @@
       }
     } catch (err) { say(err.message, false); }
   });
+
+  // ---- stock images (gamemode-art.js, made for the game creator): click one to add it, then place it ----------
+  const STOCK = window.GameModeArt ? GameModeArt.ITEMS : [];
+  const STOCK_KINDS = [["digit", "Digits"], ["countdown", "Countdowns"], ["banner", "Banners"], ["icon", "Team icons"]];
+  // a countdown shows once: its display time covers every frame (else LVZ loops it back to the start)
+  function showTime(image) {
+    const im = lvz && lvz.images[image], it = im && STOCK.find((x) => x.kind === "countdown" && x.file.toLowerCase() === im.file.toLowerCase());
+    return it ? Math.min(4095, Math.ceil(it.frames * it.frameMs / 100)) : 0;
+  }
+  function showStock() {
+    const box = q("lzp-stockgrid"); box.replaceChildren();
+    q("lzp-stock").hidden = !STOCK.length;
+    for (const [kind, title] of STOCK_KINDS) {
+      const items = STOCK.filter((x) => x.kind === kind); if (!items.length) continue;
+      const h = document.createElement("p"); h.className = "lzp-sh"; h.textContent = title; box.append(h);
+      const row = document.createElement("div"); row.className = "lzp-srow";
+      for (const it of items) {
+        const b = document.createElement("button"); b.type = "button";
+        b.title = `${it.label} (${it.use === "both" ? "screen or map" : it.use === "map" ? "map" : "screen"}${it.frames ? `, ${it.frames} frames` : ""})`;
+        b.setAttribute("aria-label", `Add ${it.label}`);
+        const im = document.createElement("img"); im.alt = ""; im.src = GameModeArt.url(it); im.loading = "lazy";
+        if (it.frames) { im.style.objectFit = "cover"; im.style.objectPosition = "left"; im.style.aspectRatio = `${it.frameW} / ${it.h}`; }
+        b.append(im);
+        b.addEventListener("click", () => addStock(it));
+        row.append(b);
+      }
+      box.append(row);
+    }
+  }
+  async function addStock(it) {
+    ensureLvz();
+    try {
+      let i = lvz.images.findIndex((x) => x.file.toLowerCase() === it.file.toLowerCase());
+      if (i < 0) {
+        const f = await fetchBytes(GameModeArt.url(it));
+        if (!f) { say(`Couldn't load ${it.label}.`, false); return; }
+        Lvz.putFile(lvz, it.file, f.bytes);
+        lvz.images.push(GameModeArt.lvzImage(it)); i = lvz.images.length - 1;
+        pics = await Lvz.pictures(lvz); setDirty(true);
+      }
+      img = i;
+      if (it.use === "screen" && where() !== "screen") setWhere("screen");
+      else if (it.use === "map" && where() !== "map") setWhere("map");
+      const on = where() === "screen";
+      setPlacing(true, `${it.label}: ${on ? "click the game screen, or drag it from the images above" : "click the map"} to place it.${it.kind === "countdown" ? " It shows once, then goes." : ""}`);
+    } catch (err) { say(err.message, false); }
+  }
+  showStock();
 
   // ---- which file, save, publish ------------------------------------------------------------------------------
   const srcValue = () => (!src ? "" : src.from === "lib" ? "lib:" + src.libId : src.from === "arena" ? "arena:" + src.name : "new:");
