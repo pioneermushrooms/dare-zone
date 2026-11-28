@@ -20,12 +20,14 @@ public sealed partial class ArenaOwnership
         _moduleManager = broker.GetInterface<IModuleManager>();
         if (_moduleManager is null) { Log(LogLevel.Error, "GameMode:Attach off: no module manager."); return; }
         ArenaActionCallback.Register(broker, Callback_ArenaActionGameMode);
+        StartFlagHold(broker);
     }
 
     private void StopGameMode(IComponentBroker broker)
     {
         if (_moduleManager is null) return;
         ArenaActionCallback.Unregister(broker, Callback_ArenaActionGameMode);
+        StopFlagHold(broker);
         broker.ReleaseInterface(ref _moduleManager);
         _gameModeAttached.Clear();
         _gameModeWarned.Clear();
@@ -37,9 +39,14 @@ public sealed partial class ArenaOwnership
         {
             _gameModeAttached.Remove(arena);
             _gameModeWarned.Remove(arena);
+            StopFlagRule(arena);
+            _rounds.Remove(arena);
             return;
         }
-        if (action is ArenaAction.Create or ArenaAction.ConfChanged) ApplyGameModeAttach(arena);
+        if (action is not (ArenaAction.Create or ArenaAction.ConfChanged) || arena.Cfg is not { } cfg) return;
+        if (_flagRules.TryGetValue(arena, out var rule)) ReadFlagRule(arena, rule);
+        ApplyGameModeAttach(arena);
+        ApplyRound(arena, cfg, created: action == ArenaAction.Create);
     }
 
     // The server reads a spawn point per ball (Balls.cs: SpawnX, SpawnX1..SpawnX7) but documents only the first,
@@ -86,7 +93,21 @@ public sealed partial class ArenaOwnership
         if (attach.Count == 0 && detach.Count == 0) return;
         foreach (var t in attach) ours.Add(t);
         foreach (var t in detach) ours.Remove(t);
-        _ = ChangeModulesAsync(modules, arena, attach, detach);
+        // The flag rule is the plugin's own (ArenaOwnership.FlagHold.cs), not a server module.
+        var cmp = StringComparer.OrdinalIgnoreCase;
+        if (detach.Contains(FlagHold.TypeName, cmp)) StopFlagRule(arena);
+        if (attach.Contains(FlagHold.TypeName, cmp))
+        {
+            if (staff.Contains("SS.Core.Modules.Scoring.FlagGamePoints"))
+            {
+                ours.Remove(FlagHold.TypeName);
+                Log(LogLevel.Warn, $"{{{arena.Name}}} GameMode: flag rule not started: staff attached FlagGamePoints.");
+            }
+            else StartFlagRule(arena);
+        }
+        attach = attach.Where(t => !cmp.Equals(t, FlagHold.TypeName)).ToList();
+        detach = detach.Where(t => !cmp.Equals(t, FlagHold.TypeName)).ToList();
+        if (attach.Count > 0 || detach.Count > 0) _ = ChangeModulesAsync(modules, arena, attach, detach);
     }
 
     private async Task ChangeModulesAsync(IModuleManager modules, Arena arena, IReadOnlyList<string> attach, IReadOnlyList<string> detach)

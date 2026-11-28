@@ -24,7 +24,7 @@ public static class GameModeAttach
     private static readonly (GameModeModules Flag, string Type)[] AllowList =
     [
         (GameModeModules.Kills, "SS.Core.Modules.Scoring.KillPoints"),
-        (GameModeModules.Flags, "SS.Core.Modules.Scoring.FlagGamePoints"),
+        (GameModeModules.Flags, FlagHold.TypeName), // our hold rule, not the server's instant win (FlagHold.cs)
         (GameModeModules.Balls, "SS.Core.Modules.Scoring.BallGamePoints"),
         (GameModeModules.King, "SS.Core.Modules.Scoring.Koth"),
         (GameModeModules.Ships, "SS.Core.Modules.Enforcers.LegalShip"),
