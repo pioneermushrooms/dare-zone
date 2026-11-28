@@ -476,6 +476,8 @@ internal sealed partial class WebServer : IDisposable
             case "/lvz-studio.js": return Get(method, () => Static("lvz-studio.js"));
             case "/lvz-layer.js": return Get(method, () => Static("lvz-layer.js"));
             case "/lvz.css": return Get(method, () => Static("lvz.css"));
+            case "/gamemode.js": return Get(method, () => Static("gamemode.js"));
+            case "/gamemode-ships.js": return Get(method, () => Static("gamemode-ships.js"));
             case "/tiles.css": return Get(method, () => Static("tiles.css"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
@@ -515,6 +517,7 @@ internal sealed partial class WebServer : IDisposable
             default:
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await SettingSetsRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await GameModesRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await LvzRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
@@ -1185,11 +1188,14 @@ internal sealed partial class WebServer : IDisposable
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
     private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
 
+    /// <summary>The Game mode tab of /arena/me (docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md).</summary>
+    private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js"];
+
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {
         var asm = Assembly.GetExecutingAssembly();
         var map = new Dictionary<string, (byte[], string)>(StringComparer.Ordinal);
-        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js", "drawtools.js", "standard-tiles.bmp", "header.css", "header.js", "chat.css", "chat.js" }.Concat(AccountStaticFiles).Concat(TileEditorFiles))
+        foreach (var name in new[] { "index.html", "arena.html", "app.js", "style.css", "staff.html", "staff.js", "map.html", "lvl.js", "lvlgen.js", "autotile.js", "editor.js", "dialogs.js", "tiles.bm2", "tileart.js", "tileart-styles.js", "drawtools.js", "standard-tiles.bmp", "header.css", "header.js", "chat.css", "chat.js" }.Concat(AccountStaticFiles).Concat(TileEditorFiles).Concat(GameModeFiles))
         {
             using var s = asm.GetManifestResourceStream("wwwroot/" + name)
                           ?? throw new InvalidOperationException($"embedded resource wwwroot/{name} is missing");
