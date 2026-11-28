@@ -132,6 +132,7 @@ function route() {
   if (shown === "graphics") loadGraphics();
   if (shown === "tiles") openTiles();
   if (shown === "lvz") openLvz();
+  if (shown === "gamemode" && typeof GameModeTab !== "undefined") GameModeTab.show();
 }
 
 /**
@@ -1201,10 +1202,12 @@ async function saveSetSubmit(e) {
 }
 
 // The diff dialog: what a set, a file or a list of settings would change, applied to the chosen arena.
-const diff = { source: null, rows: [], fileSkipped: [] };
+const diff = { source: null, rows: [], fileSkipped: [], out: null };
 
-async function openDiff(source, title, name) {
+// outNode: where messages go when the dialog isn't open (the Settings tab's by default).
+async function openDiff(source, title, name, outNode) {
   diff.source = source;
+  diff.out = outNode || null;
   $("difftitle").textContent = title;
   $("diffsub").dataset.source = title.replace(/^Apply /, "");
   $("diffsub").dataset.name = name || "";
@@ -1223,7 +1226,7 @@ async function previewDiff() {
   dlg.classList.remove("busy");
   if (!body?.ok) {
     if (dlg.open) msg($("diffmsg"), body?.message || "That didn't work.", false);
-    else msg($("setsmsg"), body?.message || "That didn't work.", false);
+    else msg(diff.out || $("setsmsg"), body?.message || "That didn't work.", false);
     return false;
   }
   diff.rows = body.rows; diff.fileSkipped = body.fileSkipped || [];
@@ -1284,7 +1287,7 @@ async function applyDiff(e) {
   const { body } = await postJson("/settings/apply", { arena, settings });
   if (!body.ok) { msg($("diffmsg"), webMessage(body.message), false); diffCount(); return; }
   $("diffdlg").close();
-  msg($("setsmsg"), webMessage(body.message), true);
+  msg(diff.out || $("setsmsg"), webMessage(body.message), true);
   if (arena === current.arena) {
     for (const r of body.rows || []) if (r.status === "change") { const st = findSetting(r.section, r.key); if (st) st.value = r.value; }
     renderSettings(lastSettings);
