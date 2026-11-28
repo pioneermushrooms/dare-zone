@@ -348,6 +348,9 @@ function signedIn() {
       ctx.fillRect(dx, dy, s - g, s - g);
     }
   }
+  // Other scripts draw on the map through these (lvz-layer.js: the arena's LVZ map objects).
+  const overlays = window.mapOverlays = window.mapOverlays || [];
+  window.mapView = { view, get cam() { return cam; }, get arena() { return arena; }, redraw: () => draw() };
   let dragRect = null;
   function draw() {
     vctx.imageSmoothingEnabled = false;
@@ -363,12 +366,14 @@ function signedIn() {
       }
       vctx.stroke();
     }
+    for (const f of overlays) f("below", vctx, s, ox, oy); // lvz-layer.js: LVZ objects under the tiles
     const x0 = Math.max(0, Math.floor(-ox / s)), y0 = Math.max(0, Math.floor(-oy / s));
     const x1 = Math.min(N - 1, Math.ceil((view.width - ox) / s)), y1 = Math.min(N - 1, Math.ceil((view.height - oy) / s));
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const t = grid[y * N + x]; if (t) drawTile(vctx, t, ox + x * s, oy + y * s, s);
     }
     vctx.strokeStyle = "#22d3ee66"; vctx.lineWidth = 1; vctx.strokeRect(ox, oy, N * s, N * s);
+    for (const f of overlays) f("above", vctx, s, ox, oy); // ... and over them
     if (tools) tools.overlay(vctx, s, ox, oy, view);
     if (dragRect) {
       const [ax, ay, bx, by] = dragRect;

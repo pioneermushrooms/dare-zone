@@ -462,6 +462,10 @@ internal sealed partial class WebServer : IDisposable
             case "/tiles": return Get(method, () => Static("tiles.html"));
             case "/tiles.js": return Get(method, () => Static("tiles.js"));
             case "/tile-studio.js": return Get(method, () => Static("tile-studio.js"));
+            case "/lvz.js": return Get(method, () => Static("lvz.js"));
+            case "/lvz-studio.js": return Get(method, () => Static("lvz-studio.js"));
+            case "/lvz-layer.js": return Get(method, () => Static("lvz-layer.js"));
+            case "/lvz.css": return Get(method, () => Static("lvz.css"));
             case "/tiles.css": return Get(method, () => Static("tiles.css"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
@@ -502,6 +506,7 @@ internal sealed partial class WebServer : IDisposable
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await SettingSetsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await LvzRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? Text(404, "Not found.");
         }
@@ -1168,7 +1173,7 @@ internal sealed partial class WebServer : IDisposable
     }
 
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
-    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json"];
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
 
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {

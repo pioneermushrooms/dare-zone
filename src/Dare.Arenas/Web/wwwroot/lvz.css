@@ -1,0 +1,46 @@
+/* LVZ editor: the LVZ tab (lvz-studio.js) and the map editor's LVZ panel (lvz-layer.js). */
+.lvzstudio { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.lvzstudio .lz-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 8px; border:1px solid var(--line); background:var(--panel2); border-radius:3px; }
+.lvzstudio .lz-bar select { max-width:260px; font-size:.82rem; }
+.lvzstudio .lz-grow { flex:1; }
+.lvzstudio .lz-msg { margin:0; min-height:1.2em; font-size:.85rem; } .lvzstudio .lz-msg.ok { color:var(--ok); } .lvzstudio .lz-msg.bad { color:var(--bad); }
+.lvzstudio .lz-body { display:grid; grid-template-columns:minmax(230px, 290px) minmax(0, 1fr) minmax(250px, 320px); gap:10px; align-items:start; }
+.lvzstudio .lz-col { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.lvzstudio .lz-card { border:1px solid var(--line); background:var(--panel2); border-radius:3px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; }
+.lvzstudio .lz-card h4 { margin:0; font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); }
+.lvzstudio .lz-card h4 .hint { text-transform:none; letter-spacing:0; }
+.lvzstudio .lz-card p { margin:0; }
+.lvzstudio .lz-row { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.lvzstudio .lz-mini { display:inline-flex; gap:3px; align-items:center; font-size:.75rem; color:var(--dim); }
+.lvzstudio .lz-mini input[type=number] { width:4.2em; padding:0 3px; font-size:.75rem; }
+.lvzstudio ul { list-style:none; margin:0; padding:0; display:grid; gap:4px; max-height:340px; overflow:auto; }
+.lvzstudio .lz-images li { display:flex; gap:8px; align-items:flex-start; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.lvzstudio .lz-thumb { width:40px; height:40px; flex:none; border:1px solid var(--line); image-rendering:pixelated; }
+.lvzstudio .lz-iminfo { display:flex; flex-direction:column; gap:2px; min-width:0; font-size:.78rem; }
+.lvzstudio .lz-iminfo b { overflow-wrap:anywhere; } .lvzstudio .lz-iminfo b.missing { color:var(--hot); }
+.lvzstudio .lz-files li { display:flex; gap:6px; align-items:center; font-size:.78rem; }
+.lvzstudio .lz-fname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lvzstudio .lz-objs li button.open { width:100%; text-align:left; justify-content:flex-start; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.75rem; }
+.lvzstudio .lz-objs li button.on { border-color:var(--accent); color:var(--accent); }
+.lvzstudio .lz-f { display:grid; grid-template-columns:5.5em 1fr; gap:6px; align-items:center; font-size:.8rem; color:var(--dim); }
+.lvzstudio .lz-f select, .lvzstudio .lz-f input { min-width:0; font-size:.8rem; }
+.lvzstudio .lz-main { min-width:0; display:flex; flex-direction:column; gap:6px; }
+.lvzstudio .lz-tabs { display:flex; gap:4px; }
+.lvzstudio .lz-tabs button.on { background:var(--accent); color:#07131e; border-color:var(--accent); }
+.lvzstudio .lz-pane { display:flex; flex-direction:column; gap:6px; }
+.lvzstudio .lz-screen { width:100%; height:auto; border:1px solid var(--line); background:#000; image-rendering:pixelated; touch-action:none; }
+.lvzstudio .lz-mapview { width:min(512px, 100%); height:auto; aspect-ratio:1; border:1px solid var(--line); image-rendering:pixelated; }
+@media (max-width:1180px) { .lvzstudio .lz-body { grid-template-columns:minmax(0, 1fr) minmax(240px, 300px); } .lvzstudio .lz-body > .lz-col:first-child { grid-column:1 / -1; flex-direction:row; flex-wrap:wrap; } .lvzstudio .lz-body > .lz-col:first-child .lz-card { flex:1 1 260px; } }
+@media (max-width:760px) { .lvzstudio .lz-body { grid-template-columns:minmax(0, 1fr); } }
+.hub:has(> .content > section.lvzview:not([hidden])) { width:min(1680px, calc(100% - 32px)); }
+
+/* map editor: the LVZ panel */
+.lvzpanel { display:flex; flex-direction:column; gap:6px; }
+.lvzpanel select { max-width:100%; font-size:.8rem; }
+.lvzpanel .lzp-pal { display:grid; grid-template-columns:repeat(auto-fill, minmax(40px, 1fr)); gap:4px; max-height:180px; overflow:auto; }
+.lvzpanel .lzp-pal button { padding:0; width:100%; aspect-ratio:1; background:#000; border:1px solid var(--line); }
+.lvzpanel .lzp-pal button.on { border:2px solid var(--accent); }
+.lvzpanel .lzp-pal canvas { width:100%; height:100%; image-rendering:pixelated; display:block; }
+.lvzpanel .lzp-f { display:grid; grid-template-columns:4.5em 1fr; gap:4px; align-items:center; font-size:.78rem; color:var(--dim); }
+.lvzpanel .lzp-f input, .lvzpanel .lzp-f select { min-width:0; font-size:.78rem; }
+.lvzpanel .lzp-msg { font-size:.78rem; margin:0; } .lvzpanel .lzp-msg.ok { color:var(--ok); } .lvzpanel .lzp-msg.bad { color:var(--bad); }

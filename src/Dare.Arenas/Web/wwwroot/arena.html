@@ -8,11 +8,14 @@
 <link rel="stylesheet" href="/arena/header.css">
 <script src="/arena/header.js" defer></script>
 <link rel="stylesheet" href="/arena/tiles.css">
+<link rel="stylesheet" href="/arena/lvz.css">
 <link rel="stylesheet" href="/arena/chat.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
 <script src="/arena/tiles.js" defer></script>
 <script src="/arena/tile-studio.js" defer></script>
+<script src="/arena/lvz.js" defer></script>
+<script src="/arena/lvz-studio.js" defer></script>
 <script src="/arena/app.js" defer></script>
 <script type="module" src="/arena/chat.js"></script>
 </head>
@@ -34,6 +37,7 @@
     <a href="#overview" data-view="overview" data-needs="arena">Overview</a>
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#tiles" data-view="tiles" data-needs="arena">Tile Editor</a>
+    <a href="#lvz" data-view="lvz" data-needs="arena">LVZ</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
     <a href="#messages" data-view="messages" data-needs="arena">Messages</a>
@@ -241,6 +245,14 @@
       <h2>Tilesets</h2>
       <p class="dim">The tileset is the picture sheet a map draws its walls from. Edit this arena's, or one of yours, keep it in Your tilesets, and put it into a map: the map lands in Your maps as a draft, to Apply on the Map tab when it's ready. <a href="/arena/tiles" id="tilespage">Open on its own page</a>.</p>
       <div id="tilestudio"></div>
+    </section>
+
+    <section data-view="lvz" class="lvzview" hidden>
+      <p class="kicker">LVZ</p>
+      <h2>Overlays (.lvz)</h2>
+      <p class="dim">An .lvz carries pictures for the game to show: map objects, placed on the map (decoration that doesn't block anything), and screen objects, placed on the player's screen. Edit one of this arena's, or start one; keep drafts in Your LVZ, and Publish when it's ready. Players get it when the arena restarts.</p>
+      <div id="lvzstudio"></div>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
     </section>
 
     <section data-view="crew" hidden>

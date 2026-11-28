@@ -131,6 +131,7 @@ function route() {
   if (shown === "map") loadLibrary();
   if (shown === "graphics") loadGraphics();
   if (shown === "tiles") openTiles();
+  if (shown === "lvz") openLvz();
 }
 
 function renderNoArena(body) {
@@ -1421,6 +1422,17 @@ function openTiles() {
   if (!studio) studio = TileStudio.mount($("tilestudio"), { arena: current.arena, onMapSaved: () => loadLibrary() });
   $("tilespage").href = "/arena/tiles?arena=" + encodeURIComponent(current.arena);
   studio.setArena(current.arena, { open: true });
+}
+
+// ---- LVZ tab: the LVZ editor (lvz-studio.js), mounted on the first visit ----------------------------
+let lvzStudio = null;
+function openLvz() {
+  if (!window.LvzStudio || !current?.arena) return;
+  if (!lvzStudio) lvzStudio = LvzStudio.mount($("lvzstudio"), {
+    arena: current.arena, owner: current.role === "owner", levelFiles: current.levelFiles,
+    onPublished: async () => { await mePage(current.arena); startRestart(false); }, // nobody inside: restarts at once
+  });
+  lvzStudio.setArena(current.arena, { owner: current.role === "owner", levelFiles: current.levelFiles });
 }
 
 // ---- your maps: a dropped .lvl goes to the pilot's collection and opens as a draft in the editor ----
