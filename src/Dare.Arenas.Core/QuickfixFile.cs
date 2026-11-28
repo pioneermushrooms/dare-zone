@@ -65,6 +65,24 @@ public static class QuickfixFile
         return true;
     }
 
+    /// <summary>Help text longer than this is cut (the editors show a few lines).</summary>
+    public const int MaxHelpLength = 240;
+
+    /// <summary>Collapses whitespace and cuts help to <see cref="MaxHelpLength"/>.</summary>
+    public static string Shorten(string help)
+    {
+        var h = string.Join(' ', help.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return h.Length <= MaxHelpLength ? h : h[..(MaxHelpLength - 3)].TrimEnd() + "...";
+    }
+
+    /// <summary>
+    /// The help of a ship setting after the first ship: a pointer at the first ship's, which the
+    /// browser client replaces with that text. Starts with <see cref="SameAsPrefix"/>.
+    /// </summary>
+    public static string SameAs(string firstShip, string key) => $"{SameAsPrefix}{firstShip}:{key}";
+
+    public const string SameAsPrefix = "As for ";
+
     /// <summary>
     /// The settings a filter picks, as the server's own ?quickfix does: all of them for a blank
     /// filter, else those whose section or key contains it (ignoring case).

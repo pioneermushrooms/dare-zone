@@ -171,10 +171,21 @@ public sealed partial class ArenaOwnership
     {
         var help = SettingHelp(section, key);
         var spec = help is null ? SettingSpec.AnyText : SettingSpec.From(help.Type, help.Min, help.Max);
-        var text = help?.Description ?? "";
-        var allowed = spec.Describe();
-        if (allowed.Length > 0) text += $" [{allowed}]";
-        if (!string.IsNullOrEmpty(help?.DefaultValue)) text += $" [default {help.DefaultValue}]";
+        string text;
+        if (ShipSections.Contains(section) && section != ShipSections[0])
+        {
+            // The same help for all eight ships made the file several times larger (and it
+            // travels at file-transfer speed): ships after the first point at the Warbird's.
+            text = QuickfixFile.SameAs(ShipSections[0], key);
+        }
+        else
+        {
+            text = QuickfixFile.Shorten(help?.Description ?? "");
+            // the range only where it says more than the number type does
+            var allowed = spec.Kind == SettingKind.Int && help?.Min is null && help?.Max is null ? "" : spec.Describe();
+            if (allowed.Length > 0) text += $" [{allowed}]";
+            if (!string.IsNullOrEmpty(help?.DefaultValue)) text += $" [default {help.DefaultValue}]";
+        }
         var (min, max) = spec.Kind is SettingKind.Int or SettingKind.Bool && spec.Min is { } lo && spec.Max is { } hi
             ? (lo.ToString(), hi.ToString())
             : (help?.Min ?? "", help?.Max ?? "");

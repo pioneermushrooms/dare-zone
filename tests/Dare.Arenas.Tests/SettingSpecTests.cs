@@ -127,3 +127,15 @@ public class QuickfixFileTests
     public void Filters_by_section_or_key(string filter, bool expected) =>
         Assert.Equal(expected, QuickfixFile.Matches(filter, "Warbird", "BulletSpeed"));
 }
+
+public class QuickfixHelpTests
+{
+    [Fact]
+    public void Long_help_is_cut_and_ships_point_at_the_first()
+    {
+        var help = QuickfixFile.Shorten(new string('x', 400));
+        Assert.Equal(QuickfixFile.MaxHelpLength, help.Length);
+        Assert.EndsWith("...", help);
+        Assert.Equal("As for Warbird:BulletSpeed", QuickfixFile.SameAs("Warbird", "BulletSpeed"));
+    }
+}
