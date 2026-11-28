@@ -1,0 +1,135 @@
+// node --test tests/js/*.test.js   (no packages needed)
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const R = require("../../src/Dare.Arenas/Web/wwwroot/gamemode-rules.js");
+
+// Specs like the arena's /api/me settings list: every key the rules module may write.
+const INT_KEYS = ["Team:DesiredTeams", "Team:MaxPerTeam", "Team:MaxFrequency", "Team:MaxTeamDifference", "LegalShip:ArenaMask",
+  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagCount",
+  "Flag:WinDelay", "Flag:FlagReward", "Flag:FlagDropDelay", "Flag:FlaggerSpeedAdjustment", "Soccer:BallCount", "Soccer:Reward",
+  "Soccer:WinBy", "Periodic:RewardDelay", "Periodic:RewardPoints", "King:DeathCount", "King:MinPlayers", "King:RewardFactor"];
+const BOOL_KEYS = ["Team:ForceEvenTeams", "Misc:TeamKillPoints", "Flag:SplitPoints", "Flag:DropOwned", "Flag:DropCenter",
+  "Flag:FlaggerOnRadar", "Flag:PersistentTurfOwners", "Soccer:BallBounce", "Soccer:AllowGuns", "Soccer:AllowBombs", "King:AutoStart"];
+function specs(extra = {}) {
+  const s = {};
+  for (const k of INT_KEYS) s[k] = { type: "int", min: k === "Flag:FlagMode" || k === "Kill:FixedKillReward" ? -1 : 0, max: k === "LegalShip:ArenaMask" ? 255 : k === "Flag:FlagCount" ? 256 : k === "Soccer:BallCount" ? 8 : 1000000 };
+  for (const k of BOOL_KEYS) s[k] = { type: "bool" };
+  s["Misc:TimerWarnings"] = { type: "text" };
+  s["GameMode:Attach"] = { type: "flags" };
+  s["Soccer:Mode"] = { type: "enum", choices: R.GOAL_LAYOUTS.map((g) => g.id) };
+  return { ...s, ...extra };
+}
+const game = (objective, more = {}) => R.withDefaults({ objective, ...more });
+
+test("fight turns flags, balls and periodic off", () => {
+  const out = R.settings(game("fight"), specs());
+  assert.equal(out["Flag:FlagCount"], "0");
+  assert.equal(out["Soccer:BallCount"], "0");
+  assert.equal(out["Periodic:RewardDelay"], "0");
+  assert.equal(out["Flag:FlagMode"], "-1");
+  assert.equal(out["GameMode:Attach"], "Kills");
+});
+
+test("rabbit is one carried flag with hold time", () => {
+  const out = R.settings(game("rabbit"), specs());
+  assert.equal(out["Flag:CarryFlags"], "1");
+  assert.equal(out["Flag:FlagCount"], "1");
+  assert.equal(out["Flag:FlagMode"], "0");
+  assert.equal(out["Flag:WinDelay"], "18000");
+});
+
+test("turf uses static flags and periodic", () => {
+  const out = R.settings(game("turf"), specs());
+  assert.equal(out["Flag:CarryFlags"], "0");
+  assert.equal(out["Periodic:RewardDelay"], "6000");
+  assert.equal(out["Periodic:RewardPoints"], "100");
+  assert.equal(out["Flag:PersistentTurfOwners"], "1");
+});
+
+test("ownall sets flag mode 1 and carryall 0", () => {
+  assert.equal(R.settings(game("ownall"), specs())["Flag:FlagMode"], "1");
+  assert.equal(R.settings(game("carryall"), specs())["Flag:FlagMode"], "0");
+  assert.equal(R.settings(game("carryall"), specs())["Flag:FlagCount"], "6");
+});
+
+test("powerball layout goes to Soccer:Mode", () => {
+  const out = R.settings(game("powerball", { ball: { layout: "TopBottom", count: 2 } }), specs());
+  assert.equal(out["Soccer:Mode"], "TopBottom");
+  assert.equal(out["Soccer:BallCount"], "2");
+  assert.equal(out["Flag:FlagCount"], "0");
+});
+
+test("enum value outside choices is left out", () => {
+  const out = R.settings(game("powerball", { ball: { layout: "TopBottom" } }), specs({ "Soccer:Mode": { type: "enum", choices: ["LeftRight"] } }));
+  assert.ok(!("Soccer:Mode" in out));
+});
+
+test("attach words per objective", () => {
+  assert.deepEqual(R.attach(game("fight")), ["Kills"]);
+  assert.deepEqual(R.attach(game("carryall", { teams: { ships: 127, shipChangeSec: 5 } })), ["Kills", "Flags", "Ships", "ShipChange"]);
+  assert.deepEqual(R.attach(game("powerball", { teams: { shipChangeSec: 0 } })), ["Kills", "Balls"]);
+  assert.deepEqual(R.attach(game("king", { teams: { shipChangeSec: 0 } })), ["Kills", "King"]);
+  assert.equal(R.settings(game("rabbit", { teams: { shipChangeSec: 0 } }), specs())["GameMode:Attach"], "Kills, Flags");
+});
+
+test("minutes to ticks and warnings as text", () => {
+  const out = R.settings(game("fight", { time: { minutes: 30, warnings: [60, 10] } }), specs());
+  assert.equal(out["Misc:TimedGame"], "180000");
+  assert.equal(out["Misc:TimerWarnings"], "60,10");
+});
+
+test("free-for-all is one per team; private teams off caps MaxFrequency", () => {
+  const ffa = R.settings(game("fight", { teams: { count: 0 } }), specs());
+  assert.equal(ffa["Team:MaxPerTeam"], "1");
+  const two = R.settings(game("fight", { teams: { count: 2, private: false } }), specs());
+  assert.equal(two["Team:MaxFrequency"], "2");
+  assert.equal(two["Team:DesiredTeams"], "2");
+  assert.equal(R.settings(game("fight", { teams: { private: true } }), specs())["Team:MaxFrequency"], "10000");
+});
+
+test("fixed kill reward or bounty", () => {
+  assert.equal(R.settings(game("fight"), specs())["Kill:FixedKillReward"], "-1");
+  assert.equal(R.settings(game("fight", { scoring: { kill: "fixed", fixedKill: 25 } }), specs())["Kill:FixedKillReward"], "25");
+});
+
+test("soon objectives fall back to fight", () => {
+  for (const id of ["ctf", "holdbase", "lives", "bogus"]) assert.equal(R.withDefaults({ objective: id }).objective, "fight");
+  assert.ok(R.OBJECTIVES.filter((o) => o.soon).length === 3);
+});
+
+test("defaults fill missing game fields", () => {
+  const g = R.withDefaults({ objective: "rabbit", flags: { count: 9 } });
+  assert.equal(g.flags.holdSec, 180);
+  assert.equal(g.flags.count, 9);
+  assert.equal(g.teams.perTeam, 8);
+  assert.equal(R.withDefaults(undefined).objective, "fight");
+});
+
+test("usesFlags and usesBall", () => {
+  assert.ok(R.usesFlags(game("turf")) && !R.usesBall(game("turf")));
+  assert.ok(R.usesBall(game("powerball")) && !R.usesFlags(game("powerball")));
+  assert.ok(!R.usesFlags(game("king")) && !R.usesBall(game("king")));
+});
+
+test("every objective stays within spec", () => {
+  const sp = specs();
+  for (const o of R.OBJECTIVES.filter((x) => !x.soon).map((x) => x.id))
+    for (const count of [0, 2, 4]) for (const minutes of [0, 30]) {
+      const out = R.settings(game(o, { teams: { count }, time: { minutes }, flags: { count: 999, holdSec: 99999 } }), sp);
+      for (const [k, v] of Object.entries(out)) {
+        const s = sp[k];
+        if (s.type === "int") { assert.match(v, /^-?\d+$/, `${o}: ${k}=${v}`); assert.ok(+v >= s.min && +v <= s.max, `${o}: ${k}=${v}`); }
+        if (s.type === "bool") assert.ok(v === "0" || v === "1", `${o}: ${k}=${v}`);
+      }
+    }
+});
+
+test("summary mentions the objective, teams and time", () => {
+  const s = R.summary(game("carryall", { time: { minutes: 30 } }), { pace: "fast", items: "standard" });
+  assert.match(s, /flags/i);
+  assert.match(s, /30-minute/);
+  assert.match(s, /two teams/i);
+  assert.match(s, /fast pace/i);
+  assert.match(R.summary(game("fight", { teams: { count: 0 } })), /everyone for themselves/i);
+});
