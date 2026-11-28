@@ -28,7 +28,7 @@ public static class TutorialEntry
         if (kind == EntryKind.Account && record is not null)
         {
             if (record.Outcome is not null || record.Dropouts >= MaxDropouts) return (TutorialStart.No, 0);
-            return (TutorialStart.Resume, record.Act ?? 0);
+            return enteringPublic && capacityLeft ? (TutorialStart.Resume, record.Act ?? 0) : (TutorialStart.Offer, 0);
         }
 
         return enteringPublic && capacityLeft ? (TutorialStart.Start, 0) : (TutorialStart.Offer, 0);

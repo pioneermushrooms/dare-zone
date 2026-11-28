@@ -33,6 +33,10 @@ public class TutorialEntryTests
         Assert.Equal((TutorialStart.Resume, 0), D(EntryKind.Account, Rec()));
     [Fact] public void Account_InProgress_TwoDropouts_No() =>
         Assert.Equal((TutorialStart.No, 0), D(EntryKind.Account, Rec(act: 2, dropouts: 2)));
+    [Fact] public void Resume_OtherArena_Offer() =>
+        Assert.Equal((TutorialStart.Offer, 0), D(EntryKind.Account, Rec(act: 2, dropouts: 1), pub: false));
+    [Fact] public void Resume_NoCapacity_Offer() =>
+        Assert.Equal((TutorialStart.Offer, 0), D(EntryKind.Account, Rec(act: 2, dropouts: 1), room: false));
     [Fact] public void NotFirstEntry_No() => Assert.Equal((TutorialStart.No, 0), D(EntryKind.Account, first: false));
     [Fact] public void NoCapacity_Offer() => Assert.Equal((TutorialStart.Offer, 0), D(EntryKind.Account, room: false));
 }
