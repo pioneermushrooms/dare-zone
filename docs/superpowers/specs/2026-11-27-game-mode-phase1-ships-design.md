@@ -85,8 +85,10 @@ current stock ship values (`conf/svs`). Each step scales every ship after its ro
 | recharge (initial + max) | ×0.8 | ×0.9 | ×1 | ×1.15 | ×1.4 |
 | max mines | −2 | −1 | 0 | +1 | +3 |
 
-Every result is rounded and clamped to the setting's min/max from the server's config help, so
-the wizard never produces a value that apply would skip.
+Every result is rounded and clamped to the setting's spec, so the wizard never produces a value
+that apply would skip. The server's stricter checks (on `main` since 0cd91be) require ints to fit
+their type and the help's Min/Max, bools to be 0/1, and enums to be a choice. The page reads each
+spec from the settings API; the server side uses `ArenaOwnership.SpecOf(section, key)`.
 
 ### Items (whole arena, 5 steps)
 

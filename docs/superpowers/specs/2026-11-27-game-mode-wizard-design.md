@@ -211,7 +211,7 @@ drawing UI; the rule menu layout; timer art. Each comes with a mockup for approv
 
 - Settings sets and apply (972214b) belong to `editor-polish`. `ingame-settings` has proposed
   stricter value checks: ints within the config help's min/max, bools 0/1, enums one of their
-  choices. Chris hasn't approved them yet. If they land, out-of-range values come back from
+  choices. These are on `main` since 0cd91be (not deployed), so out-of-range values come back from
   `/preview` and `/apply` as "skipped" rows with a reason. The wizard must only produce
   in-range values (read min/max/choices from the settings API) and show any skipped rows.
 - LVZ (`tile-editor`): generated objects go in their own `gamemode.lvz`, because an `.lvz` is
