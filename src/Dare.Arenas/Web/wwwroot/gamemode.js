@@ -273,7 +273,7 @@ const GameModeTab = (() => {
   const PANEL_KEYS = {
     teams: (k) => k.startsWith("Team:") || k.startsWith("LegalShip:") || k === "Misc:ShipChangeInterval",
     scoring: (k) => k.startsWith("Kill:") || ["Misc:TeamKillPoints", "Flag:FlagReward", "Flag:SplitPoints", "Periodic:RewardPoints", "Soccer:Reward", "King:RewardFactor"].includes(k),
-    time: (k) => k === "Misc:TimedGame" || k === "Misc:TimerWarnings",
+    time: (k) => k === "Misc:TimedGame" || k === "GameMode:RoundTime" || k === "Misc:TimerWarnings",
     flags: (k) => (k.startsWith("Flag:") && !["Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagReward", "Flag:SplitPoints"].includes(k)) || (k.startsWith("Soccer:") && k !== "Soccer:Reward") || (k.startsWith("King:") && k !== "King:RewardFactor"),
   };
   function changes(id) {
@@ -380,7 +380,9 @@ const GameModeTab = (() => {
       row("Time limit", "0 for no limit. Pilots see the time left with ?time.", numBox(t.minutes, 0, 600, (v) => setG((g) => { g.time.minutes = v; }), "Time limit", "minutes")),
       +t.minutes ? row("Warnings", "Seconds before the end, separated by commas.", warn) : null,
       soonRow("When time runs out", "Points to the leader, restart, or warp everyone to spawn."),
-      +t.minutes ? el("p", { class: "dim small", text: "The server does nothing when the timer ends today: the countdown shows, then the game carries on." }) : null,
+      +t.minutes ? el("p", { class: "dim small", text: ["carryall", "ownall", "rabbit"].includes(game().objective)
+        ? "When time runs out, the team with the most flags wins the flag reward (a tie is a draw), and the next round starts. A flag win starts the next round too."
+        : "When time runs out, the next round starts; nothing else happens yet." }) : null,
     ];
   }
 

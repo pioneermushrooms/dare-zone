@@ -96,7 +96,10 @@
       "Misc:ShipChangeInterval": ticks(t.shipChangeSec),
       "Kill:FixedKillReward": s.kill === "fixed" ? +s.fixedKill : -1,
       "Misc:TeamKillPoints": b(s.teamKills),
-      "Misc:TimedGame": Math.round(Math.max(0, +g.time.minutes || 0) * 6000),
+      // The plugin's round clock (ArenaOwnership.FlagHold.cs), not Misc:TimedGame: a flag win can start the next
+      // round, and at zero the team with the most flags wins. TimedGame 0 so the server's clock stays out of it.
+      "Misc:TimedGame": 0,
+      "GameMode:RoundTime": Math.round(Math.max(0, +g.time.minutes || 0) * 6000),
       "Misc:TimerWarnings": g.time.warnings.map((w) => Math.round(+w)).filter((w) => w > 0).join(","),
       "GameMode:Attach": attach(g).join(", ") || "None",
     };
@@ -198,7 +201,10 @@
     }
     parts.push(s.kill === "fixed" ? `Kills score ${num(s.fixedKill)} points.` : "Kills score the killed pilot's bounty.");
     const min = Math.round(+g.time.minutes || 0);
-    parts.push(min ? `${min}-minute rounds; nothing happens at zero yet.` : "No time limit.");
+    const flagWin = ["carryall", "ownall", "rabbit"].includes(g.objective);
+    if (!min) parts.push("No time limit.");
+    else if (flagWin) parts.push(`${min}-minute rounds; a flag win starts the next one, and when time runs out the team with the most flags wins (a tie is a draw).`);
+    else parts.push(`${min}-minute rounds.`);
     if (ships) parts.push(`${PACE[ships.pace] || "Standard"} pace, ${ships.items || "standard"} items.`);
     return parts.join(" ");
   }

@@ -17,6 +17,14 @@ public class DraftRulesTests
             Assert.False(DraftRules.TryValidate(bad, None, out _, out _), bad);
     }
 
+    // #training is the tutorial's module-owned folder (arenas/#training, shared by #training1, #training2, ...)
+    [Fact]
+    public void the_tutorial_arena_name_is_reserved()
+    {
+        foreach (var bad in new[] { "#training", "training", "#Training" })
+            Assert.False(DraftRules.TryValidate(bad, None, out _, out _), bad);
+    }
+
     [Fact]
     public void draft_names_fit_the_servers_15_character_limit_with_the_hash()
     {

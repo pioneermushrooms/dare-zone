@@ -33,7 +33,7 @@ public sealed class GameModeAttachTests
     {
         var ours = new HashSet<string>([Kill, "SS.Core.Modules.Scoring.Koth"]);
         var (a, d) = GameModeAttach.Diff(ours, GameModeModules.Kills | GameModeModules.Flags, new HashSet<string>());
-        Assert.Equal(["SS.Core.Modules.Scoring.FlagGamePoints"], a);
+        Assert.Equal([FlagHold.TypeName], a);
         Assert.Equal(["SS.Core.Modules.Scoring.Koth"], d);
     }
 

@@ -6,7 +6,7 @@ const R = require("../../src/Dare.Arenas/Web/wwwroot/gamemode-rules.js");
 
 // Specs like the arena's /api/me settings list: every key the rules module may write.
 const INT_KEYS = ["Team:DesiredTeams", "Team:MaxPerTeam", "Team:MaxFrequency", "Team:MaxTeamDifference", "LegalShip:ArenaMask",
-  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "Flag:CarryFlags", "Flag:FlagCount",
+  "Misc:ShipChangeInterval", "Kill:FixedKillReward", "Misc:TimedGame", "GameMode:RoundTime", "Flag:CarryFlags", "Flag:FlagCount",
   "Flag:WinDelay", "Flag:FlagReward", "Flag:FlagDropDelay", "Flag:FlaggerSpeedAdjustment", "Soccer:BallCount", "Soccer:Reward",
   "Soccer:WinBy", "Periodic:RewardDelay", "Periodic:RewardPoints", "King:DeathCount", "King:MinPlayers", "King:RewardFactor"];
 const BOOL_KEYS = ["Team:ForceEvenTeams", "Misc:TeamKillPoints", "Flag:SplitPoints", "Flag:DropOwned", "Flag:DropCenter",
@@ -77,8 +77,24 @@ test("attach words per objective", () => {
 
 test("minutes to ticks and warnings as text", () => {
   const out = R.settings(game("fight", { time: { minutes: 30, warnings: [60, 10] } }), specs());
-  assert.equal(out["Misc:TimedGame"], "180000");
+  assert.equal(out["GameMode:RoundTime"], "180000");
   assert.equal(out["Misc:TimerWarnings"], "60,10");
+});
+
+test("rounds run on the plugin's clock, so a flag win can start the next one", () => {
+  // Misc:TimedGame can't be restarted after a flag win; GameMode:RoundTime can, and decides who wins at zero.
+  for (const o of ["fight", "carryall", "ownall", "rabbit", "powerball"]) {
+    const out = R.settings(game(o, { time: { minutes: 30 } }), specs());
+    assert.equal(out["Misc:TimedGame"], "0", o);
+    assert.equal(out["GameMode:RoundTime"], "180000", o);
+  }
+  assert.equal(R.settings(game("fight", { time: { minutes: 0 } }), specs())["GameMode:RoundTime"], "0");
+});
+
+test("the summary says what happens when a flag round runs out", () => {
+  assert.match(R.summary(game("carryall", { time: { minutes: 30 } })), /most flags wins/i);
+  assert.doesNotMatch(R.summary(game("carryall", { time: { minutes: 30 } })), /nothing happens/i);
+  assert.match(R.summary(game("fight", { time: { minutes: 30 } })), /30-minute rounds/);
 });
 
 test("free-for-all is one per team; private teams off caps MaxFrequency", () => {
