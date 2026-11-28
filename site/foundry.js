@@ -155,19 +155,22 @@ async function mapThumb(parsed) {
     x0 = Math.max(0, Math.min(N - side, Math.floor((minX + maxX - side) / 2)));
     y0 = Math.max(0, Math.min(N - side, Math.floor((minY + maxY - side) / 2)));
   }
-  const tiles = el("canvas", { width: String(side), height: String(side) });
-  const g = tiles.getContext("2d"), img = g.createImageData(side, side), px = img.data;
-  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
-    const t = grid[(y + y0) * N + x + x0], i = (y * side + x) * 4;
-    if (!t) { px[i] = 4; px[i + 1] = 7; px[i + 2] = 14; px[i + 3] = 255; continue; }
-    const c = colours[t] ?? hexRgb(Lvl.color(t));
-    px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
+  // As the editor's overview draws it: every tile at least one whole pixel, so thin walls stay visible at a quarter size.
   const out = el("canvas", { width: String(THUMB), height: String(THUMB) });
-  const o = out.getContext("2d");
-  o.imageSmoothingEnabled = side > THUMB; // shrink smoothly, grow crisp
-  o.drawImage(tiles, 0, 0, THUMB, THUMB);
+  const o = out.getContext("2d"), img = o.createImageData(THUMB, THUMB), px = img.data;
+  for (let i = 0; i < px.length; i += 4) { px[i] = 4; px[i + 1] = 7; px[i + 2] = 14; px[i + 3] = 255; }
+  const k = THUMB / side, dot = Math.max(1, Math.ceil(k));
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    const t = grid[(y + y0) * N + x + x0];
+    if (!t) continue;
+    const c = colours[t] ?? hexRgb(Lvl.color(t));
+    const ox = Math.floor(x * k), oy = Math.floor(y * k);
+    for (let dy = 0; dy < dot && oy + dy < THUMB; dy++) for (let dx = 0; dx < dot && ox + dx < THUMB; dx++) {
+      const i = ((oy + dy) * THUMB + ox + dx) * 4;
+      px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2];
+    }
+  }
+  o.putImageData(img, 0, 0);
   const blob = await new Promise((r) => out.toBlob(r, "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
 }
