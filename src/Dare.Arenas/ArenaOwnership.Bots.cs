@@ -503,7 +503,7 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "[create|set|list|match|deploy|stop|remove] [name] [behavior] [ship 1-8] [team N] [priority 1-9] [chat on|off]",
+        Args = "[create|set|list|match|deploy|stop|stopall|remove|data] [name] [behavior] [ship 1-8] [team N] [priority 1-9] [chat on|off]",
         Description = """
             Anyone: ?bots tells you which pilots in this arena are bots.
             Owners manage the bots of the arena they own (they must be in it). Behaviors: fighter (chases and
@@ -518,6 +518,7 @@ public sealed partial class ArenaOwnership
               ?bots list                        your bots, their teams and whether they are flying
               ?bots stop Sparring / ?bots deploy Sparring   take it out / send it back in
               ?bots remove Sparring             deletes it
+              ?bots stopall                     stops every bot in the arena (keeps their settings)
             Waypoints, greetings and replies are set in the Arena Editor's Bots tab on the website.
             """)]
     private void Command_bots(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -526,6 +527,11 @@ public sealed partial class ArenaOwnership
         bool isOwner = player.Flags.Authenticated && player.Name is not null && player.Arena is { } here &&
             Store.Get(here.BaseName) is { Status: ArenaStatus.Active } mine &&
             Store.SameAccount(mine.Owner, player.Name);
+        if (action.Equals("data", StringComparison.OrdinalIgnoreCase))
+        {
+            SendBotData(player, isOwner);
+            return;
+        }
         if (!isOwner)
         {
             SayWhoIsBot(player);
@@ -564,6 +570,15 @@ public sealed partial class ArenaOwnership
             case "list":
                 ListBots(player, owned.Name);
                 break;
+
+            case "stopall":
+            {
+                int stopped = 0;
+                foreach (var bot in bots.Where(b => b.Deployed))
+                    if (Store.SetBotDeployment(owned.Name, owner, bot.Label, false).Ok) stopped++;
+                Reply(player, $"Bots: stopped {stopped} bot{(stopped == 1 ? "" : "s")}. Their settings are kept.");
+                break;
+            }
 
             case "match":
             {
@@ -676,7 +691,7 @@ public sealed partial class ArenaOwnership
     {
         Reply(player, "Bots: ?bots create <name> [fighter|patrol|sentry|idle] [ship 1-8] [chat on]   e.g. ?bots create Sparring fighter 3 chat on");
         Reply(player, "Bots: ?bots list | ?bots set <name> <behavior|ship N|team N|priority 1-9|chat on|off> | ?bots stop <name> | ?bots deploy <name> | ?bots remove <name>");
-        Reply(player, "Bots: ?bots match <team> <size> | ?bots match <team> off | ?bots match. Bots on a team make room for pilots (higher priority stays longest).");
+        Reply(player, "Bots: ?bots match <team> <size> | ?bots match <team> off | ?bots match | ?bots stopall. Bots on a team make room for pilots (higher priority stays longest).");
         Reply(player, "Bots: fighter chases and shoots pilots, patrol flies waypoints, sentry guards a spot, idle sits still. Without waypoints, fighter and patrol roam.");
         if (count == 0) Reply(player, "Bots: this arena has no bots yet.");
         if (BotsUnavailable() is { } why) Reply(player, "Bots: " + why);
@@ -704,6 +719,32 @@ public sealed partial class ArenaOwnership
         _hosts.TryGetValue(arena, out var run) && run.Shown.FirstOrDefault(p =>
             string.Equals(p.Label, label, StringComparison.OrdinalIgnoreCase)) is { } placement ? placement.Seat : null;
 
+    /// <summary>A bot's status word (stopped, not launched, in, spectating, out) and, when not launched, why.</summary>
+    private (string Status, string? Problem) StatusOf(string arena, ArenaBot bot)
+    {
+        if (!bot.Deployed) return ("stopped", null);
+        if (Store.BotProblem(arena, bot.Label, n => _accounts?.Find(n) is not null) is { } problem) return ("not launched", problem);
+        return (SeatOf(arena, bot.Label) switch
+        {
+            BotSeat.In => "in",
+            BotSeat.Spectating => "spectating",
+            _ => "out",
+        }, null);
+    }
+
+    /// <summary>?bots data: the bot list for the in-game bots window, to the asker only.</summary>
+    private void SendBotData(Player player, bool owner)
+    {
+        if (player.Arena is not { } arena) return;
+        var rows = Store.Bots(arena.BaseName).Select(bot =>
+        {
+            var (status, problem) = StatusOf(arena.BaseName, bot);
+            return BotData.FromScript(bot.Label, bot.Script, bot.Deployed, status, problem);
+        }).ToList();
+        foreach (var line in BotData.Render(arena.BaseName, owner, rows, Store.MatchSizes(arena.BaseName)))
+            Reply(player, line);
+    }
+
     private void ListBots(Player player, string arena)
     {
         var bots = Store.Bots(arena);
@@ -714,15 +755,8 @@ public sealed partial class ArenaOwnership
         }
         foreach (var bot in bots)
         {
-            var state = !bot.Deployed ? "stopped"
-                : (Store.BotProblem(arena, bot.Label, n => _accounts?.Find(n) is not null) is { } problem ? BotCommand.NotLaunched(problem) : null)
-                    ?? SeatOf(arena, bot.Label) switch
-                    {
-                        BotSeat.In => "in",
-                        BotSeat.Spectating => "spectating",
-                        _ => "out",
-                    };
-            Reply(player, "Bots: " + BotCommand.ListLine(bot.Label, bot.Script, state));
+            var (status, problem) = StatusOf(arena, bot);
+            Reply(player, "Bots: " + BotCommand.ListLine(bot.Label, bot.Script, problem is null ? status : BotCommand.NotLaunched(problem)));
         }
         var sizes = Store.MatchSizes(arena);
         foreach (var (team, size) in sizes.OrderBy(kv => kv.Key))
