@@ -132,6 +132,7 @@ public sealed partial class ArenaOwnership : IModule
         StartBannerIngest();
         StartBots();
         StartRestarts(broker);
+        StartGameMode(broker);
         EnsurePublicConf();
 
         Log(LogLevel.Info, $"Loaded; store '{Path.GetFullPath(DbPath)}' open.");
@@ -140,6 +141,7 @@ public sealed partial class ArenaOwnership : IModule
 
     bool IModule.Unload(IComponentBroker broker)
     {
+        StopGameMode(broker);
         StopRestarts(broker);
         StopBots();
         StopWeb(); // first: no new web work reaches the mainloop after this

@@ -880,3 +880,43 @@ ul.notelist { list-style:none; margin:0; padding:0; }
 .gmlist summary { cursor:pointer; color:var(--accent); }
 .gmlist ul { max-height:240px; overflow:auto; font:0.75rem/1.4 ui-monospace, monospace; margin:6px 0 0; padding-left:16px; }
 @media (max-width:760px) { .gmships { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+
+/* Game mode wizard (Phase 2) */
+.gmsummary { background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:12px; }
+.gmsummary p { margin:0 0 4px; }
+.gmviews { display:flex; flex-wrap:wrap; gap:14px; }
+.gmsteps { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.gamemode .gmsteps button { background:none; border:1px solid var(--line); border-radius:99px; color:var(--dim); padding:1px 10px; font:inherit; font-size:.78rem;
+  text-transform:none; letter-spacing:normal; box-shadow:none; min-height:0; }
+.gamemode .gmsteps button.on { border-color:var(--hot); color:var(--hot); }
+.gamemode .gmsteps button.done { border-color:#2c5a45; color:var(--ok); }
+.gmnav { display:flex; justify-content:space-between; gap:10px; margin-top:16px; }
+.gmsection { border-top:1px solid var(--line); padding-top:6px; margin-top:12px; }
+.gmq { font-weight:700; font-size:1.05rem; margin:4px 0 10px; }
+.gmcards { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; }
+.gamemode button.gmcard { display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; background:var(--panel2); color:var(--text);
+  border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; text-transform:none; letter-spacing:normal; box-shadow:none; position:relative; }
+.gamemode button.gmcard.on { border-color:var(--hot); }
+.gamemode button.gmcard.soon { opacity:.55; cursor:not-allowed; }
+.gmbadge { font-size:.62rem; letter-spacing:.06em; color:var(--accent); border:1px solid #2a4a63; border-radius:4px; padding:0 5px; }
+.gmcard .gmbadge { order:-1; margin-bottom:2px; }
+.gmrow2 { display:grid; grid-template-columns:minmax(0, 230px) minmax(0, 1fr); gap:8px 14px; align-items:center; margin:8px 0; }
+.gmlab b { display:block; font-size:.92rem; }
+.gmval { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.gmsegin { display:inline-flex; }
+.gmsegin button { flex:0 0 auto; padding:4px 12px; white-space:nowrap; }
+.gmval input.numval { width:7em; }
+.gmval input.textval { width:12em; }
+.gmshiptoggles, .gmlayouts { display:flex; flex-wrap:wrap; gap:6px; }
+.gamemode .gmshiptoggles button, .gamemode .gmlayouts button { background:var(--panel2); color:var(--dim); border:1px solid var(--line); border-radius:5px; padding:2px 9px;
+  font:inherit; font-size:.8rem; text-transform:none; letter-spacing:normal; box-shadow:none; min-height:0; }
+.gamemode .gmshiptoggles button.on { color:var(--ok); border-color:#2c5a45; }
+.gamemode .gmlayouts button.on { color:#07131e; background:var(--hot); border-color:var(--hot); font-weight:700; }
+.gmsoonrow { opacity:.75; }
+.gmchanges { margin-top:12px; font-size:.82rem; color:var(--dim); }
+.gmchanges summary { cursor:pointer; color:var(--accent); }
+.gmwarn { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; border:1px solid #6b5420; background:#2a2210; color:var(--hot);
+  border-radius:6px; padding:8px 12px; margin:12px 0; }
+.gmok { color:var(--ok); margin:10px 0; }
+.gmbig { font-size:1.05rem; line-height:1.6; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:12px; }
+@media (max-width:760px) { .gmrow2 { grid-template-columns:1fr; } }
