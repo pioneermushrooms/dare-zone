@@ -299,7 +299,7 @@ const signInHref = () => "/account/login?next=" + encodeURIComponent(location.pa
 function signedInLinks() {
   const a = $("acctlink");
   // the label stays "Pilot account" (the same top bar on every page); signed out, it signs in and comes back here
-  if (viewer) { a.href = "/account/#pilots"; a.title = `Your pilot account (${viewer.name})`; }
+  if (viewer) { a.href = "/account/"; a.title = `Your pilot account (${viewer.name})`; }
   else { a.href = signInHref(); a.title = "Sign in to keep and share designs"; }
 }
 

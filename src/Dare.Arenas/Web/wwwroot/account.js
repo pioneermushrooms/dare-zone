@@ -151,9 +151,19 @@ const pages = {
       location.href = "/account/login";
     });
     await pilots(me);
-    if (location.hash === "#pilots") { $("pilots").open = true; $("pilots").scrollIntoView(); }
+    // the pilot menu links straight to a section: /account/#pilots, #keys, #email, #password
+    const openSection = () => {
+      const fold = $(SECTIONS[location.hash.slice(1)]);
+      if (!fold || fold.hidden) return;
+      fold.open = true;
+      fold.scrollIntoView({ block: "start" });
+    };
+    openSection();
+    addEventListener("hashchange", openSection);
   },
 };
+
+const SECTIONS = { pilots: "pilots", keys: "keysbox", email: "emailbox", password: "pwbox" };
 
 // ---- pilot names on this email ------------------------------------------------------------------
 function el(tag, props, ...kids) {

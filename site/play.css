@@ -22,8 +22,9 @@ body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100v
 .brand h1 { display: flex; align-items: baseline; gap: .28em; margin: 0; font-size: clamp(1.7rem, 2.6vw, 2.4rem); line-height: 1; white-space: nowrap; }
 .brand h1 span { font-size: .74em; color: var(--ink); }
 .brand:hover h1 span { color: var(--cyan-hi); }
-/* the buttons span the chat panel's default place, edge to edge, and stay pinned there when it's resized or moved */
-.topright { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-left: auto;
+/* the links and the pilot button: one row, evenly spaced (the same gap as between the links), ending at the chat panel's
+   right edge and staying there when it's resized or moved */
+.topright { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;
   width: var(--dock-default-w); }
 /* the links' buttons (.toplinks): header.css, the same on every page */
 .pilotbox { position: relative; }
@@ -43,6 +44,8 @@ body > canvas { position: fixed; inset: 0; width: 100vw !important; height: 100v
 .pilotmenu button.current { color: var(--cyan); cursor: default; }
 .pilotmenu button.current::after { content: "✓"; }
 #pilotlist { display: grid; gap: 2px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+/* Sign out sits apart from the account links */
+.pilotmenu .signout { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); border-radius: 0 0 3px 3px; }
 
 /* left of the dock: never under it, whatever size the dock is (chat.js sets --dock-w and --dock-right) */
 .launch { align-self: center; width: min(440px, 100%, calc(100vw - var(--dock-w, 0px) - var(--dock-right, 0px) - var(--pad) - 24px)); }
@@ -249,6 +252,7 @@ dialog.gfx { width: min(980px, calc(100% - 32px)); max-height: calc(100vh - 32px
 .gfx .yardlist .download { position: absolute; right: 2px; top: 22px; min-height: 0; padding: 0 5px; font-size: .7rem; line-height: 1.4; color: var(--muted); background: #070d18cc; border: 0; }
 .gfx .yardlist .download:hover:not(:disabled) { color: var(--cyan); background: #070d18; }
 @media (max-width: 760px) {
+  .topright { gap: 6px; } /* header.css narrows the links' gap to 6px here too */
   .gfxbody { grid-template-columns: minmax(0, 1fr); }
   .gfxyard { border-left: 0; border-top: 1px solid var(--line); }
   .yardlist { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
