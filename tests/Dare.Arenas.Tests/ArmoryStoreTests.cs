@@ -85,7 +85,7 @@ public sealed class ArmoryStoreTests : IDisposable
         Assert.False(_s.AddArmoryItem(_dare.Id, "prizes", "x", "uploaded", Png(160, 16), out _).Ok); // not a weapon
         Assert.False(_s.AddArmoryItem(_dare.Id, "bombs", "x", "stolen", Png(160, 208), out _).Ok);
         Assert.False(_s.AddArmoryItem(_dare.Id, "bombs", "x", "uploaded", new byte[AccountStore.MaxArmoryImageBytes + 1], out _).Ok);
-        foreach (var k in AccountStore.ArmoryKinds)
+        foreach (var k in AccountStore.ArmoryKinds.Where(k => k.Name != "banner")) // a banner is a 12×8 BMP (BannerTests)
             Assert.True(_s.AddArmoryItem(_dare.Id, k.Name, k.Label, "uploaded", Png((uint)k.Width, (uint)k.Height), out _).Ok, k.Name);
     }
 

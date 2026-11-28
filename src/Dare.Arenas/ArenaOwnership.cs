@@ -129,6 +129,7 @@ public sealed partial class ArenaOwnership : IModule
         LoadZoneList(broker);
         LoadWebChat(broker);
         StartWeb();
+        StartBannerIngest();
         StartBots();
         StartRestarts(broker);
         EnsurePublicConf();
@@ -142,6 +143,7 @@ public sealed partial class ArenaOwnership : IModule
         StopRestarts(broker);
         StopBots();
         StopWeb(); // first: no new web work reaches the mainloop after this
+        StopBannerIngest();
         UnloadWebChat(broker);
         UnloadZoneList(broker);
         UnregisterStaff(broker);
@@ -178,6 +180,7 @@ public sealed partial class ArenaOwnership : IModule
             _groupManager.SetTempGroup(player, "arenabot");
             return;
         }
+        ApplyStoredBanner(player);
 
         try
         {

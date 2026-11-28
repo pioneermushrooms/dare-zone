@@ -72,7 +72,7 @@ public sealed partial class AccountStore
     /// AccountStore.GalleryBanners.cs...). Add yours here: this one line is the only shared edit.
     /// Declared before <see cref="GalleryKinds"/>, which lists them last.
     /// </summary>
-    public static readonly IReadOnlyList<GalleryFileKind> GalleryFileKinds = [.. MapGalleryKinds()];
+    public static readonly IReadOnlyList<GalleryFileKind> GalleryFileKinds = [.. MapGalleryKinds(), .. BannerGalleryKinds()];
 
     /// <summary>Ships first, then the armory's weapons, then the rest in the game's order, then the file kinds. The gradient (a colour table) isn't shared.</summary>
     public static readonly IReadOnlyList<GalleryKind> GalleryKinds =
