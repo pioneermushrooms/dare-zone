@@ -120,6 +120,8 @@ public sealed partial class ArenaOwnership
         var flags = ReadFlags(arena, out var delay);
         if (flags is null) return;
         var e = rule.Clock.Update(FlagHold.Holder(rule.Mode, flags), DateTime.UtcNow, delay);
+        if (e.Step is FlagHoldStep.Started or FlagHoldStep.Cancelled or FlagHoldStep.Won)
+            Log(LogLevel.Info, $"{{{arena.Name}}} GameMode: flag hold {e.Step.ToString().ToLowerInvariant()}: freq {e.Freq}{(e.Step == FlagHoldStep.Started ? $", {FlagHold.Say(e.Remaining)}" : "")}.");
         switch (e.Step)
         {
             case FlagHoldStep.Started:
@@ -213,7 +215,9 @@ public sealed partial class ArenaOwnership
         if (!_rounds.TryGetValue(arena, out var round)) return; // Misc:TimedGame or ?timer: the server's own clock
         if (_flagRules.TryGetValue(arena, out var rule) && ReadFlags(arena, out _) is { } flags)
         {
-            if (FlagHold.MostFlags(flags) is { } winner)
+            var top = FlagHold.MostFlags(flags);
+            Log(LogLevel.Info, $"{{{arena.Name}}} GameMode: round over: {(top is { } w ? $"freq {w} has the most flags" : "a draw")}.");
+            if (top is { } winner)
             {
                 _chat.SendArenaMessage(arena, $"Time's up: Freq {winner} has the most flags and wins.");
                 FlagWin(arena, rule, winner, restartRound: false);
