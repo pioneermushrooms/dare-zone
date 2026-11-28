@@ -12,16 +12,24 @@ player's screen (placed from one of twelve HUD reference points).
     icons). A stock image picks On the screen or On the map when it's only for one; a countdown's
     objects get a display time covering every frame, so it shows once instead of looping.
     Select one, then click to place; drag to move, Alt+drag to copy, Del deletes, arrows nudge,
-    Ctrl/Cmd+D copies; Esc, Done or picking any drawing tool or tile goes back to walls.
+    Ctrl/Cmd+D copies; Esc, Done or picking any drawing tool or tile goes back to walls. Only one
+    panel has map clicks at a time: placement announces itself (`map:pointer` { owner: "lvz" } and a
+    change on `#lzp-edit`) and lets go when the Game labels panel is used or another `map:pointer`
+    owner takes over.
   - **On the map**: drawn at its layer (BelowAll and AfterBackground under the tiles, the rest
     over them), animated; snaps to tiles unless turned off.
   - **On the screen**: a mimic game screen (`lvz-screen.js`) replaces the map view: the pilot's
-    own window size by default, or 640×480 to 1920×1080; a faint HUD (energy bar, radar and its
-    text, player list, item columns, chat) and the twelve reference points. Drag an image from the
-    palette onto it (or select one and click). It snaps a corner, edge middle or centre onto the
-    nearest reference point within 24 px (Shift: no snap); placed freely, each axis is measured
-    from the nearest screen edge or centre, so it keeps its place at every window size. New screen
-    objects are always shown (layer AfterChat); "Shown" and "Seconds" can be changed per object.
+    own window size by default, or 640×480 to 1920×1080, with a faint HUD (energy bar, radar and its
+    text, player list, item columns, chat). Drag an image from the palette onto it (or select one and
+    click). Placing works like a design tool: pink **smart guides** line it up with the screen's
+    centre and edges, the HUD's blocks, and other images' edges and centres, or space it evenly
+    between images (within 6 screen pixels; Shift turns them off); otherwise it settles on whole
+    pixels or the chosen grid (2–16 px). The game's reference point is picked for it afterwards: the
+    HUD part it was lined up with (so it follows that part), else the nearest screen edge or centre
+    by thirds, so it stays put at other window sizes. That shows only as a hint ("Stays put from the
+    right at any window size") and a small pin; X and Y in the form are screen pixels at the size
+    shown. New screen objects are always shown (layer AfterChat); "Shown" and "Seconds" can be
+    changed per object.
   - **Show LVZ** hides them all to work on the map underneath; nothing is removed.
   - **Save LVZ** keeps the placements with the map (see below); the list under "Placed" shows
     every object, on the map and on the screen.
