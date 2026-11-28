@@ -183,6 +183,7 @@ directly in chat:
 ?bots stop Sparring                take it out, keeping its settings
 ?bots deploy Sparring              send it back in
 ?bots remove Sparring              delete it
+?bots stopall                      stop every bot in the arena (keeps settings)
 ```
 
 Behaviors are `fighter` (chases and shoots pilots), `patrol` (flies its
