@@ -206,3 +206,12 @@ drawing UI; the rule menu layout; timer art. Each comes with a mockup for approv
   choices. Chris hasn't approved them yet. If they land, out-of-range values come back from
   `/preview` and `/apply` as "skipped" rows with a reason. The wizard must only produce
   in-range values (read min/max/choices from the settings API) and show any skipped rows.
+- LVZ (`tile-editor`): generated objects go in their own `gamemode.lvz`, because an `.lvz` is
+  replaced whole on publish and a shared file would overwrite the pilot's own decor. Object ids
+  2000–2999 are reserved for game modes: the tile-editor tools skip them when numbering new
+  objects and mark them "set by the game mode". The map editor's LVZ panel won't open
+  `gamemode.lvz` by default. To build it: `Lvz.blank()`, `Lvz.putFile`, push onto `lvz.images` and
+  push `Lvz.newObject({ map, id, x, y, xRef, yRef, image, layer, mode: 5, time })` onto
+  `lvz.objects`, then `await Lvz.write(lvz)`. `time` is in 1/10 s. Screen offsets are signed
+  12-bit values from `Lvz.REFS` (twelve HUD points). It runs in node 18+ too (see `docs/lvz.md`).
+  The file is published through `/api/upload?kind=lvz`.
