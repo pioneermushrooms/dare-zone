@@ -19,6 +19,15 @@ player's screen (placed from one of twelve HUD reference points).
   drag to move (snaps to tiles unless turned off), Alt+drag to copy, Del deletes, arrows nudge,
   Ctrl/Cmd+D copies. `?lvz=<file>` or `?lvzlib=<id>` opens one straight away.
 
+## Ids kept for game modes
+
+Object ids **2000–2999** belong to game modes: the game mode wizard builds them into the arena's
+own `gamemode.lvz` and the server turns them on and off. The editors never give a new object an id
+in that range (`Lvz.nextId` skips it), mark objects that have one ("set by the game mode", ⚙ in
+the LVZ tab's list, a purple outline on the map), and the map editor's panel doesn't open
+`gamemode.lvz` (or the Graphics page's `arena-graphics.lvz`) by itself. Keep pilots' own objects
+in other files: publishing replaces an `.lvz` whole.
+
 ## Drafts and publishing
 
 Save keeps the `.lvz` in **Your LVZ** (`/arena/api/lvzlib`: list, file, save, rename, duplicate,

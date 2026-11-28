@@ -211,6 +211,19 @@
     lvz.objects = lvz.objects.filter((o) => o.image !== i);
     for (const o of lvz.objects) if (o.image > i) o.image--;
   }
+  // Object ids 2000-2999 belong to game modes (the game mode wizard's generated gamemode.lvz, toggled
+  // by the server); the editors never hand them out and mark objects that use them.
+  const RESERVED_IDS = [2000, 2999];
+  const isReserved = (id) => id >= RESERVED_IDS[0] && id <= RESERVED_IDS[1];
+  /** An id for a new object: one past the highest id outside the reserved range, skipping that range. */
+  function nextId(lvz) {
+    let n = lvz.objects.reduce((m, o) => (isReserved(o.id) ? m : Math.max(m, o.id)), 0) + 1;
+    if (isReserved(n)) n = RESERVED_IDS[1] + 1;
+    if (n <= 32767) return n;
+    const used = new Set(lvz.objects.map((o) => o.id)); // full at the top: the lowest free one
+    for (let i = 1; i <= 32767; i++) if (!isReserved(i) && !used.has(i)) return i;
+    return 0;
+  }
   function newObject(fields) {
     return Object.assign({ map: true, id: 0, x: 8192, y: 8192, xRef: 0, yRef: 0, image: 0, layer: 2, mode: 0, time: 0 }, fields);
   }
@@ -402,6 +415,6 @@
   /** A safe file name for inside an .lvz: letters, digits, . _ - ; at most 64. */
   const safeName = (n) => (String(n).replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(-64) || "image.png");
 
-  return { LAYERS, MODES, REFS, MAP_PIXELS, read, write, fileData, parseObjects, objectBytes, blank, putFile, removeImage, newObject,
+  return { LAYERS, MODES, REFS, MAP_PIXELS, read, write, fileData, parseObjects, objectBytes, blank, putFile, removeImage, newObject, nextId, isReserved, RESERVED_IDS,
     fromIni, toIni, decodeBmp, imageCanvas, pictures, drawFrame, frameAt, anchor, isImageName, safeName, sections };
 });

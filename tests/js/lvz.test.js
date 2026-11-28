@@ -180,3 +180,15 @@ test("safe names for files inside an .lvz", () => {
   assert.equal(Lvz.safeName("../../etc/passwd"), "passwd");
   assert.equal(Lvz.safeName("..."), "image.png");
 });
+
+test("ids 2000-2999 are kept for game modes: new objects never get one", () => {
+  const lvz = Lvz.blank();
+  assert.equal(Lvz.nextId(lvz), 1);
+  lvz.objects.push(Lvz.newObject({ id: 5 }), Lvz.newObject({ id: 2500 }));
+  assert.equal(Lvz.nextId(lvz), 6); // the game mode's 2500 doesn't count
+  lvz.objects.push(Lvz.newObject({ id: 1999 }));
+  assert.equal(Lvz.nextId(lvz), 3000);
+  assert.ok(Lvz.isReserved(2000) && Lvz.isReserved(2999) && !Lvz.isReserved(1999) && !Lvz.isReserved(3000));
+  lvz.objects.push(Lvz.newObject({ id: 32767 }));
+  assert.equal(Lvz.nextId(lvz), 1); // full at the top: the lowest free id outside the range
+});

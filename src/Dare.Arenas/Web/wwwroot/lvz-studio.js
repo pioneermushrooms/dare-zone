@@ -86,6 +86,7 @@ window.LvzStudio = (() => {
         <label class="lz-f">Layer <select data-f="layer"></select></label>
         <label class="lz-f">Shown <select data-f="mode"></select></label>
         <label class="lz-f" title="How long it stays up after it is shown; 0 = until turned off">Seconds <input type="number" data-f="time" min="0" max="409.5" step="0.1"></label>
+        <p class="hint warnnote lz-gmnote" hidden>Set by the game mode: ids 2000–2999 belong to game modes, which turn these objects on and off (and may rebuild them).</p>
         <p class="hint lz-mapnote" hidden>Map coordinates are pixels: 16 per tile, 0–16384 across.</p>
       </section>
     </aside>
@@ -169,7 +170,7 @@ window.LvzStudio = (() => {
     function objLabel(o) {
       const im = lvz.images[o.image];
       const where = o.map ? `map ${o.x}, ${o.y}` : `screen ${(Lvz.REFS[o.xRef] || [""])[0]}${o.x}, ${(Lvz.REFS[o.yRef] || [""])[0]}${o.y}`;
-      return `#${o.id} ${im ? im.file : "image " + o.image} · ${where}`;
+      return `${Lvz.isReserved(o.id) ? "⚙ " : ""}#${o.id} ${im ? im.file : "image " + o.image} · ${where}`;
     }
     function renderObjects() {
       const ul = q("lz-objs"), filter = q("lz-filter").value; ul.replaceChildren();
@@ -181,7 +182,7 @@ window.LvzStudio = (() => {
         if (shown++ >= 400) return;
         const li = document.createElement("li");
         const b = document.createElement("button"); b.type = "button"; b.className = "ghost small open" + (i === sel ? " on" : "");
-        b.textContent = objLabel(o); b.title = `${Lvz.LAYERS[o.layer] || ""} · ${MODE_TEXT[o.mode] || ""}`;
+        b.textContent = objLabel(o); b.title = `${Lvz.LAYERS[o.layer] || ""} · ${MODE_TEXT[o.mode] || ""}${Lvz.isReserved(o.id) ? " · set by the game mode" : ""}`;
         b.addEventListener("click", () => { select(i); if (o.map !== (tab === "map")) setTab(o.map ? "map" : "screen"); });
         li.append(b); ul.append(li);
       });
@@ -197,6 +198,7 @@ window.LvzStudio = (() => {
       F("layer").value = o.layer; F("mode").value = o.mode; F("time").value = (o.time / 10).toFixed(1);
       for (const el of form.querySelectorAll(".lz-scr")) el.hidden = o.map;
       q("lz-mapnote").hidden = !o.map;
+      q("lz-gmnote").hidden = !Lvz.isReserved(o.id);
       F("x").min = o.map ? 0 : -2048; F("x").max = o.map ? 16384 : 2047; F("y").min = F("x").min; F("y").max = F("x").max;
     }
     form.addEventListener("change", (e) => {
@@ -324,7 +326,7 @@ window.LvzStudio = (() => {
     q("lz-filter").addEventListener("change", renderObjects);
 
     // ---- objects ------------------------------------------------------------------------------------
-    const nextId = () => lvz.objects.reduce((m, o) => Math.max(m, o.id), 0) + 1;
+    const nextId = () => Lvz.nextId(lvz);
     function needImage() { if (lvz.images.length) return true; say("Add an image first: objects show one.", false); return false; }
     q("lz-addscreen").addEventListener("click", () => {
       if (!needImage()) return;

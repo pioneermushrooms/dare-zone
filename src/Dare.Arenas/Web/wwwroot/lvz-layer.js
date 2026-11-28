@@ -12,6 +12,8 @@
   const API = "/arena/api", HDR = { "X-Requested-With": "dare-arena" };
   const ask = (t, o) => (window.Dlg ? Dlg.confirm(t, o) : Promise.resolve(window.confirm(t)));
   const askText = (t, o) => (window.Dlg ? Dlg.prompt(t, o) : Promise.resolve(window.prompt(t, (o && o.value) || "")));
+  // files the panel doesn't open by itself: the Graphics page's and the game mode wizard's own
+  const AUTO_SKIP = new Set(["arena-graphics.lvz", "gamemode.lvz"]);
   const MODE_TEXT = ["always", "entering the zone", "entering the arena", "on a kill", "on death", "when turned on (*objon)"];
 
   panel.classList.add("lvzpanel");
@@ -31,6 +33,7 @@
       <label class="lzp-f">Shown <select data-f="mode"></select></label>
       <label class="lzp-f" title="Seconds it stays up once shown; 0 = until turned off">Seconds <input type="number" data-f="time" min="0" max="409.5" step="0.1"></label>
       <label class="lzp-f" title="For *objon / *objoff">Id <input type="number" data-f="id" min="0" max="32767"></label>
+      <p class="hint warnnote lzp-gm" hidden>Set by the game mode (id 2000–2999): the game mode turns it on and off, and may rebuild it.</p>
       <div class="row"><button type="button" class="ghost small lzp-dup">Copy</button><button type="button" class="ghost small danger lzp-del">Delete</button></div>
     </div>
     <div class="row"><button type="button" class="small lzp-save" title="Keep it in Your LVZ (a draft)">Save .lvz</button>
@@ -63,7 +66,7 @@
       if (im && (im.cols || 1) * (im.rows || 1) > 1) anim = true;
       ctx.imageSmoothingEnabled = false;
       Lvz.drawFrame(ctx, pics[o.image], im || {}, im ? Lvz.frameAt(im, t) : 0, x, y, z, im ? im.file : "?");
-      if (q("lzp-edit").checked) { ctx.strokeStyle = i === sel ? "#ffffff" : "#ffcf7a66"; ctx.lineWidth = i === sel ? 2 : 1; ctx.strokeRect(x - 0.5, y - 0.5, fw * z + 1, fh * z + 1); }
+      if (q("lzp-edit").checked) { ctx.strokeStyle = i === sel ? "#ffffff" : Lvz.isReserved(o.id) ? "#c084fc99" : "#ffcf7a66"; ctx.lineWidth = i === sel ? 2 : 1; ctx.strokeRect(x - 0.5, y - 0.5, fw * z + 1, fh * z + 1); }
     }
     if (!below && anim && !animating) { animating = true; setTimeout(() => { animating = false; mv.redraw(); }, 100); }
   });
@@ -124,7 +127,7 @@
   }, true);
 
   // ---- panel ------------------------------------------------------------------------------------------
-  const nextId = () => lvz.objects.reduce((m, o) => Math.max(m, o.id), 0) + 1;
+  const nextId = () => Lvz.nextId(lvz);
   function count() { q("lzp-count").textContent = lvz ? `${lvz.objects.filter((o) => o.map).length} on the map` : ""; }
   function showPalette() {
     const box = q("lzp-pal"); box.replaceChildren();
@@ -146,6 +149,7 @@
     const o = lvz && lvz.objects[sel];
     q("lzp-sel").hidden = !o || !o.map;
     if (!o || !o.map) return;
+    q("lzp-gm").hidden = !Lvz.isReserved(o.id);
     F("x").value = o.x; F("y").value = o.y; F("layer").value = o.layer; F("mode").value = o.mode; F("time").value = (o.time / 10).toFixed(1); F("id").value = o.id;
   }
   q("lzp-sel").addEventListener("change", (e) => {
@@ -258,7 +262,7 @@
     const p = new URLSearchParams(location.search);
     if (p.get("lvzlib")) await open("lib:" + p.get("lvzlib"));
     else if (p.get("lvz")) await open("arena:" + p.get("lvz"));
-    else { const first = levelFiles.find((n) => /\.lvz$/i.test(n) && n.toLowerCase() !== "arena-graphics.lvz"); if (first) await open("arena:" + first); }
+    else { const first = levelFiles.find((n) => /\.lvz$/i.test(n) && !AUTO_SKIP.has(n.toLowerCase())); if (first) await open("arena:" + first); }
     if (p.get("lvz") || p.get("lvzlib")) { q("lzp-edit").checked = true; redraw(); panel.scrollIntoView({ block: "nearest" }); }
   })();
 })();
