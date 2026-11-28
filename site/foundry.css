@@ -4,7 +4,7 @@
   --label: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font: 1rem/1.55 Inter, system-ui, sans-serif; }
-body { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; overflow-x: hidden;
+body { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; overflow-x: hidden;
   background: radial-gradient(ellipse at 70% -10%, #12305055 0%, transparent 60%), var(--bg); }
 a { color: var(--cyan); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
@@ -107,7 +107,6 @@ dialog.bannerbox { width: min(460px, calc(100vw - 24px)); }
 .empty { grid-column: 1 / -1; padding: 28px; text-align: center; color: var(--muted); border: 1px dashed #34496a; border-radius: 6px; }
 .more { text-align: center; margin: 18px 0 0; }
 
-footer { padding: 24px clamp(16px, 3vw, 36px); border-top: 1px solid var(--line); }
 
 /* share dialog */
 dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 0; color: var(--ink); background: var(--panel);
