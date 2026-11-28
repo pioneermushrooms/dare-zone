@@ -20,6 +20,8 @@
 #   before AuthBan, which wraps whichever IAuth is registered when it loads); removes cmd_passwd
 #   from groupdef.dir/default (players change passwords on the site). --restore-authfile undoes
 #   exactly this (AuthFile line back, FoundationAuth line out, cmd_passwd back).
+# - comments out the core SS.Core.Modules.Quickfix line in conf/Modules.config: Dare.Arenas
+#   answers ?quickfix / ?getsettings and the settings editor's changes itself
 # - if pluginDir is given (e.g. out/modules/Dare.Arenas), replaces <zone>/bin/modules/Dare.Arenas with it
 set -euo pipefail
 
@@ -192,6 +194,19 @@ else
   echo "Modules.config: AuthFile commented out, FoundationAuth line in its place"
 fi
 rm -f "$tmp"
+
+# the in-game settings editor: Dare.Arenas answers ?quickfix/?getsettings and the editor's setting
+# changes itself (owner allow-list, arena's own file), so the core Quickfix module must not load too
+QF_RE='^[[:space:]]*<module[[:space:]]+type="SS\.Core\.Modules\.Quickfix,[[:space:]]*SS\.Core"[[:space:]]*/>[[:space:]]*$'
+QF_OFF='	<!--<module type="SS.Core.Modules.Quickfix, SS.Core" />--><!-- Dare.Arenas: ?quickfix and settings changes are answered by Dare.Arenas -->'
+if grep -Eq "$QF_RE" "$CONF/Modules.config"; then
+  tmp=$(mktemp)
+  RE="$QF_RE" awk -v off="$QF_OFF" 'BEGIN { re = ENVIRON["RE"] } $0 ~ re { print off; next } { print }' "$CONF/Modules.config" > "$tmp"
+  cat "$tmp" > "$CONF/Modules.config"; rm -f "$tmp"
+  echo "Modules.config: core Quickfix commented out (Dare.Arenas answers ?quickfix)"
+else
+  echo "Modules.config: core Quickfix already off"
+fi
 
 if grep -qxF 'cmd_passwd' "$CONF/groupdef.dir/default"; then
   tmp=$(mktemp)

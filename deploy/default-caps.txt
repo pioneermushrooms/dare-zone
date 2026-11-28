@@ -11,3 +11,6 @@ cmd_publish
 cmd_withdrawrequest
 cmd_v
 cmd_bots
+cmd_quickfix
+cmd_getsettings
+cmd_settingseditor
