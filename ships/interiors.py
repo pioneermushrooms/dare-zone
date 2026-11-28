@@ -40,6 +40,15 @@ CALM_SLOTS = {
     "steel-blue": {"ESW": 151, "NES": 152, "NSW": 94, "NEW": 113},
 }
 CLOSED = {"ESW": "N", "NES": "W", "NSW": "E", "NEW": "S"}
+# Inside corners (wall all round but one open diagonal), keyed by that diagonal, for the calm packs.
+# They take decor slots tactical2 barely uses (the only free wall slot is 20): proposed, waiting on
+# Chris (see docs/tile-art.md).
+INNER_SLOTS = {
+    "grey-plate": {"NE": 20, "SE": 56, "SW": 75, "NW": 76},
+    "grey-round": {"NE": 95, "SE": 119, "SW": 134, "NW": 135},
+    "green-lit": {"NE": 136, "SE": 137, "SW": 115, "NW": 153},
+    "steel-blue": {"NE": 154, "SE": 155, "SW": 156, "NW": 157},
+}
 # Rim depth in pixels from the closed side, read off the pieces: the bevel and the plate's frame
 # line (grey-plate's brown line, grey-round's dark groove, steel-blue's dark + light lines).
 # green-lit keeps its LED strip, which frames the whole box. None: measure (rim_depth).
@@ -115,6 +124,20 @@ def calm_edge(edge: Image.Image, fill: Image.Image, pack: str, open_: str) -> Im
     return out
 
 
+def inner_corner(calm: dict[str, Image.Image], diag: str) -> Image.Image:
+    """An inside corner from the pack's calm edges (map-auto-tiler's recipe): the rims of the two
+    walls beside the open diagonal run in from its corner and meet square. calm is keyed by the
+    closed side: N (top edge), S, E, W. Each pixel takes the edge it is farther from."""
+    v, h = calm[diag[0]], calm[diag[1]]
+    out = Image.new("RGB", (tg.TS, tg.TS))
+    for y in range(tg.TS):
+        for x in range(tg.TS):
+            dx = tg.TS - 1 - x if diag[1] == "E" else x
+            dy = y if diag[0] == "N" else tg.TS - 1 - y
+            out.putpixel((x, y), (h if dx >= dy else v).getpixel((x, y)))
+    return out
+
+
 # ---- tileset ------------------------------------------------------------------------------------
 
 def read_tileset(path: str) -> bytes:
@@ -126,7 +149,7 @@ def read_tileset(path: str) -> bytes:
 
 
 def with_interiors(bmp: bytes, layout: dict | None = None) -> bytes:
-    """tactical2's 8-bit tileset with the interiors drawn into INTERIOR_SLOTS, palette and every
+    """tactical2's 8-bit tileset with the interiors, calm edges and inside corners drawn in, palette and every
     other byte unchanged. Refuses if a target slot isn't empty or a colour isn't in the palette."""
     layout = layout or tg.load_layout()
     packs = {p["id"] for p in layout["packs"]}
@@ -152,8 +175,12 @@ def with_interiors(bmp: bytes, layout: dict | None = None) -> bytes:
         if pack not in packs:
             raise ValueError(f"the layout has no pack {pack}")
         t = by_id[pack]["tiles"]
+        pieces = {}
         for open_, tile in calm.items():
-            jobs.append((pack, tile, calm_edge(tile_im(t[roles[open_]]), tile_im(t[roles["NESW"]]), pack, open_)))
+            pieces[CLOSED[open_]] = calm_edge(tile_im(t[roles[open_]]), tile_im(t[roles["NESW"]]), pack, open_)
+            jobs.append((pack, tile, pieces[CLOSED[open_]]))
+        for diag, tile in INNER_SLOTS.get(pack, {}).items():
+            jobs.append((pack, tile, inner_corner(pieces, diag)))
     for pack, tile, piece in jobs:
         if pack not in packs:
             raise ValueError(f"the layout has no pack {pack}")

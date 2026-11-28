@@ -10,27 +10,18 @@ from PIL import Image
 import interiors as it
 import tilegen as tg
 
-ALL = [*it.INTERIOR_SLOTS.values(), *(t for c in it.CALM_SLOTS.values() for t in c.values())]
+FREE = [*it.INTERIOR_SLOTS.values(), *(t for c in it.CALM_SLOTS.values() for t in c.values())]
+INNER = [t for c in it.INNER_SLOTS.values() for t in c.values()]
+ALL = FREE + INNER
 DONE = os.path.join(os.path.dirname(__file__), "tilesets", "tactical2-interior.bmp")
-
-
-def cleared(bmp: bytes) -> bytes:
-    """The committed tileset with the interior slots blacked out again: tactical2's original."""
-    off, hdr = struct.unpack_from("<I", bmp, 10)[0], struct.unpack_from("<I", bmp, 14)[0]
-    black = next(i for i in range(256) if bmp[14 + hdr + i * 4: 14 + hdr + i * 4 + 3] == b"\0\0\0")
-    out = bytearray(bmp)
-    for t in ALL:
-        x0, y0 = tg._slot_xy(t)
-        for y in range(16):
-            for x in range(16):
-                out[off + (159 - (y0 + y)) * 304 + x0 + x] = black
-    return bytes(out)
+# tactical2's own tileset, as the map has it (tile-editor's test fixture)
+ORIG = os.path.join(os.path.dirname(__file__), "..", "tests", "js", "fixtures", "tactical2-tileset.bmp")
 
 
 class Interiors(unittest.TestCase):
     def setUp(self):
         self.done = open(DONE, "rb").read()
-        self.orig = cleared(self.done)
+        self.orig = open(ORIG, "rb").read()
 
     def test_slots_are_free_wall_slots(self):
         layout = tg.load_layout()
@@ -39,9 +30,14 @@ class Interiors(unittest.TestCase):
             taken |= set(o.get("tiles") or [o["tile"]])
         self.assertEqual(set(it.INTERIOR_SLOTS), {p["id"] for p in layout["packs"]})
         self.assertEqual(len(ALL), len(set(ALL)))
-        for t in ALL:
+        for t in FREE:
             self.assertTrue(1 <= t <= 161 and t not in taken, t)
             self.assertTrue(it.slot_is_empty(self.orig, t))
+        # inside corners take decor slots: never a pack's own tile
+        packs = {t for p in layout["packs"] for t in p["tiles"].values()}
+        for t in INNER:
+            self.assertTrue(1 <= t <= 161 and t not in packs, t)
+        self.assertEqual(set(it.INNER_SLOTS), set(it.CALM_SLOTS))
 
     def test_rebuilds_the_committed_tileset_and_touches_nothing_else(self):
         new = it.with_interiors(self.orig)
@@ -94,10 +90,27 @@ class Interiors(unittest.TestCase):
                 for p in opp:
                     self.assertEqual(piece.getpixel(p), inside.getpixel(p))
 
-    def test_layout_lists_the_calm_edges(self):
+    def test_layout_lists_the_calm_edges_and_inside_corners(self):
         layout = tg.load_layout()
         for p in layout["packs"]:
             self.assertEqual(p.get("calm"), it.CALM_SLOTS.get(p["id"]), p["id"])
+            self.assertEqual(p.get("inner"), it.INNER_SLOTS.get(p["id"]), p["id"])
+
+    def test_inside_corners_are_the_calm_rims_meeting_square(self):
+        sheet = Image.open(io.BytesIO(self.done)).convert("RGB")
+        tile = lambda t: sheet.crop(tg._slot_xy(t) + (tg._slot_xy(t)[0] + 16, tg._slot_xy(t)[1] + 16))
+        for pack, inner in it.INNER_SLOTS.items():
+            calm = {it.CLOSED[o]: tile(t) for o, t in it.CALM_SLOTS[pack].items()}
+            inside = it.interior(pack)
+            for diag, t in inner.items():
+                piece = tile(t)
+                self.assertEqual(piece.tobytes(), it.inner_corner(calm, diag).tobytes())
+                cx = 15 if diag[1] == "E" else 0
+                cy = 0 if diag[0] == "N" else 15
+                # the corner at the open diagonal is rim; the opposite corner is plain interior
+                corner = [(x, y) for x in range(16) for y in range(16) if abs(cx - x) < 3 and abs(cy - y) < 3]
+                self.assertTrue(any(piece.getpixel(q) != inside.getpixel(q) for q in corner), (pack, diag))
+                self.assertEqual(piece.getpixel((15 - cx, 15 - cy)), inside.getpixel((15 - cx, 15 - cy)), (pack, diag))
 
     def test_site_serves_the_same_tileset(self):
         site = os.path.join(tg.WWWROOT, "standard-tiles.bmp")
