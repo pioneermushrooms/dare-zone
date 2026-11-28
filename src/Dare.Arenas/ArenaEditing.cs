@@ -83,7 +83,7 @@ public sealed partial class ArenaOwnership
     /// that <paramref name="player"/> is still there with the role, runs <paramref name="action"/> on
     /// the mainloop and replies with its message. Refuses (changing nothing) when the file is missing.
     /// </summary>
-    private async void WithOwnConfig(Player player, string arenaName, bool ownerOnly, Func<ConfigHandle, Result> action)
+    private async void WithOwnConfig(Player player, string arenaName, bool ownerOnly, Func<ConfigHandle, Result> action, bool staffToo = false)
     {
         var playerName = player.Name!;
         ConfigHandle? cfg = null;
@@ -99,12 +99,12 @@ public sealed partial class ArenaOwnership
                 Reply(player, ConfigMissingMessage);
                 return;
             }
-            if (!HasRole(arenaName, playerName, ownerOnly))
+            if (!HasRole(arenaName, playerName, ownerOnly) && !(staffToo && CanChangeAllSettings(player)))
             {
                 Reply(player, ownerOnly ? "Only this arena's owner can do that." : "Only this arena's owner or co-mods can do that.");
                 return;
             }
-            Reply(player, action(cfg).Message);
+            foreach (var line in action(cfg).Message.Split('\n')) Reply(player, line);
         }
         catch (Exception ex)
         {
@@ -156,7 +156,7 @@ public sealed partial class ArenaOwnership
     /// The checks every write goes through: a Section:Key name, not upload-only, on the allow-list
     /// (canonical names from the server's config help), and a value <see cref="SettingValue"/> accepts.
     /// </summary>
-    private static bool TryResolveSetting(Dictionary<(string, string), (string Section, string Key)> documented, SettingsPolicy policy,
+    private bool TryResolveSetting(Dictionary<(string, string), (string Section, string Key)> documented, SettingsPolicy policy,
         string sectionKey, string? rawValue, out string section, out string key, out string value, out string error)
     {
         value = "";
@@ -177,8 +177,34 @@ public sealed partial class ArenaOwnership
             return false;
         }
         (section, key) = documented[(section.ToLowerInvariant(), key.ToLowerInvariant())];
-        return SettingValue.TryValidate(section, key, rawValue, out value, out error);
+        if (!SettingValue.TryValidate(section, key, rawValue, out value, out error))
+            return false;
+        return SpecOf(section, key).TryCheck($"{section}:{key}", value, out value, out error);
     }
+
+    /// <summary>
+    /// The server's arena-scope help for one setting (canonical names; ship sections are documented
+    /// under "All"), or null when it has none.
+    /// </summary>
+    internal IConfigHelpAttribute? SettingHelp(string section, string key)
+    {
+        var helpSection = ShipSections.Contains(section, StringComparer.OrdinalIgnoreCase) ? "All" : section;
+        _configHelp.Lock();
+        try
+        {
+            if (!_configHelp.TryGetSettingHelp(helpSection, key, out var list) || list.Count == 0)
+                return null;
+            return list.FirstOrDefault(r => r.Attribute.Scope == ConfigScope.Arena).Attribute ?? list[0].Attribute;
+        }
+        finally
+        {
+            _configHelp.Unlock();
+        }
+    }
+
+    /// <summary>What values a setting accepts (type and Min/Max from its help).</summary>
+    internal SettingSpec SpecOf(string section, string key) =>
+        SettingHelp(section, key) is { } h ? SettingSpec.From(h.Type, h.Min, h.Max) : SettingSpec.AnyText;
 
     internal const int SettingBatchesPerMinute = 3;
     internal const int MaxSettingsPerBatch = ArenaStore.MaxSettingsPerSet;
@@ -270,8 +296,55 @@ public sealed partial class ArenaOwnership
         }
 
         var value = _configManager.GetStr(cfg, section, key);
-        return new Result(true, $"{section}:{key} = {value ?? "(unset)"}");
+        var line = $"{section}:{key} = {value ?? "(unset)"}";
+        if (SettingHelp(section, key) is { } help)
+        {
+            var allowed = SettingSpec.From(help.Type, help.Min, help.Max).Describe();
+            var notes = new List<string>();
+            if (allowed.Length > 0) notes.Add(allowed);
+            if (!string.IsNullOrEmpty(help.DefaultValue)) notes.Add($"default {help.DefaultValue}");
+            if (notes.Count > 0) line += $"  ({string.Join("; ", notes)})";
+            if (!string.IsNullOrWhiteSpace(help.Description))
+                line += "\n  " + Shorten(string.Join(' ', help.Description.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)), 200);
+        }
+        return new Result(true, line);
     }
+
+    internal const int MaxSearchResults = 12;
+
+    /// <summary>
+    /// ?arenaget with a word instead of Section:Key: the owner-editable settings whose section or key
+    /// contains it, with this arena's values, at most <see cref="MaxSearchResults"/>.
+    /// </summary>
+    internal Result SearchSettings(ConfigHandle cfg, string text)
+    {
+        var word = text.Trim();
+        if (word.Length < 2 || !word.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
+            return new Result(false, "Use Section:Key, or a word of at least 2 letters to search, e.g. ?arenaget bullet.");
+        var documented = DocumentedArenaSettings();
+        var policy = new SettingsPolicy(documented.Values);
+        var hits = documented.Values
+            .Where(v => policy.IsEditable(v.Section, v.Key) && QuickfixFile.Matches(word, v.Section, v.Key))
+            .OrderBy(v => v.Section, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(v => v.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (hits.Count == 0)
+            return new Result(false, $"No setting owners can change has '{word}' in its name.");
+        // Ship settings repeat for all eight ships: show one ship's and say so.
+        var ships = hits.Where(v => ShipSections.Contains(v.Section)).ToList();
+        var shown = hits.Where(v => !ShipSections.Contains(v.Section))
+            .Concat(ships.Where(v => v.Section == ShipSections[0]))
+            .ToList();
+        var lines = shown.Take(MaxSearchResults)
+            .Select(v => $"{v.Section}:{v.Key} = {_configManager.GetStr(cfg, v.Section, v.Key) ?? "(unset)"}")
+            .ToList();
+        if (ships.Count > 0) lines.Add("  (Warbird shown; the other ships have the same keys: Javelin:..., Shark:...)");
+        if (shown.Count > MaxSearchResults) lines.Add($"  ...and {shown.Count - MaxSearchResults} more: search a longer word.");
+        lines.Add("  ?arenaget Section:Key for what a setting does; Esc then E (or ?quickfix) opens the editor.");
+        return new Result(true, string.Join("\n", lines));
+    }
+
+    private static string Shorten(string s, int max) => s.Length <= max ? s : s[..(max - 3)] + "...";
 
     private static bool IsUploadOnly(string section, string key) =>
         section.Equals("General", StringComparison.OrdinalIgnoreCase)

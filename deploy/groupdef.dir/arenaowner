@@ -4,9 +4,10 @@
 ; from groupdef.dir/arenastaff instead). The [arenaowner] section in groupdef.conf also includes
 ; groupdef.dir/default and groupdef.dir/arenacaps.
 ;
-; NEVER add cmd_quickfix or changesettings to this file, arenamod or arenacaps: the server's
-; ?quickfix checks "changesettings", and that capability edits svs.conf and every other shared
-; file zone-wide with no allow-list. Owners change settings with ?arenaset or the web page.
+; NEVER add changesettings to this file, arenamod or arenacaps: it lets a player change every
+; arena-scope setting of any arena that isn't player-owned, including the shared defaults. Owners
+; change settings with ?arenaset, the in-game editor (?quickfix: Dare.Arenas' own, which every
+; player may call -- groupdef.dir/default -- and which checks the arena role itself) or the web page.
 
 ; owner commands (Dare.Arenas)
 cmd_arenaset
