@@ -150,7 +150,7 @@ function signedIn() {
   function offerTilesets() {
     if (!tileArt) return;
     tileArt.setSources([
-      ...myTilesets.map((t) => ({ group: "Your tilesets", label: t.name, value: "ts:" + t.id })),
+      ...myTilesets.map((t) => ({ group: "Your tilesets (Armory)", label: t.name, value: "ts:" + t.id })),
       ...[...uploads].map(([value, u]) => ({ group: "Uploaded", label: u.name, value })),
       { group: "Defaults", label: "Standard", value: "std" },
     ]);
