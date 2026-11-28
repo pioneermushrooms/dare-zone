@@ -145,12 +145,16 @@
     // Label editing and LVZ placing both take the map's clicks, and LVZ's handler comes first: only one is on.
     const lvzEdit = () => lvzToggle(document);
     edit.addEventListener("change", () => {
+      // The map editor's shared handover: one panel owns map clicks; "map:pointer" { owner } says who took them.
+      if (edit.checked) window.dispatchEvent(new CustomEvent("map:pointer", { detail: { owner: "labels" } }));
       if (edit.checked && lvzEdit()?.checked) { lvzEdit().checked = false; lvzEdit().dispatchEvent(new Event("change")); }
       if (!edit.checked) { armed = null; add.value = ""; }
       render(); mv.redraw();
     });
-    const lvzTookOver = () => { if (edit.checked) { edit.checked = false; armed = null; add.value = ""; render(); mv.redraw(); } };
+    const lvzTookOver = () => // another panel has the map: drop Edit and the armed kind (and the "Add…" choice showing it)
+      { if (edit.checked) { edit.checked = false; armed = null; add.value = ""; render(); mv.redraw(); } };
     document.addEventListener("change", (e) => { if (e.target === lvzEdit() && e.target.checked) lvzTookOver(); });
+    window.addEventListener("map:pointer", (e) => { if (e.detail && e.detail.owner !== "labels") lvzTookOver(); });
     // LVZ also starts placing without a change event (picking an image): it marks the page with body.lvzplacing.
     new MutationObserver(() => { if (document.body.classList.contains("lvzplacing")) lvzTookOver(); })
       .observe(document.body, { attributes: true, attributeFilter: ["class"] });
