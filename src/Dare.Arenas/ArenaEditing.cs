@@ -139,19 +139,8 @@ public sealed partial class ArenaOwnership
     {
         if (LiveEditRefusal(arenaName) is { } locked)
             return new Result(false, locked);
-        if (!SettingRef.TryParse(sectionKey, out var section, out var key))
-            return new Result(false, "Use Section:Key, e.g. Warbird:BulletSpeed.");
-
-        if (IsUploadOnly(section, key))
-            return new Result(false, $"{section}:{key} changes only through map/graphics uploads (?arenamap / ?putlvz or the web page).");
-
         var documented = DocumentedArenaSettings();
-        var policy = new SettingsPolicy(documented.Values);
-        if (!policy.IsEditable(section, key))
-            return new Result(false, $"{section}:{key} is not an arena setting owners can change.");
-        (section, key) = documented[(section.ToLowerInvariant(), key.ToLowerInvariant())];
-
-        if (!SettingValue.TryValidate(section, key, rawValue, out var value, out var error))
+        if (!TryResolveSetting(documented, new SettingsPolicy(documented.Values), sectionKey, rawValue, out var section, out var key, out var value, out var error))
             return new Result(false, error);
 
         if (!_settingLimiter.TryTake(arenaName))
@@ -161,6 +150,109 @@ public sealed partial class ArenaOwnership
         WriteArenaSetting(cfg, arenaName, section, key, value, $"{actor} with Dare.Arenas");
         Log(LogLevel.Info, $"{actor} set {section}:{key} in [{arenaName}]: '{old}' -> '{value}'.");
         return new Result(true, $"{section}:{key}: {old ?? "(unset)"} -> {(value.Length == 0 ? "(off)" : value)}{LiveNote(arenaName, section, key, value)}");
+    }
+
+    /// <summary>
+    /// The checks every write goes through: a Section:Key name, not upload-only, on the allow-list
+    /// (canonical names from the server's config help), and a value <see cref="SettingValue"/> accepts.
+    /// </summary>
+    private static bool TryResolveSetting(Dictionary<(string, string), (string Section, string Key)> documented, SettingsPolicy policy,
+        string sectionKey, string? rawValue, out string section, out string key, out string value, out string error)
+    {
+        value = "";
+        error = "";
+        if (!SettingRef.TryParse(sectionKey, out section, out key))
+        {
+            error = "Use Section:Key, e.g. Warbird:BulletSpeed.";
+            return false;
+        }
+        if (IsUploadOnly(section, key))
+        {
+            error = $"{section}:{key} changes only through map/graphics uploads (?arenamap / ?putlvz or the web page).";
+            return false;
+        }
+        if (!policy.IsEditable(section, key))
+        {
+            error = $"{section}:{key} is not an arena setting owners can change.";
+            return false;
+        }
+        (section, key) = documented[(section.ToLowerInvariant(), key.ToLowerInvariant())];
+        return SettingValue.TryValidate(section, key, rawValue, out value, out error);
+    }
+
+    internal const int SettingBatchesPerMinute = 3;
+    internal const int MaxSettingsPerBatch = ArenaStore.MaxSettingsPerSet;
+    private readonly RateLimiter _settingBatchLimiter = new(SettingBatchesPerMinute, () => DateTimeOffset.UtcNow);
+
+    /// <summary>One row of a settings preview: what a batch would do to one setting.</summary>
+    internal sealed record SettingChange(string Section, string Key, string? Old, string Value, string Status, string? Reason);
+
+    /// <summary>
+    /// What applying <paramref name="settings"/> (Section:Key -> value) to the arena would do, row by
+    /// row: "change", "same" (already that value) or "skipped" (with the reason a single edit would
+    /// give). Reads only.
+    /// </summary>
+    internal List<SettingChange> PreviewSettings(ConfigHandle cfg, IEnumerable<KeyValuePair<string, string>> settings)
+    {
+        var documented = DocumentedArenaSettings();
+        var policy = new SettingsPolicy(documented.Values);
+        var rows = new List<SettingChange>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, raw) in settings)
+        {
+            if (!TryResolveSetting(documented, policy, name, raw, out var section, out var key, out var value, out var error))
+            {
+                SettingRef.TryParse(name, out var s, out var k);
+                rows.Add(new(s.Length > 0 ? s : name, k, null, raw ?? "", "skipped", error));
+                continue;
+            }
+            if (!seen.Add($"{section}:{key}")) continue;
+            var old = _configManager.GetStr(cfg, section, key);
+            rows.Add(new(section, key, old, value, SameValue(old, value) ? "same" : "change", null));
+        }
+        return rows;
+    }
+
+    private static bool SameValue(string? old, string value) =>
+        string.Equals((old ?? "").Trim(), value, StringComparison.Ordinal)
+        || (long.TryParse(old, out var a) && long.TryParse(value, out var b) && a == b);
+
+    /// <summary>
+    /// Applies many settings at once (a settings set or an uploaded file): every one through the same
+    /// checks as <see cref="ApplySetting"/>; those that fail are listed as skipped, unchanged ones are
+    /// left alone. The whole batch counts as one change against the per-minute limit and at most
+    /// <see cref="SettingBatchesPerMinute"/> batches run per minute per arena. A setting the running
+    /// arena doesn't see yet marks a pending restart, as a single edit does.
+    /// </summary>
+    internal (Result Result, List<SettingChange> Rows) ApplySettings(ConfigHandle cfg, string arenaName, string actor, IReadOnlyCollection<KeyValuePair<string, string>> settings)
+    {
+        if (LiveEditRefusal(arenaName) is { } locked)
+            return (new Result(false, locked), []);
+        if (settings.Count == 0)
+            return (new Result(false, "No settings to apply."), []);
+        if (settings.Count > MaxSettingsPerBatch)
+            return (new Result(false, $"At most {MaxSettingsPerBatch} settings at once."), []);
+
+        var rows = PreviewSettings(cfg, settings);
+        var changes = rows.Where(r => r.Status == "change").ToList();
+        if (changes.Count == 0)
+            return (new Result(true, rows.Any(r => r.Status == "same") ? "Nothing to change: the arena already has those values." : "None of those settings can be applied."), rows);
+
+        if (!_settingBatchLimiter.TryTake(arenaName) || !_settingLimiter.TryTake(arenaName))
+            return (new Result(false, $"Too many setting changes for '{arenaName}' just now: at most {SettingBatchesPerMinute} sets or files a minute and {SettingChangesPerMinute} changes in all. Try again shortly."), rows);
+
+        var notLive = 0;
+        foreach (var c in changes)
+        {
+            WriteArenaSetting(cfg, arenaName, c.Section, c.Key, c.Value, $"{actor} with Dare.Arenas");
+            Log(LogLevel.Info, $"{actor} set {c.Section}:{c.Key} in [{arenaName}]: '{c.Old}' -> '{c.Value}' (batch).");
+            if (LiveNote(arenaName, c.Section, c.Key, c.Value).Length > 0) notLive++;
+        }
+        var skipped = rows.Count(r => r.Status == "skipped");
+        var msg = $"Changed {(changes.Count == 1 ? "1 setting" : $"{changes.Count} settings")} in {arenaName}."
+                  + (skipped > 0 ? $" Skipped {skipped} that can't be changed here." : "")
+                  + (notLive > 0 ? " The running arena isn't using its own settings file yet, so this takes effect after ?recyclearena." : "");
+        return (new Result(true, msg), rows);
     }
 
     /// <summary>Reads one setting an owner may see (the editable ones plus General:Map/LevelFiles).</summary>
