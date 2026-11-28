@@ -150,3 +150,24 @@ test("wall sets are named by what they look like, alike ones once", () => {
   assert.ok(ts.every((t) => Object.values(layout.packs[0].tiles).includes(t)));
   assert.ok(TA.defaults(data).some((d) => d.id === "foundry") && TA.defaults(data).some((d) => d.id === "steel"));
 });
+
+test("a tileset's own wall sets are named by their look: alike once, a reference's name, else colour", () => {
+  const W = TA.COLS * TA.TS;
+  const sheet = (col) => {
+    const a = new Uint8Array(W * TA.ROWS * TA.TS * 4);
+    for (const p of layout.packs) for (const t of Object.values(p.tiles)) {
+      const c = col(p), x0 = ((t - 1) % TA.COLS) * TA.TS, y0 = Math.floor((t - 1) / TA.COLS) * TA.TS;
+      for (let y = 0; y < TA.TS; y++) for (let x = 0; x < TA.TS; x++) { const i = ((y0 + y) * W + x0 + x) * 4; a.set([...c, 255], i); }
+    }
+    return a;
+  };
+  const green = sheet(() => [40, 200, 60]);
+  const one = TA.namesByLook(green, W, layout, layout.packs, []);
+  assert.deepStrictEqual(new Set(one.values()), new Set(["Green"]));
+  assert.strictEqual(TA.wallSets(layout, (p) => one.get(p.id)).length, 1);
+  const ref = TA.namesByLook(green, W, layout, layout.packs, [{ rgba: green, name: "Green lit" }]);
+  assert.deepStrictEqual(new Set(ref.values()), new Set(["Green lit"]));
+  const two = TA.namesByLook(sheet((p) => p.id === "navy" ? [20, 150, 40] : [40, 200, 60]), W, layout, layout.packs, []);
+  assert.deepStrictEqual(new Set(two.values()), new Set(["Green", "Green 2"]));
+  assert.strictEqual(TA.colourName(sheet(() => [20, 30, 90]), W, Object.values(layout.packs[0].tiles)), "Navy");
+});
