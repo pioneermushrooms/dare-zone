@@ -139,7 +139,7 @@ internal sealed partial class WebServer
             ok = true,
             posts = posts.Select(p => WallJson(p, me, mine, staff)),
             more = posts.Count == 20,
-            canPost = me is not null && !mine,
+            canPost = me is not null,
             max = AccountStore.MaxWallLength,
         });
     }
@@ -150,17 +150,20 @@ internal sealed partial class WebServer
         author = p.Author,
         text = p.Text,
         at = p.At,
+        parent = p.ParentId,
+        mentions = p.Mentions,
+        replies = p.Replies.Select(r => WallJson(r, me, mine, staff)),
         canRemove = mine || staff || (me is not null && string.Equals(me.Name, p.Author, StringComparison.OrdinalIgnoreCase)),
     };
 
     private Reply WallLeave(Account me, JsonElement? body)
     {
         var name = (Str(body, "name") ?? "").Trim();
-        if (string.Equals(me.Name, name, StringComparison.OrdinalIgnoreCase))
-            return JsonReply(400, new { ok = false, message = "That's your own wall: others leave messages here." });
-        var r = _m.Accounts.PostOnWall(me.Id, name, Str(body, "text"), out var post);
+        var replyTo = Num(body, "replyTo");
+        var r = _m.Accounts.PostOnWall(me.Id, name, Str(body, "text"), out var post, replyTo > 0 ? replyTo : null);
         if (!r.Ok) return ResultReply(r);
-        return JsonReply(200, new { ok = true, message = r.Message, post = WallJson(post!, me, false, false) });
+        var mine = string.Equals(me.Name, name, StringComparison.OrdinalIgnoreCase);
+        return JsonReply(200, new { ok = true, message = r.Message, post = WallJson(post!, me, mine, false) });
     }
 
     private async Task<Reply> WallRemoveAsync(Account me, JsonElement? body)

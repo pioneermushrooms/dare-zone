@@ -109,13 +109,15 @@ internal sealed partial class WebServer
         ["/account/reset"] = "account-reset.html",
         ["/account/account.js"] = "account.js",
         ["/account/profile.js"] = "profile.js",
+        ["/account/inbox"] = "inbox.html",
+        ["/account/inbox.js"] = "inbox.js",
         ["/account/style.css"] = "style.css",
         ["/account/header.css"] = "header.css",
         ["/account/header.js"] = "header.js",
     };
 
     internal static readonly string[] AccountStaticFiles =
-        ["account.html", "account-signup.html", "account-verify.html", "account-login.html", "account-forgot.html", "account-reset.html", "account.js", "profile.html", "profile.js"];
+        ["account.html", "account-signup.html", "account-verify.html", "account-login.html", "account-forgot.html", "account-reset.html", "account.js", "profile.html", "profile.js", "inbox.html", "inbox.js"];
 
     private static bool IsAccountPath(string path) => path == AccountPrefix || path.StartsWith(AccountPrefix + "/", StringComparison.Ordinal);
 
@@ -141,6 +143,8 @@ internal sealed partial class WebServer
             return await GalleryRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/profile" || api.StartsWith("/profile/", StringComparison.Ordinal))
             return await ProfileRouteAsync(req, api).ConfigureAwait(false);
+        if (IsInboxApi(api))
+            return await InboxRouteAsync(req, api).ConfigureAwait(false);
         if (api == "/me")
             return method == "GET" ? AccountMe(req) : MethodNotAllowed();
         if (api == "/pilots" && method == "GET")
