@@ -7,9 +7,11 @@ The map editor's **Tile art** panel fixes that:
 - **Paint N blank slots**: each flat-colour wall slot gets the piece its walls call for (worked out
   from how the map places that slot: which of its eight neighbours are walls), so bars run on,
   corners turn and ends close. Slots that touch each other in the map share a style.
-- **Restyle all walls**: every wall slot is redrawn: first the standard layout's packs
-  (`tile-layout.json`), then every slot the map uses, as the piece its walls call for. Works on maps
-  that don't follow the standard layout. Doors, safe zone, goal and fly-over/under (162-190) keep
+- **Restyle all walls**: every wall slot is redrawn. On a map that follows the standard layout
+  (`tile-layout.json`), each pack's slots (roles, `interior`, `calm`, `inner`) keep the pack's style
+  and piece, so each pack still matches its Wall tiles entry (`TileArt.packStyle` names it); other
+  slots are drawn as the piece their walls call for. On a map that doesn't follow the layout, every
+  slot the map uses is drawn from how the map uses it. Doors, safe zone, goal and fly-over/under (162-190) keep
   the map's own art (or get generated art when the map has no tileset).
 - **Put old tiles back** undoes either. Nothing changes in game until **Publish**.
 

@@ -284,6 +284,13 @@
         for (const d of ["ne", "se", "sw", "nw"]) { roles["inner-" + d] = roles.fill; roles["calmin-" + d] = p.interior; }
         roles.fill = p.interior;
       }
+      // inside corners (optional): keyed by the open diagonal (NE, SE, SW, NW). The piece carries the
+      // two edges' rims round the corner, so it serves with solid wall behind it or without
+      if (p.inner && typeof p.inner === "object") for (const [k, t] of Object.entries(p.inner)) {
+        const d = String(k).toLowerCase();
+        if (!["ne", "se", "sw", "nw"].includes(d) || !(ok(t) || (Array.isArray(t) && t.length && t.every(ok)))) continue;
+        roles["inner-" + d] = t; roles["calmin-" + d] = t;
+      }
       // calm edges (optional): keyed by open edges like the roles; an edge open to one side only
       if (p.calm && typeof p.calm === "object") for (const [o, t] of Object.entries(p.calm)) {
         const open = norm(o);
