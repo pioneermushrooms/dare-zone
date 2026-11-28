@@ -58,7 +58,7 @@ public sealed partial class ArenaStore
         var list = new List<PilotSettingSet>();
         lock (_gate)
         {
-            using var c = Cmd("SELECT id, name, count, updated FROM pilot_setting_sets WHERE owner = $o ORDER BY updated DESC, id DESC", ("$o", owner));
+            using var c = Cmd("SELECT id, name, count, updated FROM pilot_setting_sets WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o)) ORDER BY updated DESC, id DESC", ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             while (r.Read()) list.Add(new(r.GetInt64(0), r.GetString(1), r.GetInt32(2), Parse(r.GetString(3))));
         }
@@ -70,7 +70,7 @@ public sealed partial class ArenaStore
     {
         lock (_gate)
         {
-            using var c = Cmd("SELECT name, settings FROM pilot_setting_sets WHERE id = $id AND owner = $o", ("$id", id), ("$o", owner));
+            using var c = Cmd("SELECT name, settings FROM pilot_setting_sets WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", id), ("$o", owner), ("$p", PersonParam(owner)));
             using var r = c.ExecuteReader();
             if (!r.Read()) return null;
             var map = JsonSerializer.Deserialize<Dictionary<string, string>>(r.GetString(1)) ?? new();
@@ -91,17 +91,17 @@ public sealed partial class ArenaStore
         {
             if (id is { } existing)
             {
-                if (Scalar("SELECT COUNT(*) FROM pilot_setting_sets WHERE id = $id AND owner = $o", ("$id", existing), ("$o", owner)) == 0)
+                if (Scalar("SELECT COUNT(*) FROM pilot_setting_sets WHERE id = $id AND (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$id", existing), ("$o", owner), ("$p", PersonParam(owner))) == 0)
                     return Fail("That settings set isn't in your collection.");
                 Run("UPDATE pilot_setting_sets SET name = $n, settings = $s, count = $c, updated = $t WHERE id = $id",
                     ("$n", display), ("$s", json), ("$c", clean.Count), ("$t", Now()), ("$id", existing));
                 newId = existing;
                 return Ok($"Saved {display} ({Plural(clean.Count)}).");
             }
-            if (Scalar("SELECT COUNT(*) FROM pilot_setting_sets WHERE owner = $o", ("$o", owner)) >= MaxPilotSettingSets)
+            if (Scalar("SELECT COUNT(*) FROM pilot_setting_sets WHERE (person_id = $p OR ($p IS NULL AND person_id IS NULL AND owner = $o))", ("$o", owner), ("$p", PersonParam(owner))) >= MaxPilotSettingSets)
                 return Fail($"You have {MaxPilotSettingSets} settings sets; delete one to add another.");
-            Run("INSERT INTO pilot_setting_sets(owner, name, settings, count, updated) VALUES($o,$n,$s,$c,$t)",
-                ("$o", owner), ("$n", display), ("$s", json), ("$c", clean.Count), ("$t", Now()));
+            Run("INSERT INTO pilot_setting_sets(person_id, owner, name, settings, count, updated) VALUES($p,$o,$n,$s,$c,$t)",
+                ("$o", owner), ("$p", PersonParam(owner)), ("$n", display), ("$s", json), ("$c", clean.Count), ("$t", Now()));
             newId = Scalar("SELECT last_insert_rowid()");
             return Ok($"Saved {display} ({Plural(clean.Count)}) to your settings sets.");
         });

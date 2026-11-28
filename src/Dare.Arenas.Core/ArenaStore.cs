@@ -142,6 +142,7 @@ public sealed partial class ArenaStore : IDisposable
                 INSERT INTO store_markers(key) VALUES('bot_matches_migrated');
                 """);
         }
+        AddLibraryPersonColumns();
     }
 
     public void Dispose()

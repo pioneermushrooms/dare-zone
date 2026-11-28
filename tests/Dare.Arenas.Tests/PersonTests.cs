@@ -208,4 +208,55 @@ public sealed class PersonTests : IDisposable
         Assert.True(_s.VerifyAddEmail(nomad.Id, code).Ok);
         Assert.Equal(new[] { "Old", "New" }, _s.Shipyard(dare.Id).Ships.Select(x => x.Name));
     }
+
+    [Fact]
+    public void maps_tilesets_lvz_and_settings_sets_are_the_accounts()
+    {
+        using var arenas = new ArenaStore(_db, () => _now);
+        var dare = SignUp("dare", "dare@example.com");
+        Assert.True(_s.AddPilot(dare.Id, "nerd", out var nerd).Ok);
+        Claim("stranger");
+        Assert.True(arenas.SaveMap("dare", null, "sky", new byte[] { 1, 2, 3 }, out var map).Ok);
+        Assert.True(arenas.SaveLvz("nerd", null, "fx", new byte[] { 4 }, out var lvz).Ok);
+        Assert.True(arenas.SaveSettingSet("dare", null, "fast", new Dictionary<string, string> { ["Warbird:BulletSpeed"] = "2000" }, out var set).Ok);
+        Assert.Single(arenas.Maps("NERD"));
+        Assert.NotNull(arenas.MapFile("nerd", map));
+        Assert.Single(arenas.LvzList("dare"));
+        Assert.True(arenas.RenameSettingSet("nerd", set, "faster").Ok);
+        Assert.Empty(arenas.Maps("stranger"));
+        Assert.Null(arenas.LvzFileOf("stranger", lvz));
+        Assert.False(arenas.RemoveMap("stranger", map).Ok);
+        // the name that saved it goes: the account keeps it, and the freed name's next owner doesn't get it
+        Assert.True(_s.DeletePilot(dare.Id, "nerd", out _).Ok);
+        Assert.Single(arenas.LvzList("dare"));
+        Claim("nerd");
+        Assert.Empty(arenas.LvzList("nerd"));
+    }
+
+    [Fact]
+    public void old_library_rows_go_to_the_account_of_the_name_that_owns_them()
+    {
+        var dare = SignUp("dare", "dare@example.com");
+        Assert.True(_s.AddPilot(dare.Id, "nerd", out _).Ok);
+        _s.Dispose();
+        SqliteConnection.ClearAllPools();
+        using (var arenas = new ArenaStore(_db, () => _now))
+        using (var c = new SqliteConnection($"Data Source={_db}"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO pilot_maps(owner, name, data, updated) VALUES ('nerd', 'old', x'01', '2026-01-01T00:00:00Z'),
+                  ('gone', 'orphan', x'02', '2026-01-01T00:00:00Z');
+                DELETE FROM account_meta WHERE key = 'library_persons_v1';
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+        _s = new AccountStore(_db, () => _now);
+        using var again = new ArenaStore(_db, () => _now);
+        Assert.Equal("old", again.Maps("dare").Single().Name);
+        Claim("gone");
+        Assert.Empty(again.Maps("gone"));
+    }
 }

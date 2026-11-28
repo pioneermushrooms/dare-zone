@@ -164,5 +164,17 @@ public sealed partial class AccountStore
             Exec($"CREATE INDEX IF NOT EXISTS ix_{t}_person ON {t}(person_id);");
             Exec($"UPDATE {t} SET person_id = (SELECT a.person_id FROM accounts a WHERE a.id = {t}.account_id) WHERE person_id IS NULL;");
         }
+        // The arena register's libraries (same db file) were kept by owner name. Once, each gets the
+        // person of the name that owns it now; a row whose name is gone stays without one. Only
+        // once: later, a freed name taken by someone else must not inherit what was left behind.
+        if (Scalar("SELECT COUNT(*) FROM account_meta WHERE key = 'library_persons_v1'") > 0) return;
+        foreach (var t in new[] { "pilot_maps", "pilot_tilesets", "pilot_lvz", "pilot_setting_sets" })
+        {
+            if (Scalar($"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '{t}'") == 0) continue;
+            if (Scalar($"SELECT COUNT(*) FROM pragma_table_info('{t}') WHERE name = 'person_id'") == 0)
+                Exec($"ALTER TABLE {t} ADD COLUMN person_id INTEGER NULL;");
+            Exec($"UPDATE {t} SET person_id = (SELECT a.person_id FROM accounts a WHERE a.name = {t}.owner AND a.status = 'active') WHERE person_id IS NULL;");
+        }
+        Run("INSERT INTO account_meta(key, value) VALUES('library_persons_v1', $v)", ("$v", Now()));
     }
 }
