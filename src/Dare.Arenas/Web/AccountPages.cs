@@ -185,6 +185,7 @@ internal sealed partial class WebServer
             "/pilots/switch" => SwitchPilot(req, body),
             "/pilots/add" => AddPilot(req, body),
             "/pilots/settings" => SavePilotSettings(req, body),
+            "/pilots/loadout" => CopyLoadout(req, body),
             "/pilots/delete" => await DeletePilotAsync(req, body).ConfigureAwait(false),
             _ => Text(404, "Not found."),
         };
@@ -463,6 +464,28 @@ internal sealed partial class WebServer
         var pilot = _m.Accounts.PilotOf(cur.Account.Id, Str(body, "name") ?? cur.Account.Name);
         if (pilot is null) return Bad("That isn't one of your names.");
         var r = _m.Accounts.SavePilotSettings(pilot.Id, Str(body, "text") ?? "");
+        return r.Ok ? Ok(r.Message) : Bad(r.Message);
+    }
+
+    /// <summary>
+    /// Copies one name's setup onto another of the account's names: {"from", "to", "parts": ["keys",
+    /// "ships", "armory", "graphics"]}. What it copies replaces what the other name had.
+    /// </summary>
+    private Reply CopyLoadout(HttpListenerRequest req, System.Text.Json.JsonElement? body)
+    {
+        if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
+        var parts = LoadoutParts.None;
+        if (body is { } b && b.TryGetProperty("parts", out var list) && list.ValueKind == System.Text.Json.JsonValueKind.Array)
+            foreach (var p in list.EnumerateArray())
+                parts |= p.GetString() switch
+                {
+                    "keys" => LoadoutParts.Keys,
+                    "ships" => LoadoutParts.Ships,
+                    "armory" => LoadoutParts.Armory,
+                    "graphics" => LoadoutParts.Graphics,
+                    _ => LoadoutParts.None,
+                };
+        var r = _m.Accounts.CopyLoadout(cur.Account.Id, Str(body, "from") ?? "", Str(body, "to") ?? cur.Account.Name, parts);
         return r.Ok ? Ok(r.Message) : Bad(r.Message);
     }
 
