@@ -116,15 +116,37 @@
   window.addEventListener("keyup", (e) => { if (e.key === " ") space = false; }, true);
   window.addEventListener("keydown", (e) => {
     if (e.key === " ") space = true;
-    if (!lvz || !q("lzp-edit").checked || sel < 0 || e.target.closest?.("input, select, textarea, dialog")) return;
+    if (!q("lzp-edit").checked || e.target.closest?.("input, select, textarea, dialog")) return;
+    if (e.key === "Escape" && !document.querySelector("dialog[open]")) { e.preventDefault(); e.stopImmediatePropagation(); setPlacing(false, "Placement off: back to drawing walls."); return; }
+    if (!lvz || sel < 0) return;
     const o = lvz.objects[sel]; if (!o) return;
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
     if (d) { stop(); const k = e.shiftKey ? 16 : 1; o.x = clamp(o.x + d[0] * k); o.y = clamp(o.y + d[1] * k); setDirty(true); showSel(); redraw(); }
     else if (e.key === "Delete" || e.key === "Backspace") { stop(); q("lzp-del").click(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") { stop(); q("lzp-dup").click(); }
-    else if (e.key === "Escape") { stop(); sel = -1; showSel(); redraw(); }
   }, true);
+
+  // ---- placement mode: on while placing objects, off as soon as the pilot picks a tool or tile, or presses Esc
+  const badge = document.createElement("div");
+  badge.className = "lzp-badge"; badge.hidden = true; badge.setAttribute("role", "status");
+  badge.append(Object.assign(document.createElement("span"), { textContent: "LVZ placement: clicks place and move objects, not walls" }));
+  const done = Object.assign(document.createElement("button"), { type: "button", className: "small", textContent: "Done (Esc)", title: "Back to drawing walls" });
+  badge.append(done);
+  view.parentElement.append(badge);
+  done.addEventListener("click", () => setPlacing(false, "Placement off: back to drawing walls."));
+  function setPlacing(on, note) {
+    on = !!on && q("lzp-show").checked;
+    q("lzp-edit").checked = on;
+    if (on) q("lzp-show").checked = true;
+    badge.hidden = !on;
+    document.body.classList.toggle("lvzplacing", on);
+    q("lzp-edit").closest("label").classList.toggle("lzp-on", on);
+    if (!on) { drag = null; if (sel >= 0) { sel = -1; showSel(); } }
+    if (note) say(note, true);
+    redraw();
+  }
+  window.addEventListener("map:tool", () => { if (q("lzp-edit").checked) setPlacing(false, "Placement off: drawing walls again."); });
 
   // ---- panel ------------------------------------------------------------------------------------------
   const nextId = () => Lvz.nextId(lvz);
@@ -141,7 +163,7 @@
       if (p && p.canvas) { const z = Math.min(40 / p.fw, 40 / p.fh, 4); Lvz.drawFrame(ctx, p, im, 0, (40 - p.fw * z) / 2, (40 - p.fh * z) / 2, z); }
       else Lvz.drawFrame(ctx, null, im, 0, 4, 4, 1, "?");
       b.append(c);
-      b.addEventListener("click", () => { img = i; showPalette(); if (!q("lzp-edit").checked) { q("lzp-edit").checked = true; redraw(); } const o = lvz.objects[sel]; if (o && o.map) { o.image = i; setDirty(true); redraw(); } });
+      b.addEventListener("click", () => { img = i; showPalette(); setPlacing(true, `Placing ${im.file}: click the map. Esc or Done when finished.`); const o = lvz.objects[sel]; if (o && o.map) { o.image = i; setDirty(true); redraw(); } });
       box.append(b);
     });
   }
@@ -170,7 +192,8 @@
     if (!lvz || !lvz.objects[sel]) return;
     lvz.objects.splice(sel, 1); sel = -1; setDirty(true); showSel(); count(); redraw();
   });
-  for (const c of ["lzp-show", "lzp-edit"]) q(c).addEventListener("change", redraw);
+  q("lzp-show").addEventListener("change", () => { if (!q("lzp-show").checked) setPlacing(false); redraw(); });
+  q("lzp-edit").addEventListener("change", () => setPlacing(q("lzp-edit").checked));
   q("lzp-addimg").addEventListener("change", async (e) => {
     const files = [...e.target.files]; e.target.value = "";
     if (!lvz) await useLvz(Lvz.blank(), { name: "decor.lvz", from: "new" });
@@ -181,7 +204,7 @@
       if (!lvz.images.some((im) => im.file.toLowerCase() === name.toLowerCase())) lvz.images.push({ file: name, cols: 1, rows: 1, time: 100 });
       img = lvz.images.findIndex((im) => im.file.toLowerCase() === name.toLowerCase());
     }
-    pics = await Lvz.pictures(lvz); setDirty(true); showPalette(); q("lzp-edit").checked = true; redraw();
+    pics = await Lvz.pictures(lvz); setDirty(true); showPalette(); setPlacing(true);
     say("Click the map to place it.", true);
   });
 
@@ -263,6 +286,6 @@
     if (p.get("lvzlib")) await open("lib:" + p.get("lvzlib"));
     else if (p.get("lvz")) await open("arena:" + p.get("lvz"));
     else { const first = levelFiles.find((n) => /\.lvz$/i.test(n) && !AUTO_SKIP.has(n.toLowerCase())); if (first) await open("arena:" + first); }
-    if (p.get("lvz") || p.get("lvzlib")) { q("lzp-edit").checked = true; redraw(); panel.scrollIntoView({ block: "nearest" }); }
+    if (p.get("lvz") || p.get("lvzlib")) { setPlacing(true); panel.scrollIntoView({ block: "nearest" }); }
   })();
 })();

@@ -26,7 +26,6 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 
 main { width: min(1180px, 100%); margin: 0 auto; padding: 0 clamp(16px, 3vw, 36px) 40px; min-width: 0; }
 .hero { padding: clamp(20px, 5vw, 48px) 0 12px; }
-.eyebrow { margin: 0; font: 700 .95rem/1 var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
 h1 { margin: 6px 0 8px; font: 800 clamp(2.4rem, 7vw, 4rem)/1 var(--label); letter-spacing: .04em; text-transform: uppercase; }
 .intro { margin: 0; max-width: 62ch; color: var(--muted); }
 
@@ -122,7 +121,12 @@ dialog::backdrop { background: #02050bcc; }
 .drop { display: grid; place-items: center; min-height: 96px; padding: 16px; text-align: center; color: var(--muted); border: 1px dashed #4a6179; border-radius: 6px; cursor: pointer; }
 .drop.over, .drop:hover { border-color: var(--cyan); color: var(--ink); }
 .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.savedlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); max-height: 260px; overflow: auto; }
+.savedlist { max-height: min(340px, 50vh); overflow: auto; padding-right: 2px; }
+.savedgroup + .savedgroup { margin-top: 10px; }
+.savedgroup h3 { position: sticky; top: 0; z-index: 1; display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 4px 0 6px; background: var(--panel);
+  font: 700 .85rem/1 var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.savedgroup h3 small { font: 600 .72rem Inter, system-ui, sans-serif; letter-spacing: 0; color: var(--cyan); }
+.savedgrid { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
 .savedlist button { width: 100%; display: grid; justify-items: center; gap: 2px; padding: 6px 4px 4px; color: var(--ink); background: var(--well);
   border: 1px solid #263449; border-radius: 5px; cursor: pointer; font: 600 .72rem/1.2 Inter, system-ui, sans-serif; }
 .savedlist button:hover, .savedlist button[aria-pressed="true"] { border-color: var(--cyan); background: #12223a; }

@@ -44,3 +44,9 @@
 .lvzpanel .lzp-f { display:grid; grid-template-columns:4.5em 1fr; gap:4px; align-items:center; font-size:.78rem; color:var(--dim); }
 .lvzpanel .lzp-f input, .lvzpanel .lzp-f select { min-width:0; font-size:.78rem; }
 .lvzpanel .lzp-msg { font-size:.78rem; margin:0; } .lvzpanel .lzp-msg.ok { color:var(--ok); } .lvzpanel .lzp-msg.bad { color:var(--bad); }
+/* map editor: LVZ placement mode is on */
+.lzp-badge { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:5; display:flex; gap:8px; align-items:center; padding:4px 6px 4px 10px; border:1px solid #ffcf7a; background:rgba(20,14,4,.92); color:#ffcf7a; border-radius:3px; font-size:.8rem; max-width:calc(100% - 16px); }
+.lzp-badge[hidden] { display:none; }
+.lvzpanel label.lzp-on { color:#ffcf7a; font-weight:600; }
+body.lvzplacing .edmain #view { cursor:copy; outline:2px solid #ffcf7a88; outline-offset:-2px; }
+body.lvzplacing #drawtools [data-tool].on { opacity:.45; }

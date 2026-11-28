@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map labeller mockup</title>
+<style>
+:root{--bg:#070c15;--panel:#0d1624;--panel2:#09111d;--line:#253246;--text:#f1f6ff;--dim:#aebcd0;--accent:#71e4fa;--hot:#ffcf7a;--ok:#6ee7a8;--red:#f87171;--blue:#60a5fa;--green:#4ade80;--yellow:#facc15}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif;padding:24px 16px}
+h1{font-size:20px;margin:0 0 4px}p.note{color:var(--dim);margin:0 0 14px;max-width:820px}
+h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:28px 0 10px}
+.ed{display:grid;grid-template-columns:1fr 290px;max-width:1100px;border:1px solid var(--line);border-radius:6px;overflow:hidden;min-height:540px}
+.map{position:relative;background:#04070e;background-image:linear-gradient(#0a1624 1px,transparent 1px),linear-gradient(90deg,#0a1624 1px,transparent 1px);background-size:32px 32px;overflow:hidden}
+.wall{position:absolute;background:#2b6f86}
+.ring{position:absolute;border-radius:50%;border:2px solid;display:grid;place-items:center;font-size:11px}
+.ring::after{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;position:absolute}
+.area{position:absolute;border:2px dashed;border-radius:3px;font-size:11px;padding:2px 5px}
+.flag{position:absolute;font-size:16px}
+.lab{position:absolute;font-size:11px;white-space:nowrap;text-shadow:0 1px 0 #000}
+.sel{outline:2px solid #fff;outline-offset:3px}
+.side{background:var(--panel);border-left:1px solid var(--line);padding:12px;font-size:13px}
+.side h3{margin:0 0 8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.toggles{display:flex;gap:14px;color:var(--dim);font-size:12px;margin-bottom:8px}
+.list{list-style:none;padding:0;margin:0 0 10px;border:1px solid var(--line);border-radius:5px}
+.list li{display:flex;justify-content:space-between;gap:6px;padding:4px 8px;border-bottom:1px solid var(--line)}.list li:last-child{border-bottom:0}
+.list li.on{background:#14223a}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.kind{color:var(--dim);font-size:11px}
+button,select,input{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:3px 8px}
+button.hot{background:var(--hot);border-color:var(--hot);color:#07131e;font-weight:700}
+.form{border:1px solid var(--hot);border-radius:6px;padding:10px;margin-top:8px}
+.form .r{display:grid;grid-template-columns:90px 1fr;gap:6px;align-items:center;margin:6px 0}
+.sw{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.menu{border:1px solid var(--line);border-radius:5px;margin:6px 0 10px;background:var(--panel2)}
+.menu div{padding:4px 8px;border-bottom:1px solid var(--line)}.menu div:last-child{border-bottom:0}.menu small{color:var(--dim);display:block}
+.counts{color:var(--dim);font-size:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.toast{max-width:1100px;margin-top:12px;border:1px solid #2c5a45;background:#0e2219;color:var(--ok);border-radius:6px;padding:8px 12px}
+.gm{max-width:1100px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px}
+.gm .ok{color:var(--ok)}
+@media(max-width:800px){.ed{grid-template-columns:1fr}}
+</style></head><body>
+<h1>Phase 3 — the map labeller</h1>
+<p class="note">A layout mockup with placeholder walls. The map editor gets a Game labels panel beside the existing tile palette and LVZ panels. Labels are drawn on the map in team colours. The "Red base" label is selected.</p>
+
+<h2>A. Map editor with Game labels open</h2>
+<div class="ed">
+  <div class="map">
+    <div class="wall" style="left:6%;top:8%;width:3%;height:84%"></div><div class="wall" style="right:6%;top:8%;width:3%;height:84%"></div>
+    <div class="wall" style="left:30%;top:46%;width:40%;height:4%"></div><div class="wall" style="left:9%;top:8%;width:82%;height:3%"></div><div class="wall" style="left:9%;top:89%;width:82%;height:3%"></div>
+    <div class="area sel" style="left:11%;top:30%;width:15%;height:36%;border-color:var(--red);color:var(--red)">Red base</div>
+    <div class="area" style="right:11%;top:30%;width:15%;height:36%;border-color:var(--blue);color:var(--blue)">Blue base</div>
+    <div class="flag" style="left:17%;top:45%;color:var(--red)">⚑</div><span class="lab" style="left:15%;top:52%;color:var(--red)">Flag 1</span>
+    <div class="flag" style="right:17%;top:45%;color:var(--blue)">⚑</div><span class="lab" style="right:14%;top:52%;color:var(--blue)">Flag 2</span>
+    <div class="ring" style="left:13%;top:72%;width:60px;height:60px;color:var(--red)"></div><span class="lab" style="left:12%;top:84%;color:var(--red)">Red spawn</span>
+    <div class="ring" style="right:13%;top:72%;width:60px;height:60px;color:var(--blue)"></div><span class="lab" style="right:12%;top:84%;color:var(--blue)">Blue spawn</span>
+    <div class="area" style="left:42%;top:15%;width:16%;height:14%;border-color:var(--green);color:var(--green)">Safe lobby · no weapons</div>
+    <div class="ring" style="left:46%;top:56%;width:90px;height:90px;color:var(--yellow)"></div><span class="lab" style="left:45%;top:73%;color:var(--yellow)">Flag spawn area</span>
+  </div>
+  <div class="side">
+    <h3>Game labels</h3>
+    <div class="toggles"><label><input type="checkbox" checked> Show</label><label><input type="checkbox" checked> Edit</label></div>
+    <ul class="list">
+      <li class="on"><span><span class="dot" style="background:var(--red)"></span>Red base</span><span class="kind">Base</span></li>
+      <li><span><span class="dot" style="background:var(--blue)"></span>Blue base</span><span class="kind">Base</span></li>
+      <li><span><span class="dot" style="background:var(--red)"></span>Flag 1</span><span class="kind">Flag spot</span></li>
+      <li><span><span class="dot" style="background:var(--blue)"></span>Flag 2</span><span class="kind">Flag spot</span></li>
+      <li><span><span class="dot" style="background:var(--red)"></span>Red spawn</span><span class="kind">Team spawn</span></li>
+      <li><span><span class="dot" style="background:var(--blue)"></span>Blue spawn</span><span class="kind">Team spawn</span></li>
+      <li><span><span class="dot" style="background:var(--yellow)"></span>Flag spawn area</span><span class="kind">Flag spawn</span></li>
+      <li><span><span class="dot" style="background:var(--green)"></span>Safe lobby</span><span class="kind">Area with rules</span></li>
+    </ul>
+    <button>+ Add label ▾</button>
+    <div class="menu">
+      <div>Team spawn <small>Where a team's pilots appear. Works now.</small></div>
+      <div>Flag spawn area <small>Where carried flags appear. Works now.</small></div>
+      <div>Ball spawn <small>Where each ball starts. Works now.</small></div>
+      <div>Area with rules <small>No weapons, no antiwarp, no flag drops. Works now.</small></div>
+      <div>Base <small>A team's base, for capture-the-flag and hold-the-base (rules, Phase 4).</small></div>
+      <div>Flag spot <small>Where one flag lives in capture-the-flag (rules, Phase 4).</small></div>
+    </div>
+    <div class="form">
+      <div class="r"><span>Name</span><input value="Red base"></div>
+      <div class="r"><span>Team</span><select><option>Red (team 1)</option></select></div>
+      <div class="r"><span>Size</span><span>40 × 60 tiles at 96, 400</span></div>
+      <div class="r"><span>Inside</span><div class="sw"><label><input type="checkbox"> No weapons</label><label><input type="checkbox"> No antiwarp</label><label><input type="checkbox" checked> No flag drops</label></div></div>
+      <button>Delete label</button>
+    </div>
+    <div class="counts">On this map: 0 turf flag tiles · 0 goal tiles · 8 labels · 1 region from another editor (kept)</div>
+  </div>
+</div>
+<div class="toast">Map published to #mycastle. Also set 6 spawn settings (red and blue spawns, flag spawn area).</div>
+
+<h2>B. The Game mode tab knows about the labels</h2>
+<div class="gm">
+  <b>The flags</b>
+  <p class="ok">Flags appear in the map's Flag spawn area (512, 400, radius 20). <a href="#" style="color:var(--accent)">Change it in the map editor</a></p>
+  <p style="color:var(--dim)">Capture the flag: your map has 2 bases and 2 flag spots, ready for the rules module (Phase 4).</p>
+</div>
+</body></html>
