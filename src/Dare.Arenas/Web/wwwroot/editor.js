@@ -81,12 +81,43 @@ function signedIn() {
   $("stdtiles").addEventListener("click", async () => {
     const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
     if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return; }
-    const ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+    useTileset(Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())),
+      "This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.");
+  });
+  // A tileset into this map's own prefix (eLVL data kept), so it is published with the map.
+  function useTileset(ts, note) {
     const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
     prefix = TileArt.withTileset(prefix, rgba, ts.width, ts.height); mapTileset = ts; ownTileset = null;
     flatView = false; $("flatview").checked = false;
     noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw();
-    say("This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.", true);
+    say(note, true);
+  }
+
+  // "Use one of your tilesets": one from Your tilesets (the tile editor's library, or kept from the Foundry) into this map.
+  async function loadMyTilesets() {
+    const sel = $("mytilesets");
+    if (!sel) return;
+    const r = await fetch(API + "/tilesets", { credentials: "same-origin" }).catch(() => null);
+    const j = r && r.ok ? await r.json().catch(() => null) : null;
+    const list = (j && j.tilesets) || [];
+    sel.replaceChildren(new Option(list.length ? "Use one of your tilesets…" : "No saved tilesets yet", ""),
+      ...list.map((t) => new Option(t.name, String(t.id))));
+    sel.disabled = !list.length;
+  }
+  async function applyMyTileset(id) {
+    if (!window.TileArt) return;
+    const r = await fetch(API + "/tilesets/file?id=" + encodeURIComponent(id), { credentials: "same-origin" }).catch(() => null);
+    if (!r || !r.ok) { say("Couldn't open that tileset from your tilesets.", false); return; }
+    const name = decodeURIComponent(r.headers.get("X-Tileset-Name") || "your tileset");
+    let ts;
+    try { ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())); } catch (err) { say(`That tileset could not be read: ${err.message}`, false); return; }
+    if (!await Dlg.confirm(`Use ${name} as this map's tileset? It goes into the map you're editing; the arena keeps its current map until you Publish.`, { title: "Use this tileset?", ok: "Use it" })) return;
+    useTileset(ts, `This map now uses ${name} (published with it). Publish to put it in the arena.`);
+  }
+  $("mytilesets")?.addEventListener("change", async (e) => {
+    const id = e.target.value;
+    e.target.value = "";
+    if (id) await applyMyTileset(Number(id));
   });
 
   // ---- load --------------------------------------------------------------------------------------
@@ -709,8 +740,12 @@ function signedIn() {
   load().then(async () => {
     loadShared();
     await loadLibrary();
-    const lib = new URLSearchParams(location.search).get("lib");
+    const q = new URLSearchParams(location.search);
+    const lib = q.get("lib");
     if (lib) await openLib(Number(lib));
+    await loadMyTilesets();
+    const ts = q.get("tileset"); // from the Foundry's Keep: put that tileset into the map being edited
+    if (ts) await applyMyTileset(Number(ts));
   });
   // for checks in a browser console
   window.chartRoom = { get grid() { return grid; }, setTile: (x, y, t) => { stroke = []; setTile(x, y, t); endStroke(); draw(); }, save: () => Lvl.serialize(grid, prefix) };
