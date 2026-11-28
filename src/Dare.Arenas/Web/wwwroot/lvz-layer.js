@@ -28,15 +28,14 @@
     <div class="row"><label class="btn ghost small" title="PNG, BMP or GIF from your computer">Upload…<input type="file" class="lzp-addimg" accept=".png,.bmp,.bm2,.gif,.jpg,.jpeg" multiple hidden></label>
       <select class="lzp-from" aria-label="Add images from your Armory or another .lvz"><option value="">From your Armory…</option></select></div>
     <details class="lzp-stock" hidden><summary class="hint">Stock images</summary><div class="lzp-stockgrid"></div></details>
-    <label class="hint"><input type="checkbox" class="lzp-edit"> Place and move LVZ (instead of drawing walls)</label>
+    <label class="hint"><input type="checkbox" class="lzp-edit" id="lzp-edit"> Place and move LVZ (instead of drawing walls)</label>
     <div class="row"><label class="hint" title="Hide them to work on the map underneath; nothing is removed"><input type="checkbox" class="lzp-show" checked> Show LVZ</label>
       <label class="hint"><input type="checkbox" class="lzp-snap" checked> Snap to tiles</label>
       <select class="lzp-layer" aria-label="Layer for new images" title="Layer for new images"></select></div>
     <div class="lzp-sel" hidden>
-      <label class="lzp-f lzp-scr" title="The game point its x is measured from">X from <select data-f="xRef"></select></label>
       <label class="lzp-f">X <input type="number" data-f="x" min="0" max="16384"></label>
-      <label class="lzp-f lzp-scr" title="The game point its y is measured from">Y from <select data-f="yRef"></select></label>
       <label class="lzp-f">Y <input type="number" data-f="y" min="0" max="16384"></label>
+      <p class="hint lzp-scr lzp-refhint"></p>
       <label class="lzp-f">Layer <select data-f="layer"></select></label>
       <label class="lzp-f">Shown <select data-f="mode"></select></label>
       <label class="lzp-f" title="Seconds it stays up once shown; 0 = until turned off">Seconds <input type="number" data-f="time" min="0" max="409.5" step="0.1"></label>
@@ -51,11 +50,10 @@
     <details class="lzp-more"><summary class="hint">Kept in <b class="lzp-fname"></b></summary>
       <select class="lzp-src" aria-label="Which .lvz file the placements are kept in"></select>
       <p class="hint">An arena can have several .lvz files; the placements above are kept in this one. Switching keeps your changes.</p></details>
-    <p class="hint">Drag to move, Alt+drag to copy, Del deletes, arrows nudge, Esc or another tool goes back to walls. On the screen, drag an image from above onto the game screen; it snaps to the game's points (Shift: no snap) and keeps its place at every window size. Map images don't block ships.</p>`;
+    <p class="hint">Drag to move, Alt+drag to copy, Del deletes, arrows nudge, Esc or another tool goes back to walls. On the screen, drag an image from above onto the game screen: pink guides line it up with the centre, the HUD and other images, or space it evenly (Shift: no guides); it keeps its place at every window size. Map images don't block ships.</p>`;
   const q = (c) => panel.querySelector("." + c), F = (k) => q("lzp-sel").querySelector(`[data-f=${k}]`);
   Lvz.LAYERS.forEach((l, i) => { const t = l.replace(/([a-z])([A-Z])/g, "$1 $2"); q("lzp-layer").append(new Option(t, i)); F("layer").append(new Option(t, i)); });
   MODE_TEXT.forEach((m, i) => F("mode").append(new Option(m, i)));
-  Lvz.REFS.forEach(([, t], i) => { F("xRef").append(new Option(t, i)); F("yRef").append(new Option(t, i)); });
   q("lzp-layer").value = 2;
 
   let lvz = null, pics = [], src = null, sel = -1, img = -1, dirty = false, role = null, levelFiles = [], drag = null, space = false;
@@ -155,7 +153,12 @@
   badge.append(done);
   view.parentElement.append(badge);
   done.addEventListener("click", () => setPlacing(false, "Placement off: back to drawing walls."));
+  // Only one panel owns map clicks at a time. Placement says so ("map:pointer" { owner: "lvz" }, and a
+  // change event on #lzp-edit, which the Game labels panel listens for); it hands over when another panel
+  // takes the pointer: a map:pointer with another owner, a click in the Game labels panel, a tool or tile.
+  let announcing = false;
   function setPlacing(on, note, keepPalette) {
+    const was = q("lzp-edit").checked;
     on = !!on && q("lzp-show").checked;
     q("lzp-edit").checked = on;
     if (on) q("lzp-show").checked = true;
@@ -164,11 +167,21 @@
     q("lzp-edit").closest("label").classList.toggle("lzp-on", on);
     if (!on) { drag = null; if (sel >= 0) { sel = -1; showSel(); showList(); } }
     showScreen(on && where() === "screen");
+    if (on && !was) {
+      announcing = true;
+      try { window.dispatchEvent(new CustomEvent("map:pointer", { detail: { owner: "lvz" } })); q("lzp-edit").dispatchEvent(new Event("change", { bubbles: true })); }
+      finally { announcing = false; }
+    }
     if (!keepPalette) showPalette(); // not mid-drag: rebuilding would drop the image being dragged
     if (note) say(note, true);
     redraw();
   }
   window.addEventListener("map:tool", () => { if (q("lzp-edit").checked) setPlacing(false, "Placement off: drawing walls again."); });
+  window.addEventListener("map:pointer", (e) => { if (!announcing && e.detail && e.detail.owner !== "lvz" && q("lzp-edit").checked) setPlacing(false, "LVZ placement off: another panel is using the map."); });
+  // the Game labels panel (labels-layer.js): any click in it hands the map over
+  document.addEventListener("pointerdown", (e) => {
+    if (q("lzp-edit").checked && e.target.closest && e.target.closest("#labelspanel")) setPlacing(false, "LVZ placement off: Game labels has the map.");
+  }, true);
 
   // ---- on the screen: a mimic game screen over the map (lvz-screen.js) ----------------------------------
   const where = () => (panel.querySelector("input[name=lzpwhere]:checked") || {}).value || "map";
@@ -223,8 +236,8 @@
     for (const [o, i] of scr) {
       const li = document.createElement("li"), b = document.createElement("button");
       b.type = "button"; b.className = "ghost small" + (i === sel ? " on" : "");
-      const ref = (Lvz.REFS[o.xRef] || Lvz.REFS[0])[1];
-      b.textContent = `${name(o)} · ${ref} ${o.x >= 0 ? "+" : ""}${o.x}, ${o.y >= 0 ? "+" : ""}${o.y}${Lvz.isReserved(o.id) ? " ⚙" : ""}`;
+      const [sx, sy] = screen ? screen.position(o) : [o.x, o.y];
+      b.textContent = `${name(o)} · ${sx}, ${sy}${Lvz.isReserved(o.id) ? " ⚙" : ""}`;
       b.title = `Id ${o.id}: select it on the game screen`;
       b.addEventListener("click", () => { if (where() !== "screen" || !q("lzp-edit").checked) { setWhere("screen"); setPlacing(true); } sel = i; showSel(); showList(); if (screen) screen.redraw(); });
       li.append(b); ul.append(li);
@@ -259,14 +272,17 @@
     if (!o) return;
     q("lzp-gm").hidden = !Lvz.isReserved(o.id);
     for (const l of panel.querySelectorAll(".lzp-scr")) l.hidden = o.map;
-    for (const k of ["x", "y"]) { F(k).min = o.map ? 0 : -2048; F(k).max = o.map ? 16384 : 2047; }
-    F("xRef").value = o.xRef || 0; F("yRef").value = o.yRef || 0;
-    F("x").value = o.x; F("y").value = o.y; F("layer").value = o.layer; F("mode").value = o.mode; F("time").value = (o.time / 10).toFixed(1); F("id").value = o.id;
+    // screen objects: their position on the screen shown (the reference point stays an inner detail)
+    const at = !o.map && screen ? screen.position(o) : [o.x, o.y];
+    for (const k of ["x", "y"]) { F(k).min = o.map ? 0 : -4096; F(k).max = o.map ? 16384 : 8192; F(k).title = o.map ? "Map pixels" : "Screen pixels, at the size shown"; }
+    q("lzp-refhint").textContent = !o.map && screen ? screen.hint(o) + "." : "";
+    F("x").value = at[0]; F("y").value = at[1]; F("layer").value = o.layer; F("mode").value = o.mode; F("time").value = (o.time / 10).toFixed(1); F("id").value = o.id;
   }
   q("lzp-sel").addEventListener("change", (e) => {
     const o = lvz && lvz.objects[sel], k = e.target.dataset.f; if (!o || !k) return;
     const v = +e.target.value;
     if (k === "time") o.time = Math.max(0, Math.min(4095, Math.round(v * 10)));
+    else if ((k === "x" || k === "y") && !o.map && screen) { screen.moveTo(o, +F("x").value || 0, +F("y").value || 0); showSel(); }
     else if (k === "x" || k === "y") o[k] = o.map ? clamp(Math.round(v) || 0) : Math.max(-2048, Math.min(2047, Math.round(v) || 0));
     else if (k === "id") o.id = Math.max(0, Math.min(32767, Math.round(v) || 0));
     else o[k] = Math.round(v) || 0;
@@ -282,7 +298,7 @@
     lvz.objects.splice(sel, 1); sel = -1; setDirty(true); showSel(); count(); redraw();
   });
   q("lzp-show").addEventListener("change", () => { if (!q("lzp-show").checked) setPlacing(false); redraw(); });
-  q("lzp-edit").addEventListener("change", () => { setPlacing(q("lzp-edit").checked); showPalette(); });
+  q("lzp-edit").addEventListener("change", () => { if (announcing) return; setPlacing(q("lzp-edit").checked); showPalette(); });
 
   // ---- adding images: upload, the Armory, another .lvz ---------------------------------------------------------
   function ensureLvz() { if (!lvz) { lvz = Lvz.blank(); src = { name: NEW_NAME, from: "new" }; showFile(); } }
