@@ -187,7 +187,7 @@ reused by every game mode.
 | 6 | **Templates and polish**: starting points (Classic CTF, Rabbit, Turf, Powerball, 4v4 lives duel), share a game mode, in-game `?gamemode` | no | everyone |
 
 Phases 1–3 ship value without a zone restart. Phase 4 is the single server change. Phase 5
-waits for `tile-editor`'s LVZ library to reach `main`.
+can build on `tile-editor`'s LVZ library, on `main` since 10ed3f5 (`Lvz.RESERVED_IDS`, `Lvz.isReserved`, `Lvz.nextId`).
 
 ## Questions for Chris
 
