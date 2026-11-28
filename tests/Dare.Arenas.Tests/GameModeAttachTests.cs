@@ -59,4 +59,16 @@ public sealed class GameModeAttachTests
         GameModeAttach.Settle(ours, Kill, attaching: false, ok: true);
         Assert.Contains(Kill, ours);                                   // a success changes nothing (already planned)
     }
+
+    // Koth and BallGamePoints read their settings on the arena's Create action (BallGamePoints only then), which an
+    // arena already has when GameMode:Attach attaches them, so they never started: they need Create replayed.
+    [Fact]
+    public void koth_and_ball_scoring_need_create_replayed()
+    {
+        Assert.True(GameModeAttach.NeedsCreate("SS.Core.Modules.Scoring.Koth"));
+        Assert.True(GameModeAttach.NeedsCreate("SS.Core.Modules.Scoring.BallGamePoints"));
+        Assert.False(GameModeAttach.NeedsCreate("SS.Core.Modules.Scoring.KillPoints"));
+        Assert.False(GameModeAttach.NeedsCreate(FlagHold.TypeName));
+    }
 }
+

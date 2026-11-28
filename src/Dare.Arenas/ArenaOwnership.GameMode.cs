@@ -21,6 +21,7 @@ public sealed partial class ArenaOwnership
         if (_moduleManager is null) { Log(LogLevel.Error, "GameMode:Attach off: no module manager."); return; }
         ArenaActionCallback.Register(broker, Callback_ArenaActionGameMode);
         StartFlagHold(broker);
+        StartKingReward(broker);
     }
 
     private void StopGameMode(IComponentBroker broker)
@@ -28,6 +29,7 @@ public sealed partial class ArenaOwnership
         if (_moduleManager is null) return;
         ArenaActionCallback.Unregister(broker, Callback_ArenaActionGameMode);
         StopFlagHold(broker);
+        StopKingReward(broker);
         broker.ReleaseInterface(ref _moduleManager);
         _gameModeAttached.Clear();
         _gameModeWarned.Clear();
@@ -41,12 +43,14 @@ public sealed partial class ArenaOwnership
             _gameModeWarned.Remove(arena);
             StopFlagRule(arena);
             _rounds.Remove(arena);
+            _kingRewards.Remove(arena);
             return;
         }
         if (action is not (ArenaAction.Create or ArenaAction.ConfChanged) || arena.Cfg is not { } cfg) return;
         if (_flagRules.TryGetValue(arena, out var rule)) ReadFlagRule(arena, rule);
         ApplyGameModeAttach(arena);
         ApplyRound(arena, cfg, created: action == ArenaAction.Create);
+        ReadKingReward(arena, cfg);
     }
 
     // The server reads a spawn point per ball (Balls.cs: SpawnX, SpawnX1..SpawnX7) but documents only the first,
@@ -129,9 +133,32 @@ public sealed partial class ArenaOwnership
                 var ok = await modules.AttachModuleAsync(t, arena).ConfigureAwait(false);
                 Log(ok ? LogLevel.Info : LogLevel.Warn, $"{{{arena.Name}}} GameMode: {(ok ? "attached" : "could not attach")} {t}.");
                 if (!ok) Settle(arena, t, attaching: true);
+                else if (GameModeAttach.NeedsCreate(t)) ReplayCreate(arena, t);
             }
             catch (Exception ex) { Log(LogLevel.Error, $"{{{arena.Name}}} GameMode: attaching {t} failed: {ex.Message}"); Settle(arena, t, attaching: true); }
         }
+    }
+
+    /// <summary>
+    /// Koth and BallGamePoints set up on the arena's Create, which this arena already had (GameModeAttach.NeedsCreate):
+    /// give it to the arena's own handlers only (the attached modules), on the mainloop, so the zone's other modules
+    /// don't see a second Create. The server's Modules:AttachModules attaches before Create, so it never needs this.
+    /// </summary>
+    private void ReplayCreate(Arena arena, string type)
+    {
+        // The attach can finish while the arena is still starting up (its Create has fired, it isn't Running yet):
+        // check every 100 ms, up to 30 s, and give up if the arena closes.
+        var tries = 0;
+        _mainloopTimer.SetTimer(() =>
+        {
+            if (arena.Status < ArenaState.Running) return ++tries < 300;
+            if (arena.Status == ArenaState.Running)
+            {
+                arena.GetCallback<ArenaActionCallback.ArenaActionDelegate>()?.Invoke(arena, ArenaAction.Create);
+                Log(LogLevel.Info, $"{{{arena.Name}}} GameMode: started {type} (replayed the arena's Create).");
+            }
+            return false;
+        }, 0, 100, arena);
     }
 
     /// <summary>A failed attach or detach, corrected on the mainloop (where _gameModeAttached lives).</summary>

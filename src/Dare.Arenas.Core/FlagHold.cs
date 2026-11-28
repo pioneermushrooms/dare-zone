@@ -60,6 +60,18 @@ public static class FlagHold
         return Enum.TryParse<FlagWinMode>(text, ignoreCase: true, out var m) && Enum.IsDefined(m) ? m : FlagWinMode.None;
     }
 
+    /// <summary>
+    /// A flag win's points: <paramref name="reward"/> as written (<paramref name="flat"/>, GameMode:FlatFlagReward) or
+    /// scaled like the server, (players)^2 * reward / 1000; then the jackpot; then split between the team if asked.
+    /// </summary>
+    public static int Points(int playing, int onFreq, int reward, bool flat, bool split, int jackpot)
+    {
+        var points = flat ? reward : (int)(playing * (long)playing * reward / 1000);
+        points += jackpot;
+        if (split && onFreq > 0) points /= onFreq;
+        return points;
+    }
+
     /// <summary>"6 minutes", "2:30", "30 seconds".</summary>
     public static string Say(TimeSpan t)
     {
@@ -118,5 +130,23 @@ public sealed class FlagHoldClock
         if (s > 30) return TimeSpan.FromSeconds(30);
         if (s > 10) return TimeSpan.FromSeconds(10);
         return TimeSpan.Zero;
+    }
+}
+
+/// <summary>
+/// King of the Hill paid as written (GameMode:KingReward): the arena's King:RewardFactor is 0, so the server's Koth
+/// pays nothing, and the plugin pays the winners Koth found when its game ends (KothEndedCallback has no winners).
+/// </summary>
+public static class KingWin
+{
+    /// <summary>
+    /// Koth's winners: the crowned pilots, if they are one team; or, when no one has a crown, the pilots whose crowns
+    /// ran out together just before the end (<paramref name="justLost"/>), if they are one team.
+    /// </summary>
+    public static IReadOnlyList<T> Winners<T>(IReadOnlyList<(T Pilot, short Freq)> crowned, IReadOnlyList<(T Pilot, short Freq)> justLost)
+    {
+        var set = crowned.Count > 0 ? crowned : justLost;
+        if (set.Count == 0 || set.Any(p => p.Freq != set[0].Freq)) return [];
+        return set.Select(p => p.Pilot).ToList();
     }
 }

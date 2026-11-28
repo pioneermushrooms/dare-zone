@@ -56,6 +56,18 @@ public static class GameModeAttach
         return result;
     }
 
+    private static readonly HashSet<string> SetUpOnCreate = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SS.Core.Modules.Scoring.Koth", "SS.Core.Modules.Scoring.BallGamePoints",
+    };
+
+    /// <summary>
+    /// Modules that set themselves up on the arena's Create action, registered for it only when attached (Koth also
+    /// on ConfChanged, BallGamePoints only on Create). Attached to an arena that already exists, they miss it and never
+    /// start, so the plugin replays Create to the arena's own handlers after attaching one.
+    /// </summary>
+    public static bool NeedsCreate(string type) => SetUpOnCreate.Contains(type);
+
     /// <summary>The module type names for <paramref name="m"/>, in allow-list order.</summary>
     public static IReadOnlyList<string> TypeNames(GameModeModules m) =>
         AllowList.Where(a => m.HasFlag(a.Flag)).Select(a => a.Type).ToList();

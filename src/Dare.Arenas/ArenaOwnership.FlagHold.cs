@@ -20,7 +20,8 @@ public sealed partial class ArenaOwnership
     {
         public readonly FlagHoldClock Clock = new();
         public FlagWinMode Mode;
-        public double RewardRatio;
+        public int Reward;
+        public bool Flat;
         public bool SplitPoints;
         public bool Music;
         public bool MusicOn;
@@ -85,11 +86,14 @@ public sealed partial class ArenaOwnership
         Log(LogLevel.Info, $"{{{arena.Name}}} GameMode: flag rule off.");
     }
 
+    [ConfigHelp<bool>("GameMode", "FlatFlagReward", ConfigScope.Arena, Default = false,
+        Description = "Whether a flag win pays Flag:FlagReward as written (1) or scaled like the server, (players in arena)^2 * FlagReward / 1000 (0).")]
     private void ReadFlagRule(Arena arena, FlagRule rule)
     {
         if (arena.Cfg is not { } cfg) return;
         rule.Mode = FlagHold.ParseMode(_configManager.GetStr(cfg, "Flag", "FlagMode"));
-        rule.RewardRatio = _configManager.GetInt(cfg, "Flag", "FlagReward", 5000) / 1000.0;
+        rule.Reward = _configManager.GetInt(cfg, "Flag", "FlagReward", 5000);
+        rule.Flat = _configManager.GetInt(cfg, "GameMode", "FlatFlagReward", 0) != 0;
         rule.SplitPoints = _configManager.GetInt(cfg, "Flag", "SplitPoints", 0) != 0;
         rule.Music = _configManager.GetInt(cfg, "Misc", "VictoryMusic", 1) != 0;
     }
@@ -170,7 +174,7 @@ public sealed partial class ArenaOwnership
         _chat.SendArenaMessage(arena, ChatSound.MusicStop, "");
     }
 
-    /// <summary>The win as the server's FlagGamePoints gives it: (players)^2 * FlagReward/1000 plus the jackpot, split if asked.</summary>
+    /// <summary>The win: FlagReward as written or scaled like the server's FlagGamePoints, plus the jackpot, split if asked.</summary>
     private void FlagWin(Arena arena, FlagRule rule, short freq, bool restartRound)
     {
         int playing = 0, onFreq = 0;
@@ -186,10 +190,7 @@ public sealed partial class ArenaOwnership
         }
         finally { _playerData.Unlock(); }
 
-        var points = (int)(playing * playing * rule.RewardRatio);
-        var jackpot = arena.GetInterface<IJackpot>();
-        if (jackpot is not null) { try { points += jackpot.GetJackpot(arena); } finally { arena.ReleaseInterface(ref jackpot); } }
-        if (onFreq > 0 && rule.SplitPoints) points /= onFreq;
+        var points = FlagHold.Points(playing, onFreq, rule.Reward, rule.Flat, rule.SplitPoints, Jackpot(arena));
 
         StopMusic(arena, rule);
         rule.Clock.Reset();
@@ -198,6 +199,14 @@ public sealed partial class ArenaOwnership
         EndGameInterval(arena);
         if (restartRound && _rounds.TryGetValue(arena, out var round) && _gameTimer?.SetTimer(arena, round) == true)
             _chat.SendArenaMessage(arena, $"Next round: {FlagHold.Say(round)}.");
+    }
+
+    private static int Jackpot(Arena arena)
+    {
+        var jackpot = arena.GetInterface<IJackpot>();
+        if (jackpot is null) return 0;
+        try { return jackpot.GetJackpot(arena); }
+        finally { arena.ReleaseInterface(ref jackpot); }
     }
 
     private static void EndGameInterval(Arena arena)

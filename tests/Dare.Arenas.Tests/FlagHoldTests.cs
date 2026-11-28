@@ -154,4 +154,42 @@ public sealed class FlagHoldTests
         Assert.Equal("30 seconds", FlagHold.Say(TimeSpan.FromSeconds(30)));
         Assert.Equal("1 second", FlagHold.Say(TimeSpan.FromSeconds(1)));
     }
+
+    // Rewards: "as written" or scaled like the server ((players)^2 * reward / 1000), then jackpot, then split.
+    [Fact]
+    public void flag_reward_scales_with_players_like_the_server()
+    {
+        Assert.Equal(80, FlagHold.Points(playing: 4, onFreq: 2, reward: 5000, flat: false, split: false, jackpot: 0));
+        Assert.Equal(500, FlagHold.Points(playing: 10, onFreq: 5, reward: 5000, flat: false, split: false, jackpot: 0));
+    }
+
+    [Fact]
+    public void flag_reward_as_written_ignores_the_player_count()
+    {
+        Assert.Equal(5000, FlagHold.Points(playing: 4, onFreq: 2, reward: 5000, flat: true, split: false, jackpot: 0));
+        Assert.Equal(5000, FlagHold.Points(playing: 1, onFreq: 1, reward: 5000, flat: true, split: false, jackpot: 0));
+    }
+
+    [Fact]
+    public void jackpot_is_added_then_split()
+    {
+        Assert.Equal(3000, FlagHold.Points(playing: 4, onFreq: 2, reward: 5000, flat: true, split: true, jackpot: 1000));
+        Assert.Equal(0, FlagHold.Points(playing: 0, onFreq: 0, reward: 5000, flat: false, split: true, jackpot: 0));
+    }
+
+    [Fact]
+    public void king_winners_are_the_crowned_pilots_when_they_are_one_team()
+    {
+        Assert.Equal(["a", "b"], KingWin.Winners([("a", 1), ("b", 1)], []));
+        Assert.Empty(KingWin.Winners([("a", 1), ("b", 2)], []));
+    }
+
+    [Fact]
+    public void king_winners_whose_crowns_ran_out_together_still_win()
+    {
+        // Koth: "All expired at the same time" - the last crowns went off just before the game ended.
+        Assert.Equal(["c"], KingWin.Winners([], [("c", 3)]));
+        Assert.Empty(KingWin.Winners([], [("c", 3), ("d", 4)]));
+        Assert.Empty(KingWin.Winners<string>([], []));
+    }
 }
