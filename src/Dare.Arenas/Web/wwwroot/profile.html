@@ -6,12 +6,12 @@
 <title>Pilot — SubSpace Foundation</title>
 <link rel="stylesheet" href="/account/style.css">
 <link rel="stylesheet" href="/account/header.css">
-<script src="/account/header.js" defer></script>
 <script src="/account/profile.js" defer></script>
 </head>
 <body data-page="pilot">
 <header class="bar"><a class="brand" href="/" aria-label="SubSpace Foundation home"><span class="logo" aria-hidden="true">◈</span><span class="word">SubSpace <em>Foundation</em></span></a>
   <nav class="toplinks" aria-label="Site"><a href="/" title="The home page: pick an arena, chat, and fly">Home</a><a href="/foundry.html" title="The Foundry: ships and graphics pilots designed, for everyone">Foundry</a><a href="/arena/me#overview" title="Make an arena; draw its map, set its rules, graphics and crew">Arena Editor</a></nav></header>
+<script src="/account/header.js"></script>
 
 <main class="panel narrow" id="loading"><p class="dim">Loading…</p></main>
 <main class="panel narrow" id="missing" hidden><h2>No pilot by that name</h2><p class="dim">Check the spelling, or the name may have been released.</p><p class="links"><a href="/">Back to the zone</a></p></main>
@@ -28,6 +28,7 @@
   <p class="bio" id="bio"></p>
   <p class="msg bad" id="hiddennote" hidden>Staff have hidden this profile. Only you and zone staff can see it.</p>
   <div class="headbtns">
+    <a class="btn small msgbtn" id="msgbtn" hidden>Message</a>
     <button type="button" class="ghost small" id="editbtn" hidden>Edit profile</button>
   </div>
 </section>

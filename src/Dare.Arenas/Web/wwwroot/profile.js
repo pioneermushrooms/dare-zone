@@ -69,6 +69,7 @@ function drawInitial(canvas, name) {
 }
 
 let profile = null;
+let me = null; // the signed-in viewer's name, when signed in
 
 function since(iso) {
   const d = new Date(iso);
@@ -213,13 +214,16 @@ async function moderate(change) {
   if (body.ok) await load();
 }
 
-// ---- the wall: dated messages other pilots leave here ------------------------------------------
-let wallNext = null; // the id to page from (older messages), or null when there are none
+// ---- the wall: dated messages pilots leave here (their own too), replies under them, @mentions ------------
+let wallNext = null; // the id to page from (older threads), or null when there are none
 let wallMax = 300;
+let canPost = false;
 const stamp = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const mentionText = (node, text, names) => globalThis.foundationMentionText ? globalThis.foundationMentionText(node, text, names) : (node.textContent = text);
 
-function wallItem(m) {
-  const li = el("li", "wallpost");
+function wallItem(m, isReply) {
+  const li = el("li", isReply ? "wallpost reply" : "wallpost");
+  li.id = "post-" + m.id;
   li.dataset.id = m.id;
   const head = el("div", "wallhead");
   const who = el("a", "pilotlink wallauthor", m.author);
@@ -227,6 +231,13 @@ function wallItem(m) {
   const when = el("time", "dim", stamp.format(new Date(m.at)));
   when.dateTime = m.at;
   head.append(who, when);
+  const tools = el("span", "walltools");
+  if (canPost) {
+    const r = el("button", "ghost small wallreply", "Reply");
+    r.type = "button";
+    r.addEventListener("click", () => replyBox(isReply ? li.closest("li.wallpost:not(.reply)") : li, m));
+    tools.append(r);
+  }
   if (m.canRemove) {
     const x = el("button", "ghost small wallremove", "Remove");
     x.type = "button";
@@ -234,13 +245,59 @@ function wallItem(m) {
     x.addEventListener("click", async () => {
       x.disabled = true;
       const body = await post("/profile/wall/remove", { id: m.id });
-      if (body.ok) { li.remove(); wallCount(-1); }
+      if (body.ok) { li.remove(); if (!isReply) wallCount(-1); }
       else { x.disabled = false; msg($("wallmsg"), body.message, false); }
     });
-    head.append(x);
+    tools.append(x);
   }
-  li.append(head, el("p", "walltext", m.text));
+  head.append(tools);
+  const text = el("p", "walltext");
+  mentionText(text, m.text, m.mentions);
+  li.append(head, text);
+  if (!isReply) {
+    const replies = el("ol", "wallreplies");
+    for (const r of m.replies ?? []) replies.append(wallItem(r, true));
+    li.append(replies);
+  }
   return li;
+}
+
+// the reply box under a thread: "@Author " to start, replying to message m
+function replyBox(thread, m) {
+  thread.querySelector(":scope > form.replyform")?.remove();
+  const form = el("form", "replyform");
+  const ta = el("textarea");
+  ta.rows = 2;
+  ta.maxLength = wallMax;
+  ta.setAttribute("aria-label", `Reply to ${m.author}`);
+  ta.value = m.author === me ? "" : `@${m.author} `;
+  const row = el("div", "wallrow");
+  const note = el("p", "msg");
+  const send = el("button", "small", "Reply");
+  send.type = "submit";
+  const cancel = el("button", "ghost small", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => form.remove());
+  const btns = el("span", "replybtns");
+  btns.append(cancel, send);
+  row.append(note, btns);
+  form.append(ta, row);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = ta.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    const body = await post("/profile/wall", { name: profile.name, text, replyTo: m.id });
+    send.disabled = false;
+    if (!body.ok) { msg(note, body.message, false); return; }
+    thread.querySelector(":scope > ol.wallreplies").append(wallItem(body.post, true));
+    form.remove();
+  });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit(); });
+  thread.append(form);
+  globalThis.foundationMentions?.(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 let wallShown = 0;
@@ -256,27 +313,35 @@ async function loadWall(more) {
   const { body } = await getJson(url);
   if (!body || !body.ok) return;
   $("wall").hidden = false;
+  canPost = !!body.canPost;
   if (!more) { list.replaceChildren(); wallShown = 0; }
   wallMax = body.max || wallMax;
-  for (const m of body.posts) list.append(wallItem(m));
+  for (const m of body.posts) list.append(wallItem(m, false));
   wallCount(body.posts.length);
   wallNext = body.more && body.posts.length ? body.posts[body.posts.length - 1].id : null;
   $("wallmore").hidden = wallNext == null;
-  // who may write: anyone signed in, on someone else's wall
+  // anyone signed in can write, here on their own wall too
   const form = $("wallform"), note = $("wallnote");
-  form.hidden = !body.canPost;
-  note.hidden = body.canPost;
-  if (!body.canPost) {
+  form.hidden = !canPost;
+  note.hidden = canPost;
+  if (!canPost) {
     note.replaceChildren();
-    if (profile.mine) note.textContent = "Your wall: other pilots leave messages here.";
-    else {
-      const a = el("a", null, "Sign in");
-      a.href = "/account/login?next=" + encodeURIComponent(location.pathname);
-      note.append(a, ` to leave ${profile.name} a message.`);
-    }
+    const a = el("a", null, "Sign in");
+    a.href = "/account/login?next=" + encodeURIComponent(location.pathname);
+    note.append(a, ` to leave ${profile.name} a message.`);
   }
-  $("walltext").placeholder = `Leave ${profile.name} a message`;
+  $("walltext").placeholder = profile.mine ? "Write on your wall (type @ to mention a pilot)" : `Leave ${profile.name} a message (type @ to mention a pilot)`;
   wallLeft();
+  if (!more) showLinkedPost();
+}
+
+// /pilot/<name>#post-<id> (from a notification): bring that message into view
+function showLinkedPost() {
+  const m = /^#post-(\d+)$/.exec(location.hash);
+  const li = m && document.getElementById("post-" + m[1]);
+  if (!li) return;
+  li.classList.add("linked");
+  li.scrollIntoView({ block: "center" });
 }
 
 function wallLeft() {
@@ -295,9 +360,16 @@ async function postWall(e) {
   if (!body.ok) { msg($("wallmsg"), body.message, false); return; }
   $("walltext").value = "";
   msg($("wallmsg"), "", true);
-  $("wallposts").prepend(wallItem(body.post));
+  $("wallposts").prepend(wallItem(body.post, false));
   wallCount(1);
   wallLeft();
+}
+
+// Message: someone else's profile, signed in, opens a conversation with them in the inbox
+function renderMessageButton() {
+  const b = $("msgbtn");
+  b.hidden = !me || profile.mine;
+  b.href = "/account/inbox?to=" + encodeURIComponent(profile.name) + "#messages";
 }
 
 // ---- load --------------------------------------------------------------------------------------
@@ -319,6 +391,8 @@ async function load() {
   renderArenas();
   renderShips();
   if (first) {
+    me = (await getJson(`${API}/me`)).body?.name ?? null;
+    renderMessageButton();
     await Promise.all([loadWall(false), loadContribs(false)]);
   }
 }
@@ -331,6 +405,8 @@ $("modclear").addEventListener("click", () => moderate({ clearBio: true }));
 $("modhide").addEventListener("click", () => moderate({ hidden: !profile.hidden }));
 $("contribmore").addEventListener("click", () => loadContribs(true));
 $("wallform").addEventListener("submit", postWall);
+globalThis.foundationMentions?.($("walltext"));
+addEventListener("hashchange", showLinkedPost);
 $("walltext").addEventListener("input", wallLeft);
 $("walltext").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("wallform").requestSubmit(); });
 $("wallmore").addEventListener("click", () => loadWall(true));
