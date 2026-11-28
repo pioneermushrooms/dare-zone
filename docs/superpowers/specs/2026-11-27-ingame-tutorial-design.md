@@ -143,7 +143,9 @@ LVZ arrow pointing at it, and over big centre-screen text for key lines only.
   setting (default 30 tutorials) stops new ones beyond it; a newcomer then gets the
   "Try the tutorial" prompt instead (my call, a safety valve only). The builder
   measures one tutorial host's memory and CPU on a local zone and reports it before
-  shipping. Bot names are unique across the zone but look like ordinary pilot names,
+  shipping. **Measured 2026-11-28** (local zone, release oss-bot, full cast of 7 bots
+  during the swarm): about 78 MB resident and 1% CPU per tutorial host (28 MB before
+  the bots connect). So 10 full casts would be about 780 MB on top of the zone. Bot names are unique across the zone but look like ordinary pilot names,
   from a tutorial-specific lineup rather than an arena record in `ArenaStore`.
 
 ### The mentor
