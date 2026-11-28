@@ -40,6 +40,7 @@ public sealed partial class AccountStore : IDisposable
 
     public AccountStore(string dbPath, Func<DateTimeOffset> clock)
     {
+        var backup = dbPath.Length == 0 || dbPath.StartsWith(':') || dbPath.Contains("mode=memory") ? null : dbPath + ".before-persons";
         _clock = clock;
         var cs = new SqliteConnectionStringBuilder
         {
@@ -171,6 +172,8 @@ public sealed partial class AccountStore : IDisposable
         CreateProfileTable();
         CreateWallTable();
         MoveWeaponGraphicsToArmory();
+        EnsurePeople(backup);
+        AddLibraryPersons();
     }
 
     public void Dispose()
@@ -235,9 +238,11 @@ public sealed partial class AccountStore : IDisposable
                 return Fail($"Sorry, the name '{name}' was just taken. Please sign up with another name.");
             if (PilotsOn(e) >= MaxAccountsPerEmail)
                 return Fail(TooManyPilots);
-            Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, recovery_email, email_verified, created, status) "
-                + "VALUES($n,$h,$s,$i,$e,1,$c,'active')",
-                ("$n", name), ("$h", hash), ("$s", salt), ("$i", iter), ("$e", e), ("$c", Now()));
+            // one email is one account: a new name on an email that already has names joins them
+            var person = PersonForEmail(e);
+            Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, recovery_email, email_verified, created, status, person_id) "
+                + "VALUES($n,$h,$s,$i,$e,1,$c,'active',$p)",
+                ("$n", name), ("$h", hash), ("$s", salt), ("$i", iter), ("$e", e), ("$c", Now()), ("$p", person));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok($"Welcome, {name}! Your account is ready.");
         });
@@ -261,9 +266,10 @@ public sealed partial class AccountStore : IDisposable
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE name = $n", ("$n", n)) > 0)
                 return Fail($"The name '{n}' is taken.");
             if (BotNameTaken(n)) return Fail(BotNameMessage);
-            Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, email_verified, created, status) "
-                + "VALUES($n,$h,$s,$i,0,$c,'active')",
-                ("$n", n), ("$h", hash), ("$s", salt), ("$i", iter), ("$c", Now()));
+            var person = NewPerson();
+            Run("INSERT INTO accounts(name, password_hash, password_salt, hash_iterations, email_verified, created, status, person_id) "
+                + "VALUES($n,$h,$s,$i,0,$c,'active',$p)",
+                ("$n", n), ("$h", hash), ("$s", salt), ("$i", iter), ("$c", Now()), ("$p", person));
             id = Scalar("SELECT last_insert_rowid()");
             return Ok($"Welcome, {n}! Your name is yours. Without an email, a forgotten password can't be recovered.");
         });
@@ -450,7 +456,9 @@ public sealed partial class AccountStore : IDisposable
         {
             if (Scalar("SELECT COUNT(*) FROM accounts WHERE id = $id", ("$id", accountId)) == 0)
                 return Fail("No such account.");
-            if (PilotsOn(e, accountId) + LinkedMoving(accountId).Count > MaxAccountsPerEmail)
+            var mine = PersonNamesAll(accountId);
+            if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e AND id NOT IN (" + string.Join(",", mine) + ")", ("$e", e))
+                + mine.Count > MaxAccountsPerEmail)
                 return Fail(TooManyPilots);
             issued = IssueCode(CodePurpose.AddEmail, e, accountId);
             return sent;
@@ -463,14 +471,21 @@ public sealed partial class AccountStore : IDisposable
     {
         var bad = UseCode(CodePurpose.AddEmail, null, accountId, code, out var e);
         if (bad is not null) return bad;
-        // an account without an email brings its other names along (they share it from now on)
-        var moving = LinkedMoving(accountId);
+        // the email is the account's: all its names take it. One email is one account, so when
+        // other names (another account) already use it, the code just proved both are this
+        // pilot's: the two accounts become one, with everything either of them owns.
+        var moving = PersonNamesAll(accountId);
         var others = moving.Where(id => id != accountId).ToList();
         if (Scalar("SELECT COUNT(*) FROM accounts WHERE recovery_email = $e AND id NOT IN (" + string.Join(",", moving) + ")", ("$e", e!))
             + moving.Count > MaxAccountsPerEmail)
             return Fail(TooManyPilots);
+        long? join = null;
+        using (var c = Cmd("SELECT id FROM accounts WHERE recovery_email = $e AND email_verified = 1 AND id NOT IN (" + string.Join(",", moving) + ") ORDER BY id LIMIT 1", ("$e", e!)))
+            if (c.ExecuteScalar() is long other) join = PersonOfLocked(other);
         foreach (var id in moving)
-            Run("UPDATE accounts SET recovery_email = $e, email_verified = 1, link_id = NULL WHERE id = $id", ("$e", e!), ("$id", id));
+            Run("UPDATE accounts SET recovery_email = $e, email_verified = 1 WHERE id = $id", ("$e", e!), ("$id", id));
+        if (join is { } into && PersonOfLocked(accountId) is { } from && from != into)
+            JoinPersons(from, into);
         return Ok(others.Count == 0
             ? $"Your recovery email is now {e}."
             : $"Your recovery email is now {e}, for all {moving.Count} of your names.");

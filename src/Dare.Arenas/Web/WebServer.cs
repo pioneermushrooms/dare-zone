@@ -125,7 +125,9 @@ public sealed partial class ArenaOwnership
             limits = new { maxLevelFiles = MaxLevelFiles, mapBytes = 2 * 1024 * 1024, lvzBytes = 5 * 1024 * 1024, settingChangesPerMinute = SettingChangesPerMinute },
             settings = cfg is null ? null : SettingsForWeb(cfg),
             configMissing = cfg is null,
-            maxPerPilot = ArenaStore.MaxPerPilot,
+            maxPerPilot = Store.ArenaLimitOf(player),
+            ownedCount = Store.OwnedCountOf(player),
+            limitRequest = LimitRequestData(player),
             staff = StaffFlags(player),
             restart = RestartData(arena, player),
         };
@@ -143,7 +145,9 @@ public sealed partial class ArenaOwnership
             role = (string?)null,
             pendingRequest = pending is null ? null : new { pending.Arena, pending.Pitch, pending.At },
             maxPitch = MaxPitchLength,
-            maxPerPilot = ArenaStore.MaxPerPilot,
+            maxPerPilot = Store.ArenaLimitOf(player),
+            ownedCount = Store.OwnedCountOf(player),
+            limitRequest = LimitRequestData(player),
             staff = StaffFlags(player),
         };
     }
@@ -155,22 +159,7 @@ public sealed partial class ArenaOwnership
         var policy = new SettingsPolicy(documented.Values);
         var editable = documented.Values.Where(v => policy.IsEditable(v.Section, v.Key)).ToList();
 
-        var help = new Dictionary<(string, string), IConfigHelpAttribute?>();
-        _configHelp.Lock();
-        try
-        {
-            foreach (var (section, key) in editable)
-            {
-                var helpSection = ShipSections.Contains(section) ? "All" : section;
-                help[(section, key)] = _configHelp.TryGetSettingHelp(helpSection, key, out var list) && list.Count > 0
-                    ? (list.FirstOrDefault(r => r.Attribute.Scope == ConfigScope.Arena).Attribute ?? list[0].Attribute)
-                    : null;
-            }
-        }
-        finally
-        {
-            _configHelp.Unlock();
-        }
+        var help = editable.ToDictionary(v => v, v => SettingHelp(v.Section, v.Key));
 
         return editable
             .GroupBy(v => v.Section)
@@ -190,9 +179,26 @@ public sealed partial class ArenaOwnership
                         min = h?.Min,
                         max = h?.Max,
                         range = h?.Range,
+                        type = KindOf(h?.Type),
+                        choices = h?.Type is { IsEnum: true } t && !t.IsDefined(typeof(FlagsAttribute), false) ? Enum.GetNames(t) : null,
                     };
                 }),
             });
+    }
+
+    /// <summary>"bool", "int", "enum", "flags" or "text": how the settings page shows the input.</summary>
+    private static string KindOf(Type? t)
+    {
+        if (t is null) return "text";
+        t = Nullable.GetUnderlyingType(t) ?? t;
+        if (t == typeof(bool)) return "bool";
+        if (t.IsEnum) return t.IsDefined(typeof(FlagsAttribute), false) ? "flags" : "enum";
+        return Type.GetTypeCode(t) switch
+        {
+            TypeCode.Byte or TypeCode.SByte or TypeCode.Int16 or TypeCode.UInt16 or TypeCode.Int32 or TypeCode.UInt32
+                or TypeCode.Int64 or TypeCode.UInt64 => "int",
+            _ => "text",
+        };
     }
 
     /// <summary>Re-checks the role at the moment of writing (it may have changed since the request began).</summary>
@@ -427,6 +433,12 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffArena(p, Str(b, "arena") ?? "", Str(b, "action") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/commands": return method == "GET" ? await StaffCommandsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/can": return method == "GET" ? await StaffCanAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/limit":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffLimit(p, long.TryParse(Str(b, "id"), out var lid) ? lid : 0,
+                    Str(b, "action") ?? "", int.TryParse(Str(b, "max"), out var lmax) ? lmax : 0, Str(b, "note"))).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/arenas/more":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.RequestMoreArenasFor(p,
+                    int.TryParse(Str(b, "wanted"), out var w) ? w : 0, Str(b, "reason"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/create":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));
@@ -460,6 +472,10 @@ internal sealed partial class WebServer : IDisposable
             case "/tiles": return Get(method, () => Static("tiles.html"));
             case "/tiles.js": return Get(method, () => Static("tiles.js"));
             case "/tile-studio.js": return Get(method, () => Static("tile-studio.js"));
+            case "/lvz.js": return Get(method, () => Static("lvz.js"));
+            case "/lvz-studio.js": return Get(method, () => Static("lvz-studio.js"));
+            case "/lvz-layer.js": return Get(method, () => Static("lvz-layer.js"));
+            case "/lvz.css": return Get(method, () => Static("lvz.css"));
             case "/tiles.css": return Get(method, () => Static("tiles.css"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
@@ -498,7 +514,9 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.WithdrawFor(p, Str(b, "arena") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             default:
                 return await LibraryRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await SettingSetsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await TilesetRouteAsync(req, path, method).ConfigureAwait(false)
+                       ?? await LvzRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? await GraphicsRouteAsync(req, path, method).ConfigureAwait(false)
                        ?? Text(404, "Not found.");
         }
@@ -753,7 +771,7 @@ internal sealed partial class WebServer : IDisposable
         return JsonReply(200, new
         {
             player,
-            max = ArenaStore.MaxPerPilot,
+            max = store.ArenaLimitOf(player),
             maxInvites = ArenaStore.MaxInvites,
             drafts = store.DraftsOwnedBy(player).Select(d => new
             {
@@ -863,7 +881,7 @@ internal sealed partial class WebServer : IDisposable
         if (Gate(req, write: false, out var player) is { } denied) return denied;
         var arena = req.QueryString["arena"];
         if (arena is null || _m.WebStore.Get(arena) is not { Status: ArenaStatus.Active } owned ||
-            !string.Equals(owned.Owner, player, StringComparison.OrdinalIgnoreCase))
+            !_m.WebStore.SameAccount(owned.Owner, player))
             return JsonReply(403, new { ok = false, message = "Only the active arena's owner can manage bots." });
         return JsonReply(200, new { ok = true, bots = _m.WebStore.Bots(owned.Name) });
     }
@@ -1165,7 +1183,7 @@ internal sealed partial class WebServer : IDisposable
     }
 
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
-    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json"];
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
 
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {

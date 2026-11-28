@@ -89,13 +89,15 @@ public sealed class PilotProfileTests : IDisposable
     }
 
     [Fact]
-    public void avatar_must_be_own_ship()
+    public void avatar_must_be_one_of_the_accounts_ships()
     {
         Assert.True(_s.AddPilot(_dare.Id, "Other Me", out var other).Ok);
-        var theirs = Ship(other!.Id);
+        Assert.True(_s.SaveProfile(_dare.Id, "", Ship(other!.Id), true, true, true).Ok); // the account's, made by another name
+        Assert.True(_s.CreateWithoutEmail("stranger", "hunter22pw", out var stranger).Ok);
+        var theirs = Ship(stranger!.Id);
         Assert.False(_s.SaveProfile(_dare.Id, "", theirs, true, true, true).Ok);
         Assert.False(_s.SaveProfile(_dare.Id, "", 9999, true, true, true).Ok);
-        Assert.Null(_s.ProfileSettings(_dare.Id).AvatarShip);
+        Assert.NotNull(_s.ProfileSettings(_dare.Id).AvatarShip);
     }
 
     [Fact]

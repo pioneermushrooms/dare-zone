@@ -8,11 +8,14 @@
 <link rel="stylesheet" href="/arena/header.css">
 <script src="/arena/header.js" defer></script>
 <link rel="stylesheet" href="/arena/tiles.css">
+<link rel="stylesheet" href="/arena/lvz.css">
 <link rel="stylesheet" href="/arena/chat.css">
 <script src="/arena/lvl.js" defer></script>
 <script src="/arena/dialogs.js" defer></script>
 <script src="/arena/tiles.js" defer></script>
 <script src="/arena/tile-studio.js" defer></script>
+<script src="/arena/lvz.js" defer></script>
+<script src="/arena/lvz-studio.js" defer></script>
 <script src="/arena/app.js" defer></script>
 <script type="module" src="/arena/chat.js"></script>
 </head>
@@ -34,6 +37,7 @@
     <a href="#overview" data-view="overview" data-needs="arena">Overview</a>
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#tiles" data-view="tiles" data-needs="arena">Tile Editor</a>
+    <a href="#lvz" data-view="lvz" data-needs="arena">LVZ</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Graphics</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
     <a href="#messages" data-view="messages" data-needs="arena">Messages</a>
@@ -71,6 +75,17 @@
         <button type="submit" class="hot">Make it</button>
       </form>
       <p class="msg" id="reqmsg"></p>
+      <div id="morebox" hidden>
+        <h3>Request more arenas</h3>
+        <p class="dim" id="morestate"></p>
+        <form class="stack" id="moreform">
+          <label>How many in all? <input type="number" id="morewanted" min="11" max="200" step="1" required></label>
+          <label>What are they for? (optional) <input type="text" id="morereason" maxlength="300" autocomplete="off">
+            <span class="hint">Staff see this with your request.</span></label>
+          <button type="submit">Ask staff</button>
+        </form>
+        <p class="msg" id="moremsg"></p>
+      </div>
       <div id="staffcreate" hidden>
         <h3>Staff: make one for someone else</h3>
         <p class="dim">The owner needs a Foundation account.</p>
@@ -194,7 +209,25 @@
     <section data-view="settings" hidden>
       <p class="kicker">Settings</p>
       <h2>Rules</h2>
-      <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>.</p>
+      <p class="dim">Written to your arena only (at most 20 changes a minute). Most apply at once; some need <b>?recyclearena</b>. Point at a setting's name, or tap it, for what it does.</p>
+      <div class="setsbar">
+        <label class="drop setdrop" id="setdrop" tabindex="0" role="button" aria-describedby="setdrophint">
+          <b>Drop a settings file</b> or click to choose one
+          <span class="dim" id="setdrophint">An arena.conf, .cfg, .ini or Continuum .set. You see what would change before anything is applied.</span>
+          <input type="file" id="setfile" accept=".conf,.cfg,.ini,.set,.txt" hidden>
+        </label>
+        <div class="setsets">
+          <label for="setlist" class="setslabel">Your settings sets</label>
+          <div class="row">
+            <select id="setlist"><option value="">No sets yet</option></select>
+            <button type="button" class="small" id="setapply" disabled>Apply…</button>
+            <button type="button" class="small ghost" id="setrename" disabled>Rename</button>
+            <button type="button" class="small ghost" id="setdelete" disabled>Delete</button>
+          </div>
+          <button type="button" class="small" id="setsave">Save these settings as a set…</button>
+        </div>
+      </div>
+      <p class="msg" id="setsmsg" role="status"></p>
       <div class="settabs" id="settabs" role="tablist" aria-label="Setting groups"></div>
       <input type="search" class="filter" id="filter" placeholder="Filter, e.g. warbird bulletspeed" aria-label="Filter settings">
       <p class="msg" id="setmsg"></p>
@@ -223,6 +256,14 @@
       <h2>Tilesets</h2>
       <p class="dim">The tileset is the picture sheet a map draws its walls from. Edit this arena's, or one of yours, keep it in Your tilesets, and put it into a map: the map lands in Your maps as a draft, to Apply on the Map tab when it's ready. <a href="/arena/tiles" id="tilespage">Open on its own page</a>.</p>
       <div id="tilestudio"></div>
+    </section>
+
+    <section data-view="lvz" class="lvzview" hidden>
+      <p class="kicker">LVZ</p>
+      <h2>Overlays (.lvz)</h2>
+      <p class="dim">An .lvz carries pictures for the game to show: map objects, placed on the map (decoration that doesn't block anything), and screen objects, placed on the player's screen. Edit one of this arena's, or start one; keep drafts in Your LVZ, and Publish when it's ready. Players get it when the arena restarts.</p>
+      <div id="lvzstudio"></div>
+      <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>
     </section>
 
     <section data-view="crew" hidden>
@@ -254,6 +295,50 @@
     <button type="button" class="ghost" id="gfxagain" disabled>Again</button>
     <button type="button" class="ghost" data-close>Cancel</button>
   </div>
+</dialog>
+
+<dialog id="diffdlg" class="diffdlg" aria-labelledby="difftitle">
+  <form method="dialog" id="diffform">
+    <h3 id="difftitle">Apply settings</h3>
+    <p class="dim" id="diffsub"></p>
+    <label class="dlg-field difftarget">Apply to <select id="difftarget"></select></label>
+    <div class="diffwrap">
+      <table class="diff">
+        <thead><tr><th><input type="checkbox" id="diffall" aria-label="Apply every change"></th><th>Setting</th><th>Now</th><th>New</th></tr></thead>
+        <tbody id="diffrows"></tbody>
+      </table>
+    </div>
+    <details id="diffsame" hidden><summary id="diffsamesum"></summary><ul class="difflist" id="diffsamelist"></ul></details>
+    <details id="diffskipped" hidden><summary id="diffskipsum"></summary>
+      <p class="dim">Only settings arena owners may change are applied; these aren't, or their values aren't allowed.</p>
+      <ul class="difflist" id="diffskiplist"></ul></details>
+    <p class="msg" id="diffmsg" role="status"></p>
+    <div class="row dlg-actions">
+      <button type="submit" class="hot" id="diffapply">Apply</button>
+      <button type="button" class="ghost" id="diffsaveset">Save as a set…</button>
+      <button type="button" class="ghost" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="savesetdlg" class="savesetdlg" aria-labelledby="savesettitle">
+  <form method="dialog" id="savesetform">
+    <h3 id="savesettitle">Save as a settings set</h3>
+    <p class="dim" id="savesetsub"></p>
+    <label class="dlg-field">Name <input id="savesetname" maxlength="40" required autocomplete="off"></label>
+    <fieldset class="dlg-field choice" id="savesetwhich">
+      <legend>Which settings</legend>
+      <label class="radio"><input type="radio" name="savesetwhich" value="changed" checked> <span>Changed from the default (<span id="savesetcount-changed"></span>)</span></label>
+      <label class="radio"><input type="radio" name="savesetwhich" value="shown"> <span>Shown by the tab and filter (<span id="savesetcount-shown"></span>)</span></label>
+      <label class="radio"><input type="radio" name="savesetwhich" value="all"> <span>Every setting with a value (<span id="savesetcount-all"></span>)</span></label>
+    </fieldset>
+    <label class="dlg-field">Save as <select id="savesetreplace"></select></label>
+    <p class="msg" id="savesetmsg" role="status"></p>
+    <div class="row dlg-actions">
+      <button type="submit" class="hot">Save</button>
+      <button type="button" class="ghost" data-close>Cancel</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="enterdlg" aria-labelledby="entertitle">

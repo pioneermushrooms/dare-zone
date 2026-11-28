@@ -3,8 +3,8 @@ using SS.Core.ComponentInterfaces;
 
 namespace Dare.Arenas;
 
-// Pilot names on one email (the home page's pilot menu and the account page): list, switch, add,
-// delete. A deleted name first gives up everything it has in the arena system.
+// Pilot names on one account (the home page's pilot menu and the account page): list, switch, add,
+// delete. A deleted name's arenas stay with the account (shown under another of its names).
 public sealed partial class ArenaOwnership
 {
     /// <summary>What each of the signed-in pilot's names owns, for the delete prompt. Mainloop.</summary>
@@ -16,10 +16,11 @@ public sealed partial class ArenaOwnership
 
     /// <summary>
     /// Deletes the name <paramref name="name"/> of the pilot signed in as <paramref name="accountId"/>.
-    /// Each arena or draft it owns goes to the name <paramref name="keepWith"/> gives (one of the
-    /// pilot's other names) or is archived; then the account goes and the name is free. Mainloop.
+    /// Its arenas, drafts, co-mod places and invites stay with the account: they move to the
+    /// signed-in name (or, when that is the one going, the account's first other name). Saved items
+    /// are the account's and stay too. Then the name's row goes and the name is free. Mainloop.
     /// </summary>
-    internal Result DeletePilotName(long accountId, string name, IReadOnlyDictionary<string, string> keepWith, out Account? deleted)
+    internal Result DeletePilotName(long accountId, string name, out Account? deleted)
     {
         deleted = null;
         var pilots = Accounts.PilotsOf(accountId);
@@ -29,34 +30,21 @@ public sealed partial class ArenaOwnership
         // a zone staff name keeps its powers by name: freeing it would hand them to whoever claims it next
         if (StaffConf.IsGlobalStaff(ReadStaffConf(), target.Name))
             return new Result(false, $"'{target.Name}' is a zone staff name; ask a sysop to remove it from staff first.");
-        var others = pilots.Where(a => a.Id != target.Id).Select(a => a.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var keep = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (arena, to) in keepWith)
-        {
-            if (string.IsNullOrWhiteSpace(to)) continue;
-            if (!others.Contains(to)) return new Result(false, $"'{to}' isn't one of your other names.");
-            keep[arena] = others.First(o => string.Equals(o, to, StringComparison.OrdinalIgnoreCase));
-        }
+        var heir = pilots.FirstOrDefault(a => a.Id == accountId && a.Id != target.Id) ?? pilots.First(a => a.Id != target.Id);
 
-        var released = Store.ReleasePilot(target.Name, target.Name, keep, out var archived);
-        if (!released.Ok) return released;
-        foreach (var arena in archived)
-            SendPlayersOut(arena, $"Arena '{arena}' was archived: its owner deleted their pilot name.");
-        foreach (var arena in keep.Keys)
-        {
-            RefreshGrantsIn(arena);
-            RefreshGrantsIn(DraftRules.DraftOf(arena));
-        }
-
+        var touched = Store.HandOverName(target.Name, heir.Name, target.Name);
         var result = Accounts.DeletePilot(accountId, target.Name, out deleted);
         if (!result.Ok)
         {
-            Log(LogLevel.Error, $"Pilot name '{target.Name}' gave up its arenas but could not be deleted: {result.Message}");
+            Log(LogLevel.Error, $"Pilot name '{target.Name}' handed its arenas to {heir.Name} but could not be deleted: {result.Message}");
             return result;
         }
+        foreach (var arena in touched)
+            RefreshGrantsIn(arena);
         WebAuth.RevokeAllFor(target.Name);
-        Log(LogLevel.Info, $"Pilot name '{target.Name}' deleted by its owner; kept {keep.Count}, archived {archived.Count}.");
-        return result;
+        Log(LogLevel.Info, $"Pilot name '{target.Name}' deleted by its owner; {touched.Count} arena entries now show {heir.Name}.");
+        return touched.Count == 0 ? result
+            : new Result(true, $"{result.Message} Its arenas stay yours; they now show {heir.Name}.");
     }
 
     private static string? ReadStaffConf()

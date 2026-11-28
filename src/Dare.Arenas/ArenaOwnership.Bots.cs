@@ -525,7 +525,7 @@ public sealed partial class ArenaOwnership
         var (action, rest) = SplitFirst(parameters);
         bool isOwner = player.Flags.Authenticated && player.Name is not null && player.Arena is { } here &&
             Store.Get(here.BaseName) is { Status: ArenaStatus.Active } mine &&
-            string.Equals(mine.Owner, player.Name, StringComparison.OrdinalIgnoreCase);
+            Store.SameAccount(mine.Owner, player.Name);
         if (!isOwner)
         {
             SayWhoIsBot(player);

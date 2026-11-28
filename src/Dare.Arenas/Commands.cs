@@ -476,8 +476,12 @@ public sealed partial class ArenaOwnership
 
     [CommandHelp(
         Targets = CommandTarget.None,
-        Args = "<Section:Key>",
-        Description = "Shows the current value of one of your arena's settings (owner or co-mod, in your arena).")]
+        Args = "<Section:Key> | <word>",
+        Description = """
+            Shows one of your arena's settings: its value, what it accepts, its default and what it
+            does (owner or co-mod, in your arena). With a word instead, e.g. ?arenaget bullet, lists
+            the settings whose name contains it.
+            """)]
     private void Command_arenaget(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
     {
         if (!TryArenaRole(player, ownerOnly: false, out _, out var arenaName, out _)) return;
@@ -485,12 +489,13 @@ public sealed partial class ArenaOwnership
         var (setting, _) = SplitFirst(parameters);
         if (setting.Length == 0)
         {
-            Reply(player, "Usage: ?arenaget <Section:Key>   e.g. ?arenaget Warbird:BulletSpeed");
+            Reply(player, "Usage: ?arenaget <Section:Key> or ?arenaget <word>   e.g. ?arenaget Warbird:BulletSpeed, ?arenaget bullet");
             return;
         }
 
         // the arena's own file, as the web page shows it (and as ?arenaset writes it)
-        WithOwnConfig(player, arenaName, ownerOnly: false, cfg => ReadSetting(cfg, setting));
+        WithOwnConfig(player, arenaName, ownerOnly: false,
+            cfg => setting.Contains(':') ? ReadSetting(cfg, setting) : SearchSettings(cfg, setting));
     }
 
     [CommandHelp(

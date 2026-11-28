@@ -401,6 +401,8 @@ public sealed partial class ArenaOwnership : IArenaAuthorizationAdvisor
                 players = a.Status == ArenaStatus.Active ? counts.GetValueOrDefault(a.Name) : 0,
             }),
             maxReason = MaxPitchLength,
+            limitRequests = approve ? LimitRequestsForStaff() : null,
+            defaultArenaLimit = ArenaStore.MaxArenasPerAccount,
         };
     }
 

@@ -101,43 +101,6 @@ public sealed class PilotNamesTests : IDisposable
     }
 
     [Fact]
-    public void a_deleted_name_gives_up_everything_and_nobody_inherits_it()
-    {
-        Assert.True(_a.Create("keepme", "staff", "nerd", _ => false, () => null).Ok);
-        Assert.True(_a.Create("dropme", "staff", "nerd", _ => false, () => null).Ok);
-        Assert.True(_a.Create("friend", "staff", "pal", _ => false, () => null).Ok);
-        Assert.True(_a.AddCoMod("friend", "pal", "nerd").Ok);
-
-        var keep = new Dictionary<string, string> { ["keepme"] = "dare" };
-        var r = _a.ReleasePilot("nerd", "nerd", keep, out var archived);
-        Assert.True(r.Ok, r.Message);
-
-        Assert.Equal("dare", _a.Get("keepme")!.Owner);
-        Assert.Equal(ArenaStatus.Active, _a.Get("keepme")!.Status);
-        Assert.Equal(ArenaStatus.Archived, _a.Get("dropme")!.Status);
-        Assert.Equal(ArenaStore.DeletedOwner("nerd"), _a.Get("dropme")!.Owner);
-        Assert.Contains("dropme", archived);
-        Assert.DoesNotContain("nerd", _a.Get("friend")!.CoMods);
-
-        // a newcomer who claims the name owns nothing and holds no roles
-        Assert.Empty(_a.Holdings("nerd").Arenas);
-        Assert.Null(_a.RoleIn("dropme", "nerd"));
-        Assert.Null(_a.RoleIn("friend", "nerd"));
-    }
-
-    [Fact]
-    public void keeping_an_arena_with_a_name_at_its_limit_changes_nothing()
-    {
-        for (var i = 0; i < ArenaStore.MaxPerPilot; i++)
-            Assert.True(_a.Create($"full{(char)('a' + i)}x", "staff", "dare", _ => false, () => null).Ok);
-        Assert.True(_a.Create("mine", "staff", "nerd", _ => false, () => null).Ok);
-        var r = _a.ReleasePilot("nerd", "nerd", new Dictionary<string, string> { ["mine"] = "dare" }, out _);
-        Assert.False(r.Ok);
-        Assert.Equal("nerd", _a.Get("mine")!.Owner);
-        Assert.Equal(ArenaStatus.Active, _a.Get("mine")!.Status);
-    }
-
-    [Fact]
     public void only_global_staff_lines_count_as_staff()
     {
         const string conf = "[(global)]\nBigMod = mod\n[skyrace]\nnerd = arenaowner\n[General]\nx = 1\n";

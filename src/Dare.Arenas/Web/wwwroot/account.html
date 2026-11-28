@@ -28,7 +28,7 @@
 <details class="panel fold" name="acctfold" id="pilots" hidden>
   <summary><h2>Pilot names</h2><span class="dim" id="pilotssum">Every name on your recovery email.</span></summary>
   <div class="foldbody">
-  <p class="dim" id="pilotsnote">Fly as any of them; each keeps its own keys and macros.</p>
+  <p class="dim" id="pilotsnote">Fly as any of them. They are one account: the same saved ships, armory, graphics, maps and arenas. Each name keeps its own keys, macros and what it has equipped.</p>
   <ul class="list" id="pilotlist"></ul>
   <div id="deletebox" hidden>
     <h3 id="deletetitle"></h3>
@@ -89,6 +89,22 @@
   <div class="row"><button type="button" class="small" id="macroadd">Add a macro</button></div>
   <div class="row gap"><button type="button" id="keyssave">Save</button><button type="button" class="ghost" id="keysdefault">Back to defaults</button></div>
   <p class="msg" id="keysmsg"></p>
+  </div>
+</details>
+<details class="panel fold" name="acctfold" id="loadoutbox" hidden>
+  <summary><h2>Copy a setup between names</h2><span class="dim">Each name keeps its own setup; copy one name's onto another.</span></summary>
+  <div class="foldbody">
+  <p class="dim">Your ships, armory and graphics belong to your account, so every name can use them. What each name has equipped, and its keys and macros, is its own. Copying replaces what the other name had.</p>
+  <div class="row gap"><label class="inline">From <select id="loadfrom" aria-label="Copy from"></select></label>
+    <label class="inline">onto <select id="loadto" aria-label="Copy onto"></select></label></div>
+  <div class="row gap" id="loadparts">
+    <label class="inline"><input type="checkbox" value="ships" checked> Ships in slots</label>
+    <label class="inline"><input type="checkbox" value="armory" checked> Armory equipped</label>
+    <label class="inline"><input type="checkbox" value="graphics" checked> Own graphics</label>
+    <label class="inline"><input type="checkbox" value="keys" checked> Keys and macros</label>
+  </div>
+  <div class="row"><button type="button" id="loadgo">Copy</button></div>
+  <p class="msg" id="loadmsg"></p>
   </div>
 </details>
 </main>

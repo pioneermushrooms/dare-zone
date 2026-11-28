@@ -124,6 +124,7 @@ public sealed partial class ArenaOwnership : IModule
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         LoadVoice();
         RegisterCommands();
+        LoadQuickfix(broker);
         RegisterStaff(broker);
         LoadZoneList(broker);
         LoadWebChat(broker);
@@ -144,6 +145,7 @@ public sealed partial class ArenaOwnership : IModule
         UnloadWebChat(broker);
         UnloadZoneList(broker);
         UnregisterStaff(broker);
+        UnloadQuickfix(broker);
         UnregisterCommands();
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
         CloseConfs();

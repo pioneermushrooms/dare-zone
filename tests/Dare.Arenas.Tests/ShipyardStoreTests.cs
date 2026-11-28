@@ -76,21 +76,28 @@ public sealed class ShipyardStoreTests : IDisposable
     }
 
     [Fact]
-    public void ships_are_the_pilots_own_and_bounded()
+    public void ships_are_the_accounts_own_and_bounded()
     {
         Assert.True(_s.AddPilot(_dare.Id, "nerd", out var nerd).Ok);
+        Assert.True(_s.CreateWithoutEmail("stranger", "hunter22pw", out var stranger).Ok);
         Assert.True(_s.AddShipyardShip(_dare.Id, "mine", "random", Png(360, 144), out var mine).Ok);
-        Assert.Null(_s.ShipyardSheet(nerd!.Id, mine));
-        Assert.False(_s.SetShipyardSlot(nerd.Id, 1, mine).Ok);
-        Assert.False(_s.RemoveShipyardShip(nerd.Id, mine).Ok);
+        // every name of the account sees and uses it; another account doesn't
+        Assert.NotNull(_s.ShipyardSheet(nerd!.Id, mine));
+        Assert.True(_s.SetShipyardSlot(nerd.Id, 1, mine).Ok);
+        Assert.Equal(0, _s.Shipyard(_dare.Id).Slots[0]); // slots are per name
+        Assert.Null(_s.ShipyardSheet(stranger!.Id, mine));
+        Assert.False(_s.SetShipyardSlot(stranger.Id, 1, mine).Ok);
+        Assert.False(_s.RemoveShipyardShip(stranger.Id, mine).Ok);
         Assert.False(_s.AddShipyardShip(_dare.Id, "x", "stolen", Png(360, 144), out _).Ok);
 
         for (var i = 1; i < AccountStore.MaxShipyardShips; i++)
-            Assert.True(_s.AddShipyardShip(_dare.Id, $"s{i}", "random", Png(360, 144), out _).Ok);
-        Assert.False(_s.AddShipyardShip(_dare.Id, "one too many", "random", Png(360, 144), out _).Ok);
+            Assert.True(_s.AddShipyardShip(i % 2 == 0 ? _dare.Id : nerd.Id, $"s{i}", "random", Png(360, 144), out _).Ok);
+        Assert.False(_s.AddShipyardShip(nerd.Id, "one too many", "random", Png(360, 144), out _).Ok); // the limit is the account's
 
-        Assert.True(_s.AddShipyardShip(nerd.Id, "n", "random", Png(360, 144), out _).Ok);
-        Assert.True(_s.DeletePilot(_dare.Id, "nerd", out _).Ok);
-        Assert.Empty(_s.Shipyard(nerd.Id).Ships);
+        // deleting a name keeps the account's ships; removing a ship clears it from every name's slots
+        Assert.True(_s.DeletePilot(nerd.Id, "dare", out _).Ok);
+        Assert.Equal(AccountStore.MaxShipyardShips, _s.Shipyard(nerd.Id).Ships.Count);
+        Assert.True(_s.RemoveShipyardShip(nerd.Id, mine).Ok);
+        Assert.Equal(0, _s.Shipyard(nerd.Id).Slots[0]);
     }
 }
