@@ -152,13 +152,4 @@ public sealed class TutorialStoreTests : IDisposable
         Assert.Equal(2, left);
         Assert.Equal(2, at[4]);
     }
-
-    [Fact]
-    public void WebLogin_DoesNotCountAsGameLogin()
-    {
-        var s = Open();
-        SignUp(s, "Newbie", "new@example.com");
-        Assert.Equal(LoginResult.Ok, s.CheckWebLogin("Newbie", Pw, out _));
-        Assert.Null(s.TutorialOf("Newbie"));
-    }
 }

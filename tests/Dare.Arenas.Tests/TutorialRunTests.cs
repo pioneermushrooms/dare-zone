@@ -123,6 +123,45 @@ public class TutorialRunTests
         Assert.Equal(1, run.StepIndex);
     }
 
+    // A run whose bot names ran short places fewer bots than the script wants: the swarm checks follow the bots placed.
+    [Fact] public void KillAll_Full_NeedsOnlyTheSwarmBotsPlaced()
+    {
+        var s = Script(Step("k", 1, new(CheckKind.KillAll), cast: [Target, Swarm, Swarm, Swarm, Swarm, Swarm]), Step("n", 1, new(CheckKind.None)));
+        var run = new TutorialRun(s, () => DateTimeOffset.UnixEpoch, false, placed: [Target, Swarm, Swarm]);
+        run.Start();
+        run.Handle(new Killed("swarm"));
+        Assert.Equal(0, run.StepIndex);
+        run.Handle(new Killed("swarm"));
+        Assert.Equal(1, run.StepIndex);
+    }
+
+    // With no bot to shoot, a kill step moves on by itself once its lines have shown (the zone ticks only then).
+    [Theory]
+    [InlineData(CheckKind.KillAll)]
+    [InlineData(CheckKind.Kills)]
+    public void KillStep_NoBotsPlaced_MovesOnAtTheNextTick(CheckKind kind)
+    {
+        var s = Script(Step("k", 1, new(kind, Count: 1), cast: [Target, Swarm], lean: [Swarm]), Step("n", 1, new(CheckKind.Rotate)));
+        foreach (var lean in new[] { false, true })
+        {
+            var run = new TutorialRun(s, () => DateTimeOffset.UnixEpoch, lean, placed: []);
+            run.Start();
+            run.Handle(new Fired("bullet"));
+            Assert.Equal(0, run.StepIndex);
+            run.Handle(new Tick());
+            Assert.Equal(1, run.StepIndex);
+        }
+    }
+
+    [Fact] public void KillStep_BotsPlaced_DoesNotMoveOnByItself()
+    {
+        var s = Script(Step("k", 1, new(CheckKind.Kills, Count: 1), cast: [Target], lean: [Target]), Step("n", 1, new(CheckKind.Rotate)));
+        var run = new TutorialRun(s, () => DateTimeOffset.UnixEpoch, true, placed: [Target]);
+        run.Start();
+        run.Handle(new Tick());
+        Assert.Equal(0, run.StepIndex);
+    }
+
     [Fact] public void PauseStep_AdvancesAfterPause()
     {
         var (run, clock) = Started(startStep: 3);

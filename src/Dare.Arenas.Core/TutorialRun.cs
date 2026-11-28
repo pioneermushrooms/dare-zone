@@ -34,7 +34,13 @@ public sealed record Finished : TutorialEffect;
 /// One player's walk through a <see cref="TutorialScript"/>. Pure: feed it events, apply the effects it returns.
 /// Dying never rewinds a step. Reach checks use Euclidean tile distance.
 /// </summary>
-public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> clock, bool lean, int startStep = 0)
+/// <param name="placed">
+/// The run's bots as placed (<see cref="TutorialCast.WholeCast"/>, cut short when bot names ran out); null when every
+/// bot the script wants is there. The kill checks count only bots that were placed: a kill step with none to shoot
+/// moves on at the next <see cref="Tick"/>, which the zone sends only once the step's lines have shown.
+/// </param>
+public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> clock, bool lean, int startStep = 0,
+    IReadOnlyList<CastLine>? placed = null)
 {
     private static readonly TimeSpan SkipPromptEvery = TimeSpan.FromSeconds(60);
     private const int FullTurn = 40;
@@ -106,11 +112,12 @@ public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> cloc
             case CheckKind.Kills:
                 if (e is Killed) _kills++;
                 return _kills >= c.Count
-                    || (e is Tick && c.OrAfterSeconds > 0 && elapsed >= TimeSpan.FromSeconds(c.OrAfterSeconds));
+                    || (e is Tick && c.OrAfterSeconds > 0 && elapsed >= TimeSpan.FromSeconds(c.OrAfterSeconds))
+                    || (e is Tick && NoneToShoot(_ => true));
             case CheckKind.KillAll:
                 if (e is Killed { Role: "swarm" }) _swarmKills++;
                 var need = SwarmNeeded();
-                return need > 0 && _swarmKills >= need;
+                return need > 0 ? _swarmKills >= need : e is Tick && NoneToShoot(c => c.Role == "swarm");
             case CheckKind.SafeZone: return e is EnteredSafe;
             case CheckKind.Green: return e is PickedGreen;
             case CheckKind.PublicChat: return e is SaidPublic;
@@ -123,8 +130,21 @@ public sealed class TutorialRun(TutorialScript script, Func<DateTimeOffset> cloc
 
     private int SwarmNeeded()
     {
+        var swarm = Flying(placedOnly: true).Count(c => c.Role == "swarm");
+        return lean ? Math.Min(1, swarm) : swarm;
+    }
+
+    /// <summary>The script has the step fly bots of this kind, but none of them was placed.</summary>
+    private bool NoneToShoot(Func<CastLine, bool> kind) =>
+        Flying(placedOnly: false).Any(kind) && !Flying(placedOnly: true).Any(kind);
+
+    /// <summary>The current step's bots that are in the game (not spectating): as the script has them, or only those placed.</summary>
+    private IEnumerable<CastLine> Flying(bool placedOnly)
+    {
         var step = script.Steps[StepIndex];
-        return lean ? Math.Min(1, step.LeanCast.Count(c => c.Role == "swarm")) : step.Cast.Count(c => c.Role == "swarm");
+        var cast = lean ? step.LeanCast : step.Cast;
+        var now = placedOnly && placed is not null ? TutorialCast.ForStep(placed, cast, lean) : cast;
+        return now.Where(c => c.Seat == "in");
     }
 
     // Shortest-way turning between consecutive readings (0-39 wraps); the first reading is only a baseline.

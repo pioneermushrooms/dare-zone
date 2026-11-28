@@ -56,6 +56,8 @@ public sealed partial class ArenaOwnership
     /// <summary>Time between two mentor lines: one LVZ line shows at a time, so a step's lines take turns.</summary>
     private static readonly TimeSpan LinePace = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan SkipPopupShown = TimeSpan.FromSeconds(10);
+    /// <summary>A trip not arrived by then has failed (the move to the training arena didn't happen): its slot is freed.</summary>
+    private static readonly TimeSpan TripTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>One player's tutorial, from arriving in the training arena until it ends.</summary>
     private sealed class TutorialSession
@@ -82,6 +84,8 @@ public sealed partial class ArenaOwnership
         public bool EngineOff;
         public bool BeaconOn;
         public short? LineShown;
+        /// <summary>The mentor line shown last, for a client that says it shows hints after the run began.</summary>
+        public Say? LastSay;
         public readonly Queue<Say> Lines = new();
         public DateTimeOffset NextLineAt;
         public DateTimeOffset? SkipPopupUntil;
@@ -93,7 +97,7 @@ public sealed partial class ArenaOwnership
     }
 
     /// <summary>A player on the way to a training arena, and how the run there starts.</summary>
-    private sealed record TutorialTrip(string Arena, int StartStep, string? Origin, bool Replay, bool Records);
+    private sealed record TutorialTrip(string Arena, int StartStep, string? Origin, bool Replay, bool Records, DateTimeOffset Sent);
 
     /// <summary>A player who left a training arena mid-run without ?leave: ?go elsewhere (left) or a disconnect (dropout).</summary>
     private sealed record TutorialExit(string Name, bool Records, string Arena, string Step);
@@ -192,7 +196,7 @@ public sealed partial class ArenaOwnership
             }
             // every account's first game entry is noted, whatever the tutorial did (or whether it is on): after
             // Decide above, so a new account's missing row was seen first; never again a newcomer after this
-            if (first && player.Name is { } name && TutorialKindOf(player, out _) == EntryKind.Account)
+            if (player.Name is { } name && TutorialEntry.IsGameLogin(TutorialKindOf(player, out _), player.IsStandard, first))
                 _accounts?.NoteGameLogin(name);
             return;
         }
@@ -246,10 +250,19 @@ public sealed partial class ArenaOwnership
         {
             if (_tutorialTrips.Remove(player, out var trip) && string.Equals(trip.Arena, arena.Name, StringComparison.OrdinalIgnoreCase))
                 BeginTutorial(player, arena, trip);
+            else if (!TutorialEntry.MayStayInTraining(TutorialKindOf(player, out _), ownRun: false,
+                staff: _capabilityManager.HasCapability(player, AdminCapability)))
+            {
+                // someone else's tutorial (?go #training1): back to the public arena
+                Reply(player, "Training arenas are for the tutorial. Type ?tutorial to play it.");
+                _arenaManager.SendToArena(player, "", 0, 0);
+            }
             return;
         }
         _tutorialTrips.Remove(player); // sent to a training arena but ended up elsewhere
 
+        // only a login's first entry can start the tutorial (TutorialEntry.Decide): no store query for the rest
+        if (!first) return;
         var (enabled, _, max) = TutorialSettings();
         if (!enabled || player.Name is not { } name || !player.IsStandard) return;
         var kind = TutorialKindOf(player, out var guestSaysDone);
@@ -262,8 +275,15 @@ public sealed partial class ArenaOwnership
         {
             case TutorialStart.Start:
             case TutorialStart.Resume:
-                var step = act > 0 ? TutorialRun.FirstStepOfAct(_tutorialScript!, act) : 0;
-                SendToTutorial(player, Math.Max(step, 0), arena.Name, replay: false, records: kind == EntryKind.Account);
+                var step = Math.Max(act > 0 ? TutorialRun.FirstStepOfAct(_tutorialScript!, act) : 0, 0);
+                if (kind == EntryKind.Account && _accounts is { } accounts)
+                {
+                    // the run has a step from the start, so a drop-out on the way there is resumed next time, not
+                    // taken for an account that was only offered the tutorial (TutorialEntry.Decide)
+                    accounts.NoteGameLogin(name);
+                    accounts.SetTutorialProgress(name, step + 1, _tutorialScript!.Steps[step].Act);
+                }
+                SendToTutorial(player, step, arena.Name, replay: false, records: kind == EntryKind.Account);
                 break;
             case TutorialStart.Offer:
                 // a Dare client says it shows hints right after entering; give it a moment to say so
@@ -297,7 +317,7 @@ public sealed partial class ArenaOwnership
 
         var arena = TutorialCast.Allocate(inUse);
         _tutorialOffers.Remove(player);
-        _tutorialTrips[player] = new(arena, startStep, origin, replay, records);
+        _tutorialTrips[player] = new(arena, startStep, origin, replay, records, DateTimeOffset.UtcNow);
         Log(LogLevel.Info, $"Tutorial: {player.Name} to [{arena}] at step {startStep + 1}{(replay ? " (replay)" : "")}.");
         _arenaManager.SendToArena(player, arena, 0, 0);
     }
@@ -326,7 +346,8 @@ public sealed partial class ArenaOwnership
             Player = player,
             Name = player.Name!,
             Arena = arena.Name,
-            Run = new TutorialRun(script, () => DateTimeOffset.UtcNow, lean, trip.StartStep),
+            // the kill checks follow the bots actually placed (fewer when names ran short; none: those steps move on)
+            Run = new TutorialRun(script, () => DateTimeOffset.UtcNow, lean, trip.StartStep, placed: whole),
             Lean = lean,
             Replay = trip.Replay,
             Origin = trip.Origin,
@@ -376,9 +397,9 @@ public sealed partial class ArenaOwnership
         {
             var off = new List<short>(TutorialLvz.AllCovers)
             {
-                TutorialLvz.MentorBox, TutorialLvz.Portrait, TutorialLvz.PortraitTalking,
-                TutorialLvz.SkipPopup, TutorialLvz.TryPopup, TutorialLvz.Beacon,
+                TutorialLvz.MentorBox, TutorialLvz.Portrait, TutorialLvz.PortraitTalking, TutorialLvz.TryPopup, TutorialLvz.Beacon,
             };
+            off.AddRange(SkipPopupObjects());
             if (s.LineShown is { } line) off.Add(line);
             Toggle(player, off, false);
         }
@@ -468,6 +489,12 @@ public sealed partial class ArenaOwnership
             var now = DateTimeOffset.UtcNow;
             foreach (var (player, due) in _tutorialOffers.ToArray())
                 if (now >= due) SendOffer(player);
+            foreach (var (player, trip) in _tutorialTrips.ToArray())
+                if (now - trip.Sent > TripTimeout)
+                {
+                    _tutorialTrips.Remove(player);
+                    Log(LogLevel.Warn, $"Tutorial: {player.Name} never arrived in [{trip.Arena}]; its place is freed.");
+                }
 
             foreach (var s in _tutorials.Values.ToArray())
             {
@@ -486,11 +513,7 @@ public sealed partial class ArenaOwnership
                 // no Tick while the mentor still has lines queued: a step that moves on by itself can't leave before its
                 // lines have shown (its pause still counts from the step's start; checks the player meets still move on)
                 if (s.Lines.Count == 0) Feed(s, new Tick());
-                if (s.SkipPopupUntil is { } until && now >= until)
-                {
-                    s.SkipPopupUntil = null;
-                    Toggle(s.Player, [TutorialLvz.SkipPopup], false);
-                }
+                if (s.SkipPopupUntil is { } until && now >= until) HideSkipPopup(s);
             }
         }
         catch (Exception ex)
@@ -522,11 +545,7 @@ public sealed partial class ArenaOwnership
             if (e is Skip) s.Skips++;
             RecordProgress(s);
             LogStep(s);
-            if (s.SkipPopupUntil is not null)
-            {
-                s.SkipPopupUntil = null;
-                Toggle(s.Player, [TutorialLvz.SkipPopup], false);
-            }
+            if (s.SkipPopupUntil is not null) HideSkipPopup(s);
         }
     }
 
@@ -605,7 +624,7 @@ public sealed partial class ArenaOwnership
                 toggles.Add(new(TutorialLvz.Portrait, true));
                 toggles.Add(new(line, true));
             }
-            if (s.SkipPopupUntil is not null) toggles.Add(new(TutorialLvz.SkipPopup, true));
+            if (s.SkipPopupUntil is not null) toggles.AddRange(SkipPopupObjects().Select(id => new LvzObjectToggle(id, true)));
         }
         Toggle(s.Player, toggles);
     }
@@ -620,6 +639,7 @@ public sealed partial class ArenaOwnership
         s.NextLineAt = now + LinePace;
         // the chat copy, for everyone, so the line is in the log
         _chat.SendMessage(player, $"{script.MentorName}: {TutorialScript.ForContinuum(say.Line.Text, script.ContinuumKeys)}");
+        s.LastSay = say;
         if (_hintClients.ContainsKey(player))
         {
             _chat.SendMessage(player, TutorialHint.Say(say.Step, say.Of, say.Line.Text));
@@ -645,8 +665,38 @@ public sealed partial class ArenaOwnership
             _chat.SendMessage(s.Player, TutorialHint.PromptSkip());
             return;
         }
-        Toggle(s.Player, [TutorialLvz.SkipPopup], true);
+        Toggle(s.Player, SkipPopupObjects(), true);
         s.SkipPopupUntil = DateTimeOffset.UtcNow + SkipPopupShown;
+    }
+
+    private void HideSkipPopup(TutorialSession s)
+    {
+        s.SkipPopupUntil = null;
+        Toggle(s.Player, SkipPopupObjects(), false);
+    }
+
+    /// <summary>The skip popup's objects: its frame, and the words in it (the <c>skip_popup</c> prompt's line image).</summary>
+    private List<short> SkipPopupObjects()
+    {
+        var ids = new List<short> { TutorialLvz.SkipPopup };
+        if (_tutorialScript?.Prompts.FirstOrDefault(p => p.Id == "skip_popup") is { } line) ids.Add(TutorialLvz.Line(line));
+        return ids;
+    }
+
+    /// <summary>
+    /// A client that says it shows hints after its run began with the LVZ mentor (its ?tutorialclient came after the
+    /// wait): the LVZ mentor and popup are taken down and the current line goes to it as a hint, so it isn't shown twice.
+    /// </summary>
+    private void SwitchToHints(TutorialSession s)
+    {
+        var off = new List<short> { TutorialLvz.MentorBox, TutorialLvz.Portrait, TutorialLvz.PortraitTalking };
+        off.AddRange(SkipPopupObjects());
+        if (s.LineShown is { } line) off.Add(line);
+        Toggle(s.Player, off, false);
+        s.LineShown = null;
+        if (s.LastSay is { } say) _chat.SendMessage(s.Player, TutorialHint.Say(say.Step, say.Of, say.Line.Text));
+        if (s.SkipPopupUntil is not null) _chat.SendMessage(s.Player, TutorialHint.PromptSkip());
+        s.SkipPopupUntil = null;
     }
 
     private void Toggle(Player player, IEnumerable<short> ids, bool on) =>
@@ -856,8 +906,13 @@ public sealed partial class ArenaOwnership
         _mainloop.QueueMainWorkItem(p =>
         {
             if (p.Status is not (PlayerState.Playing or PlayerState.LoggedIn)) return;
+            var hadHints = _hintClients.ContainsKey(p);
             _hintClients[p] = 0;
-            if (_tutorials.TryGetValue(p, out var s) && !s.Started) StartRun(s);
+            if (_tutorials.TryGetValue(p, out var s))
+            {
+                if (!s.Started) StartRun(s);
+                else if (!hadHints) SwitchToHints(s);
+            }
             if (_tutorialOffers.ContainsKey(p)) SendOffer(p);
         }, player);
 

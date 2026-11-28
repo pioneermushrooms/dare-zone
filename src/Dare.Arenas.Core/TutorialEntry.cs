@@ -28,11 +28,29 @@ public static class TutorialEntry
         if (kind == EntryKind.Account && record is not null)
         {
             if (record.Outcome is not null || record.Dropouts >= MaxDropouts) return (TutorialStart.No, 0);
+            // no step yet: the row is from a login that only offered the tutorial (another arena first), and the
+            // account chose not to play it; only a run under way (it has a step) is picked up again
+            if (record.Step is null) return (TutorialStart.No, 0);
             return enteringPublic && capacityLeft ? (TutorialStart.Resume, record.Act ?? 0) : (TutorialStart.Offer, 0);
         }
 
         return enteringPublic && capacityLeft ? (TutorialStart.Start, 0) : (TutorialStart.Offer, 0);
     }
+
+    /// <summary>
+    /// Whether an arena entry is a game login the tutorial notes (the account is then never new again): an account's
+    /// first entry of a login, from a game client. A chat-protocol client is not one, nor are the web pages (they never
+    /// enter an arena).
+    /// </summary>
+    public static bool IsGameLogin(EntryKind? kind, bool standardClient, bool firstEntryThisLogin) =>
+        kind == EntryKind.Account && standardClient && firstEntryThisLogin;
+
+    /// <summary>
+    /// Whether someone arriving in a training arena may stay: the player whose run it is (or who is on the way to it),
+    /// the run's bots and fake players, and staff looking in. Anyone else is sent back to the public arena.
+    /// </summary>
+    public static bool MayStayInTraining(EntryKind? kind, bool ownRun, bool staff) =>
+        ownRun || staff || kind is EntryKind.Bot or EntryKind.Fake;
 
     /// <summary>The act a <c>?tutorial</c> name starts at: controls 1, swarm 2, objectives 3; null for anything else.</summary>
     public static int? ActNamed(string name) => name.Trim().ToLowerInvariant() switch
