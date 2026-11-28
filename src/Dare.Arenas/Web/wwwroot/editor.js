@@ -37,10 +37,9 @@ function signedIn() {
   const specialImg = new Map(), specialBtns = []; // Special tiles: graphic name -> loaded <img>; the buttons
   // special tiles the game draws from its graphics, not the tileset: [graphic, frame size]
   const SPECIAL_GFX = { 170: ["flag", 16], 172: ["goal", 16], 216: ["over1", 16], 217: ["over2", 32], 218: ["over3", 16], 219: ["over4", 96], 220: ["over5", 80] };
-  let flatView = false; // "Plain colours": ignore the map's tileset
   let libId = null, libName = null; // the map from "Your maps" being edited, if any
   let roleView = null; // "Show wall roles": a drawn tileset showing each tile's auto-tiling role
-  const tileset = () => roleView || (flatView ? null : (ownTileset || mapTileset || defaultTileset));
+  const tileset = () => roleView || ownTileset || mapTileset || defaultTileset; // ownTileset: the Tileset menu's preview
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
   // dirty: differs from the arena's map (Publish, the Draft tag). Changes: edits since the map was last
@@ -74,11 +73,11 @@ function signedIn() {
     const kinds = new Set();
     if (blank.size) for (let i = 0; i < N * N; i++) if (blank.has(grid[i])) { tiles++; kinds.add(grid[i]); }
     note.hidden = tiles === 0;
-    if (tiles) note.textContent = `${tiles.toLocaleString()} wall tiles (${kinds.size} kinds) sit in slots this map's own tileset fills with one flat colour, so they show as solid blocks here and in game. Maps like this usually come with a .lvz graphics file that draws over them: add it under Graphics. Plain colours shows them as ordinary walls.`;
+    if (tiles) note.textContent = `${tiles.toLocaleString()} wall tiles (${kinds.size} kinds) sit in slots this map's own tileset fills with one flat colour, so they show as solid blocks here and in game. Maps like this usually come with a .lvz graphics file that draws over them: add it under Graphics, or Fill them under Tileset.`;
   }
 
   function noteTileset() {
-    $("tilesetnote").textContent = ownTileset ? "Tiles from your own tileset (only in your browser)."
+    $("tilesetnote").textContent = ownTileset ? `Showing ${previewName || "another tileset"} (not kept until you Apply it).`
       : mapTileset ? "Tiles from this map's own tileset."
       : defaultTileset ? "This map has no tileset of its own: showing the standard tiles players see by default."
       : "This map has no tileset of its own: tiles show as flat colours.";
@@ -89,71 +88,147 @@ function signedIn() {
       if (r.ok) defaultTileset = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
     } catch { defaultTileset = null; }
   }
-  // Generated wall art (tileart.js): paint blank slots or restyle every wall; changes the map's
-  // own tileset, so it is published with the map.
-  // The Tile art dropdown lists whole tilesets first (the pilot's own from Your tilesets, then the
-  // standard tiles), then the generated styles; "Use in this map" calls use() below.
+  // The Tileset panel (tileart.js): a menu of whole tilesets (this map's own, Your tilesets, uploads,
+  // Defaults: the standard tiles and the generated sets), the whole sheet, Apply and ↶, and the Walls
+  // swatches: the picked tileset's wall sets, which the drawing tools and Fit pieces use.
+  let previewName = null;
+  let tileSpec = null; // the standard layout (tile-layout.json), once loaded
+  const specP = fetch("/arena/tile-layout.json", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((spec) => { tileSpec = spec; return spec; });
+  const uploads = new Map(); // "up:n" -> { canvas, name }: tilesets uploaded but not kept in Your tilesets
+  let myTilesets = [];
   const tileArt = window.TileArt && TileArt.mount($("tileart"), {
-    get: () => ({ grid, prefix, tileset: mapTileset, blank: Lvl.blankSlots(mapTileset) }),
+    get: () => ({ grid, prefix, tileset: mapTileset, shown: defaultTileset, blank: Lvl.blankSlots(mapTileset) }),
     set: (p, ts, note) => {
-      prefix = p; mapTileset = ts; ownTileset = null; flatView = false; $("flatview").checked = false;
+      prefix = p; mapTileset = ts; ownTileset = null; previewName = null;
       noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw(); say(note, true);
     },
-    use: async (value) => {
-      if (value.startsWith("ts:")) return applyMyTileset(Number(value.slice(3)));
-      if (value !== "std") return false;
-      const ok = await useStandardTiles();
-      if (!ok) say("Couldn't load the standard tiles.", false);
-      return ok;
+    preview: (canvas, name) => {
+      if (ownTileset === canvas) return;
+      ownTileset = canvas; previewName = canvas ? name : null;
+      noteTileset(); noteBlankSlots(); drawPalette(); draw();
     },
+    load: async (value) => {
+      if (value === "std") { const c = await standardTileset(); return c && { canvas: c, name: "the standard tiles" }; }
+      if (uploads.has(value)) return uploads.get(value);
+      if (value.startsWith("ts:")) return loadMyTileset(Number(value.slice(3)));
+      return null;
+    },
+    upload: uploadTileset,
+    walls: (spec, pack) => useWalls(spec, pack),
+    spec: () => specP,
     ask,
   });
-  const STANDARD = { group: "Ready-made", label: "Standard tiles", value: "std",
-    note: "The standard tiles: the wall packs' art, with plain wall interiors. Use in this map so the packs look here and in game as they're meant to." };
 
-  // "Use the standard tiles": the standard tileset (the packs' art, with plain interiors for thick
-  // walls) into this map, so the packs look here and in game as they're meant to
-  let standardTiles = null; // the standard tileset canvas, once loaded
-  async function useStandardTiles(note) {
+  // the standard tileset (the packs' art, with plain interiors, calm edges and inside corners)
+  let standardTiles = null;
+  async function standardTileset() {
     if (!standardTiles) {
       const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
-      if (!r || !r.ok || !window.TileArt) return false;
+      if (!r || !r.ok) return null;
       standardTiles = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
     }
-    if (mapTileset === standardTiles) { if (note) say(note, true); return true; } // already
-    useTileset(standardTiles, note || "This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.");
+    return standardTiles;
+  }
+  // Random maps drawn with a standard pack only look right on the standard tiles: put them in the map.
+  async function useStandardTiles(note) {
+    const ts = await standardTileset();
+    if (!ts || !window.TileArt) return false;
+    if (mapTileset !== ts) {
+      const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
+      prefix = TileArt.withTileset(prefix, rgba, ts.width, ts.height); mapTileset = ts; ownTileset = null; previewName = null;
+      noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw();
+      if (tileArt) tileArt.show();
+    }
+    if (note) say(note, true);
     return true;
   }
-  // A tileset into this map's own prefix (eLVL data kept), so it is published with the map.
-  function useTileset(ts, note) {
-    const rgba = ts.getContext("2d").getImageData(0, 0, ts.width, ts.height).data;
-    prefix = TileArt.withTileset(prefix, rgba, ts.width, ts.height); mapTileset = ts; ownTileset = null;
-    flatView = false; $("flatview").checked = false;
-    noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw();
-    say(note, true);
-  }
 
-  // Your tilesets (the tile editor's library, or kept from the Foundry), offered in the Tile art dropdown
+  // Your tilesets (/api/tilesets: the Tile editor's library, the Armory, kept from the Foundry)
+  function offerTilesets() {
+    if (!tileArt) return;
+    tileArt.setSources([
+      ...myTilesets.map((t) => ({ group: "Your tilesets", label: t.name, value: "ts:" + t.id })),
+      ...[...uploads].map(([value, u]) => ({ group: "Uploaded", label: u.name, value })),
+      { group: "Defaults", label: "Standard", value: "std" },
+    ]);
+  }
   async function loadMyTilesets() {
     const r = await fetch(API + "/tilesets", { credentials: "same-origin" }).catch(() => null);
     const j = r && r.ok ? await r.json().catch(() => null) : null;
-    const list = (j && j.tilesets) || [];
-    if (tileArt) tileArt.setSources([...list.map((t) => ({ group: "Your tilesets", label: t.name, value: "ts:" + t.id, own: true,
-      note: "One of your tilesets (drawn in the Tile Editor or kept from the Foundry). Use in this map puts it in; Publish takes it to the arena." })), STANDARD]);
-    listTileLayouts(); // the Tile art choice may have moved to one of them
+    myTilesets = (j && j.tilesets) || [];
+    offerTilesets();
   }
-  async function applyMyTileset(id) {
-    if (!window.TileArt) return false;
+  // one of Your tilesets, with its own wall roles when it has them
+  async function loadMyTileset(id) {
     const r = await fetch(API + "/tilesets/file?id=" + encodeURIComponent(id), { credentials: "same-origin" }).catch(() => null);
-    if (!r || !r.ok) { say("Couldn't open that tileset from your tilesets.", false); return false; }
+    if (!r || !r.ok) { say("Couldn't open that tileset from your tilesets.", false); return null; }
     const name = decodeURIComponent(r.headers.get("X-Tileset-Name") || "your tileset");
-    let ts;
-    try { ts = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())); } catch (err) { say(`That tileset could not be read: ${err.message}`, false); return false; }
-    if (!await ask(`Use ${name} as this map's tileset? It goes into the map you're editing; the arena keeps its current map until you Publish.`, { title: "Use this tileset?", ok: "Use it" })) return false;
-    useTileset(ts, `This map now uses ${name} (published with it). Publish to put it in the arena.`);
-    return true;
+    let canvas;
+    try { canvas = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())); } catch (err) { say(`That tileset could not be read: ${err.message}`, false); return null; }
+    let spec = null;
+    const t = myTilesets.find((x) => x.id === id);
+    if (!t || t.hasRoles) {
+      const rr = await fetch(API + "/tilesets/roles?id=" + encodeURIComponent(id), { credentials: "same-origin" }).catch(() => null);
+      if (rr && rr.ok) spec = await rr.json().catch(() => null);
+      if (spec && spec.format !== "dare-tile-layout") spec = null;
+    }
+    return { canvas, spec, name };
   }
-  if (tileArt) tileArt.setSources([STANDARD]);
+  // Upload tileset: a .bmp/.bm2 (any depth: kept as 8-bit, as the game wants) or a .lvl's tileset.
+  // Kept in Your tilesets when signed in; otherwise only offered here until the page closes.
+  async function uploadTileset(f) {
+    let img;
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      img = /\.lvl$/i.test(f.name) ? LvlFile.tileset(bytes) : Bmp.read(bytes);
+      if (!img) throw new Error(`${f.name} has no tileset of its own`);
+      if (img.width !== 304 || img.height !== 160) throw new Error(`a tileset is 304 x 160 pixels; this one is ${img.width} x ${img.height}`);
+    } catch (err) { say(`That tileset could not be read: ${err.message}.`, false); return null; }
+    const bmp = Bmp.write(img), name = f.name.replace(/\.[^.]*$/, "") || "tileset";
+    let b64 = "";
+    for (let i = 0; i < bmp.length; i += 0x8000) b64 += String.fromCharCode(...bmp.subarray(i, i + 0x8000));
+    const r = await fetch(API + "/tilesets/save?name=" + encodeURIComponent(name), {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Requested-With": "dare-arena" },
+      body: JSON.stringify({ bmp: btoa(b64), roles: null }),
+    }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    if (j && j.ok && j.id) {
+      await loadMyTilesets();
+      say(`${name} is in Your tilesets. Apply puts it in this map.`, true);
+      return "ts:" + j.id;
+    }
+    const value = "up:" + (uploads.size + 1);
+    uploads.set(value, { canvas: Lvl.decodeBmp(bmp), name });
+    offerTilesets();
+    say(`Showing ${name}. It couldn't be kept in Your tilesets (${(j && j.message) || "no connection"}), so it's only here until you leave the page; Apply puts it in this map.`, !!(j && j.ok));
+    return value;
+  }
+  offerTilesets();
+
+  // Walls: the pack (an Autotile layout) the drawing tools and Fit pieces use. Layouts from a
+  // tileset's own role map get ids of their own, so they never replace the standard packs.
+  const wallLayouts = new Map(); // spec -> Map(pack id -> layout)
+  let wallLayout = null;
+  function useWalls(spec, pack) {
+    let m = wallLayouts.get(spec);
+    if (!m && spec) {
+      m = new Map();
+      const std = spec === tileSpec;
+      const { layouts, errors } = Autotile.fromSpec(spec);
+      if (errors.length) console.warn("tile layout:", errors);
+      for (const l of layouts) {
+        const id = l.id;
+        if (!std) l.id = "own:" + wallLayouts.size + ":" + id;
+        l.std = std;
+        Autotile.register(l);
+        m.set(id, l);
+      }
+      wallLayouts.set(spec, m);
+    }
+    wallLayout = (m && pack && m.get(pack)) || null;
+    if (roleView) { roleView = Autotile.previewTileset(tileLayout()); drawPalette(); draw(); }
+  }
 
   // ---- load --------------------------------------------------------------------------------------
   async function load() {
@@ -316,7 +391,6 @@ function signedIn() {
     say(j.ok ? `${j.message} Not published: ${arena} still has its old map.` : j.message, j.ok);
     loadLibrary();
   });
-  $("flatview").addEventListener("change", (e) => { flatView = e.target.checked; drawPalette(); draw(); });
 
   async function loadShared() {
     const r = await fetch(API + "/maps", { credentials: "same-origin" }).catch(() => null);
@@ -341,49 +415,7 @@ function signedIn() {
   });
   // ---- random maps, and tidying walls (autotile.js) -------------------------------------------------
   for (const [id, label] of Object.entries(Lvl.GEN_LAYOUTS)) $("genlayout").append(new Option(label, id));
-  var tileSpec = null; // tile-layout.json, once loaded (var: the Tile art sources are set before this line runs)
-  // The Wall tiles list names each pack by how it looks in the Tile art choice: a theme draws each
-  // pack in its own style (Foundry's grey-plate pack is Steel), one style draws them all alike.
-  // A whole tileset (the standard tiles, the pilot's own) keeps the packs' own names.
-  function artChoice() {
-    const v = $("tileartstyle") && $("tileartstyle").value, d = window.TileArt && TileArt.data;
-    if (!v || !d || !TileArt.packStyle) return null;
-    if (d.themes[v]) return { id: v, theme: true };
-    return d.styles.some((st) => st.id === v) ? { id: v, theme: false } : null;
-  }
-  function packLabel(l, art) {
-    const own = (l.name || l.id).replace(/^.*: /, "");
-    if (!l.spec || !art) return l.name || l.id;
-    const id = TileArt.packStyle(art.id, l.id, TileArt.data, tileSpec), st = TileArt.data.styles.find((x) => x.id === id);
-    const name = st ? st.name : id;
-    return art.theme ? `${name} (${own.toLowerCase()} pieces)` : `${name}: ${own.toLowerCase()} pieces`;
-  }
-  function listTileLayouts(pick) {
-    const was = pick || $("tilelayout").value, art = artChoice();
-    $("tilelayout").replaceChildren(...[...Autotile.layouts.values()].map((l) => new Option(packLabel(l, art), l.id)));
-    if (was && Autotile.layouts.has(was)) $("tilelayout").value = was;
-  }
-  // a new Tile art choice relabels the packs; one style that is also a pack's own name picks that pack
-  // (its interior and calm pieces are drawn for it)
-  if ($("tileartstyle")) $("tileartstyle").addEventListener("change", () => {
-    const art = artChoice();
-    listTileLayouts(art && !art.theme && Autotile.layouts.has(art.id) ? art.id : undefined);
-    if (roleView) roleView = Autotile.previewTileset(tileLayout());
-  });
-  listTileLayouts();
-  // the standard tile layout (tile-layout.json): one choice per pack, the first one picked; without
-  // it the stand-in role preview layout is all there is
-  (async () => {
-    const r = await fetch("/arena/tile-layout.json", { credentials: "same-origin" }).catch(() => null);
-    const spec = r && r.ok ? await r.json().catch(() => null) : null;
-    if (!spec) return;
-    tileSpec = spec;
-    const { layouts, errors } = Autotile.fromSpec(spec);
-    for (const l of layouts) Autotile.register(l);
-    if (errors.length) console.warn("tile layout:", errors);
-    if (layouts.length) listTileLayouts(layouts[0].id);
-  })();
-  const tileLayout = () => Autotile.layouts.get($("tilelayout").value) || Autotile.STAND_IN;
+  const tileLayout = () => wallLayout || Autotile.STAND_IN;
   $("genlayout").addEventListener("change", () => {
     const teams = $("genlayout").value === "teams";
     $("gensym").disabled = teams; // left vs right, always
@@ -400,7 +432,7 @@ function signedIn() {
     if (!await replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`)) return;
     $("genseed").textContent = `Seed ${seed}`;
     // walls tidied with a standard pack only look right on the standard tiles: put them in the map
-    if ($("genauto").checked && tileLayout().spec)
+    if ($("genauto").checked && tileLayout().std)
       await useStandardTiles(`A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map in ${tileLayout().name.replace(/^.*: /, "")}, on the standard tiles. Randomize again for another, or draw on it.`);
   });
   // tidy walls over an area (x0, y0, x1, y1) or the whole map, as one undoable change
@@ -414,10 +446,6 @@ function signedIn() {
   $("tidysel").addEventListener("click", () => { if (tools) tools.fitSelection(); });
   $("roleview").addEventListener("change", (e) => {
     roleView = e.target.checked ? Autotile.previewTileset(tileLayout()) : null;
-    drawPalette(); draw();
-  });
-  $("tilelayout").addEventListener("change", () => {
-    if (roleView) roleView = Autotile.previewTileset(tileLayout());
     drawPalette(); draw();
   });
 
@@ -732,14 +760,6 @@ function signedIn() {
   });
   window.addEventListener("keyup", (e) => { if (e.key === " ") space = false; });
 
-  $("tilesetfile").addEventListener("change", async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    try { ownTileset = Lvl.decodeBmp(new Uint8Array(await f.arrayBuffer())); say(`Showing tiles from ${f.name} (only in your browser; not published).`, true); }
-    catch (err) { say(`That tileset could not be read: ${err.message}`, false); }
-    noteTileset();
-    drawPalette(); draw();
-  });
-
   // ---- save / publish ------------------------------------------------------------------------
   $("download").addEventListener("click", async () => {
     const bytes = Lvl.serialize(grid, prefix);
@@ -862,7 +882,7 @@ function signedIn() {
     if (lib) await openLib(Number(lib));
     await loadMyTilesets();
     const ts = q.get("tileset"); // from the Foundry's Keep: put that tileset into the map being edited
-    if (ts) await applyMyTileset(Number(ts));
+    if (ts && tileArt && tileArt.pick("ts:" + Number(ts))) say("Showing your tileset on the map. Apply puts it in.", true);
   });
   // for checks in a browser console
   window.chartRoom = { get grid() { return grid; }, setTile: (x, y, t) => { stroke = []; setTile(x, y, t); endStroke(); draw(); }, save: () => Lvl.serialize(grid, prefix) };

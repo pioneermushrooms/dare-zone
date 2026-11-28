@@ -224,7 +224,17 @@ kbd { font:inherit; font-size:.7rem; opacity:.7; }
 .tilegroup .kicker.sub { margin-top:8px; padding-top:10px; border-top:1px solid #ffffff10; }
 .tilegroup #tileart { display:flex; flex-direction:column; gap:8px; }
 .tilegroup #tileart .hint { margin:0; }
-.tilegroup .ownts { font-size:.75rem; }
+.tilegroup .tilepick select { flex:1; min-width:0; }
+.tilegroup .tilepick .icon { width:34px; padding:0; font-size:1.05rem; }
+.tilegroup .tilesheet { width:100%; height:auto; border:1px solid var(--line); background:#000; }
+.tilegroup .upload { display:flex; align-items:center; justify-content:center; gap:8px; border-style:dashed; cursor:pointer; }
+.tilegroup .upload:hover, .tilegroup .upload:focus-within { border-color:var(--accent); color:var(--text); }
+.tilegroup .tilewarn { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.tilegroup .tilesws { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.tilegroup .tilesws .sw { background:#000; border:1px solid var(--line); border-radius:3px; padding:4px 4px 2px; display:grid; gap:2px; text-align:left; min-height:0; cursor:pointer; color:var(--dim); }
+.tilegroup .tilesws .sw canvas { width:100%; height:auto; }
+.tilegroup .tilesws .sw span { font-size:.72rem; font-weight:600; }
+.tilegroup .tilesws .sw[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); color:var(--accent); }
 dialog.askdlg { width:min(440px, calc(100vw - 32px)); }
 dialog.askdlg .askmsg { margin:0 0 14px; line-height:1.45; white-space:pre-line; }
 dialog.askdlg .askinput { width:100%; box-sizing:border-box; margin-bottom:4px; }

@@ -127,3 +127,26 @@ test("packStyle names what each pack looks like", () => {
   assert.strictEqual(slots.get(20).mask, 255 & ~2);
   assert.strictEqual(slots.get(56).mask, 255 & ~32);
 });
+
+test("the edge reader finds the standard packs in the standard tileset, and not in a blank one", () => {
+  const { Bmp } = require(path.join(WWW, "tiles.js"));
+  const img = Bmp.read(fs.readFileSync(path.join(WWW, "standard-tiles.bmp")));
+  const w = img.width, rgba = new Uint8Array(w * img.height * 4);
+  for (let i = 0; i < img.pixels.length; i++) { const c = img.pixels[i] * 3; rgba.set([img.palette[c], img.palette[c + 1], img.palette[c + 2], 255], i * 4); }
+  for (const p of layout.packs) assert.ok(TA.packReads(rgba, w, layout, p) >= 0.6, p.id);
+  const blank = new Uint8Array(w * img.height * 4);
+  for (const p of layout.packs) assert.strictEqual(TA.packReads(blank, w, layout, p), 0);
+});
+
+test("wall sets are named by what they look like, alike ones once", () => {
+  const names = (p) => TA.packStyle("steel", p.id, data, layout);
+  assert.strictEqual(TA.wallSets(layout, names).length, 1);
+  const f = TA.wallSets(layout, (p) => TA.packStyle("foundry", p.id, data, layout));
+  assert.ok(f.length > 1 && f[0].pack === layout.packs[0].id);
+  assert.deepStrictEqual(TA.wallSets(layout, null, (p) => p.id === "navy").map((x) => x.name), ["Navy"]);
+  // the swatch uses the pack's own tiles, a bar's middle among them
+  const ts = TA.sampleTiles(layout, layout.packs[0]).map((c) => c.t);
+  assert.ok(ts.includes(layout.packs[0].tiles["h-mid"]));
+  assert.ok(ts.every((t) => Object.values(layout.packs[0].tiles).includes(t)));
+  assert.ok(TA.defaults(data).some((d) => d.id === "foundry") && TA.defaults(data).some((d) => d.id === "steel"));
+});

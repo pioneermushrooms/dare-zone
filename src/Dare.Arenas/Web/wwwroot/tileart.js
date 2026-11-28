@@ -10,8 +10,10 @@
 //   blankPlan / restylePlan / sheetPlan   which slot gets which style and piece
 //   paint(base, plan)  a new 304x160 tileset canvas
 //   withTileset(prefix, canvas)  the map's new .lvl prefix (24-bit BMP, eLVL data kept)
-//   mount(el, editor)  the "Tile art" panel in the map editor: one dropdown of whole tilesets the
-//                      editor offers (the pilot's own, the standard tiles) and the generated styles
+//   readOpen / packReads / wallSets / sampleTiles   which wall sets a tileset offers, and swatches
+//   mount(el, editor)  the map editor's Tileset panel: a menu of whole tilesets (the map's own, the
+//                      pilot's, uploads, Defaults), the whole sheet, Apply and ↶, and the Walls swatches
+//   sheet(id)          a generated tileset as a canvas (the tile editor's Defaults)
 // Pure parts (no DOM) are exported for node tests through module.exports.
 "use strict";
 
@@ -164,6 +166,82 @@
     return plan;
   }
 
+
+  // ---- reading a tileset's walls ----------------------------------------------------------------
+  // Which edges of tile t (1-based) look open (wall continues): the tile editor's edge reader
+  // (tiles.js suggestOpen: the outer three lines of an edge vary in brightness where the wall runs
+  // on, and are flat where it stops), on an RGBA sheet. null for an empty (black) tile.
+  function readOpen(rgba, w, t) {
+    const x0 = ((t - 1) % COLS) * TS, y0 = Math.floor((t - 1) / COLS) * TS;
+    const L = (x, y) => { const i = ((y0 + y) * w + x0 + x) * 4; return 0.3 * rgba[i] + 0.59 * rgba[i + 1] + 0.11 * rgba[i + 2]; };
+    let any = false;
+    for (let y = 0; y < TS && !any; y++) for (let x = 0; x < TS; x++) if (L(x, y) > 6) { any = true; break; }
+    if (!any) return null;
+    let open = "";
+    for (const e of "NESW") {
+      let spread = 0;
+      for (let k = 0; k < 3; k++) {
+        const a = [];
+        for (let i = 2; i < TS - 2; i++) a.push(e === "N" ? L(i, k) : e === "S" ? L(i, TS - 1 - k) : e === "W" ? L(k, i) : L(TS - 1 - k, i));
+        const m = a.reduce((q, v) => q + v, 0) / a.length;
+        spread += Math.sqrt(a.reduce((q, v) => q + (v - m) * (v - m), 0) / a.length) / 3;
+      }
+      if (spread > 20) open += e;
+    }
+    return open;
+  }
+  // How many of a pack's role tiles read as their role (0..1): a tileset that doesn't follow the
+  // standard layout scores low on the standard packs.
+  function packReads(rgba, w, spec, pack) {
+    const roles = (spec && spec.roles) || {};
+    let hit = 0, all = 0;
+    for (const [role, t] of Object.entries(pack.tiles || {})) {
+      if (!roles[role] || !isWall(t)) continue;
+      all++;
+      const o = readOpen(rgba, w, t);
+      if (o !== null && o === [...roles[role].open].sort((a, b) => "NESW".indexOf(a) - "NESW".indexOf(b)).join("")) hit++;
+    }
+    return all ? hit / all : 0;
+  }
+  // The wall sets a tileset offers, in the spec's pack order: [{ pack, name }]. names(pack) gives
+  // the shown name (a generated tileset names a pack by its style); packs that look alike (same
+  // name) are offered once. keep(pack) filters (packs that read as walls).
+  function wallSets(spec, names, keep) {
+    const seen = new Set(), out = [];
+    for (const p of (spec && spec.packs) || []) {
+      if (keep && !keep(p)) continue;
+      const name = names ? names(p) : (p.name || p.id);
+      if (seen.has(name)) continue;
+      seen.add(name); out.push({ pack: p.id, name });
+    }
+    return out;
+  }
+  // The swatch: a small structure (bar, corners, junction, a 2x2 block) built from a pack's roles.
+  const SAMPLE = ["XXXXXX..X", "X....XXXX", "X.XX.X..X", "XXXX.X...", "X........"];
+  function sampleTiles(spec, pack) {
+    const byOpen = new Map();
+    for (const [role, t] of Object.entries(pack.tiles || {})) {
+      const r = spec.roles && spec.roles[role];
+      if (r) byOpen.set([...r.open].sort((a, b) => "NESW".indexOf(a) - "NESW".indexOf(b)).join(""), t);
+    }
+    const on = (x, y) => y >= 0 && y < SAMPLE.length && x >= 0 && x < SAMPLE[0].length && SAMPLE[y][x] === "X";
+    const out = [];
+    for (let y = 0; y < SAMPLE.length; y++) for (let x = 0; x < SAMPLE[0].length; x++) {
+      if (!on(x, y)) continue;
+      let o = [["N", 0, -1], ["E", 1, 0], ["S", 0, 1], ["W", -1, 0]].filter(([, dx, dy]) => on(x + dx, y + dy)).map(([d]) => d).join("");
+      let t = byOpen.get(o);
+      while (t === undefined && o) { o = o.slice(0, -1); t = byOpen.get(o); }
+      if (t === undefined) t = byOpen.get("") ?? byOpen.get("NESW");
+      if (t !== undefined) out.push({ x, y, t });
+    }
+    return out;
+  }
+  // The generated tilesets, for menus elsewhere (the tile editor): [{ id, name, kind }]
+  function defaults(d) {
+    return [...Object.keys(d.themes).map((id) => ({ id, name: id[0].toUpperCase() + id.slice(1), kind: "theme" })),
+      ...d.styles.map((st) => ({ id: st.id, name: st.name, kind: "style" }))];
+  }
+
   // ---- BMP -----------------------------------------------------------------------------------
   // rgba: 304*160*4 bytes, top-down. Returns a .lvl prefix: a 24-bit BMP, with the old prefix's
   // eLVL data (regions, attributes) appended and pointed to as the eLVL spec says.
@@ -199,7 +277,7 @@
     return out;
   }
 
-  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, layoutSlots, followsLayout, packStyle, withTileset, isWall };
+  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, layoutSlots, followsLayout, packStyle, withTileset, isWall, readOpen, packReads, wallSets, sampleTiles, SAMPLE, defaults };
   if (typeof module !== "undefined" && module.exports) { module.exports = api; return; }
 
   // ---- browser ---------------------------------------------------------------------------------
@@ -237,108 +315,200 @@
   }
   const rgbaOf = (c) => c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
 
-  // The panel. editor: { get() -> { grid, prefix, tileset, blank: Map }, set(prefix, tileset, note),
-  //   optional: use(value, label) -> Promise<bool> puts one of the offered whole tilesets in the map,
-  //   ask(text, opts) -> Promise<bool> instead of Dlg.confirm }.
-  // Returns { refresh, forget, setSources([{ group, label, value }]) }: the offered tilesets go
-  // above the styles; the pilot's own one ("Your tilesets") is picked first when there is one.
+  // The Tileset + Walls panel. editor:
+  //   get() -> { grid, prefix, tileset (the map's own canvas or null), shown (what the map shows
+  //            without a tileset of its own), blank: Map }
+  //   set(prefix, tileset, note)  puts a tileset into the map (Apply, undo, Fill)
+  //   preview(canvas | null, label)  shows a tileset on the map without keeping it (null: the map's own)
+  //   load(value) -> Promise<{ canvas, spec?, name } | null>  a whole tileset the editor offered (setSources)
+  //   upload(file) -> Promise<value | null>  reads a tileset file and offers it (setSources), its value
+  //   walls(spec, packId | null, key)  draw with this pack of spec (null: the tileset has none)
+  //   ask(text, opts) -> Promise<bool>
+  //   spec() -> Promise<the standard layout>
+  // Menu: This map, the editor's sources (Your tilesets, Uploaded, Defaults: Standard), then the
+  // generated tilesets in Defaults. Picking one previews it on the map; Apply keeps it; ↶ undoes.
   function mount(el, editor) {
     if (!el || !data) return;
     const h = (tag, props, ...kids) => { const e = Object.assign(document.createElement(tag), props || {}); e.append(...kids); return e; };
     const ask = editor.ask || ((t, o) => (window.Dlg ? Dlg.confirm(t, o) : Promise.resolve(confirm(t))));
-    const pick = h("select", { id: "tileartstyle", title: "A whole tileset to use, or a style to draw new wall art in", "aria-label": "Tile art" });
-    const og1 = h("optgroup", { label: "Mixed (a style per structure)" });
-    for (const id of Object.keys(data.themes)) og1.append(h("option", { value: id, textContent: id[0].toUpperCase() + id.slice(1) }));
-    const og2 = h("optgroup", { label: "One style" });
-    for (const s of data.styles) og2.append(h("option", { value: s.id, textContent: s.name }));
-    pick.append(og1, og2);
-    const preview = h("canvas", { className: "px", width: 4 * TS, height: TS, title: "A few pieces in this style" });
-    const bBlank = h("button", { type: "button", className: "ghost small", textContent: "Paint blank slots", title: "Draw art into the tileset slots this map fills with one flat colour, each as the piece its walls need" });
-    const bAll = h("button", { type: "button", className: "ghost small", textContent: "Restyle all walls", title: "Redraw every wall slot this map uses (and the rest of the standard layout) in the chosen style" });
-    const bUse = h("button", { type: "button", className: "ghost small", textContent: "Use in this map", hidden: true, title: "Put this tileset in the map you're editing (published with it)" });
-    const bBack = h("button", { type: "button", className: "ghost small", textContent: "Put old tiles back", hidden: true });
-    const note = h("p", { className: "hint" });
-    el.replaceChildren(h("div", { className: "row" }, pick, preview), h("div", { className: "row" }, bUse, bBlank, bAll, bBack), note);
-    const STYLE_NOTE = "Generated wall art that joins up. Pieces are chosen from how the map uses each slot.";
-    let sources = new Map(), touched = false;
-    const isSource = () => sources.has(pick.value);
-    const showMode = () => {
-      const src = isSource();
-      bUse.hidden = !src || !editor.use; bBlank.hidden = src; bAll.hidden = src; preview.hidden = src;
-      note.textContent = src ? (sources.get(pick.value).note || "A whole tileset: Use in this map puts it in, and Publish takes it to the arena.") : STYLE_NOTE;
-    };
+    const pick = h("select", { id: "tileartstyle", "aria-label": "Tileset" });
+    const bApply = h("button", { type: "button", className: "btn small", id: "tileapply", textContent: "Apply", title: "Put this tileset in the map (published with it)" });
+    const bUndo = h("button", { type: "button", className: "ghost small icon", id: "tileundo", textContent: "↶", title: "Put the map's previous tileset back", disabled: true });
+    bUndo.setAttribute("aria-label", "Undo tileset change");
+    const sheet = h("canvas", { className: "px tilesheet", width: COLS * TS, height: ROWS * TS, id: "tilesheet" });
+    sheet.setAttribute("role", "img");
+    const warn = h("p", { className: "hint warnnote tilewarn", hidden: true });
+    const warnText = h("span"), bFill = h("button", { type: "button", className: "ghost small", textContent: "Fill them", title: "Draw wall art into those slots, each as the piece its walls need" });
+    warn.append(warnText, bFill);
+    const file = h("input", { type: "file", accept: ".bmp,.bm2,.lvl", hidden: true, id: "tilesetfile" });
+    const upload = h("label", { className: "btn ghost small upload", htmlFor: "tilesetfile", title: "A .bmp or .bm2 tileset, or a .lvl that has one" }, "⇪ Upload tileset…", file);
+    const wallsHead = h("p", { className: "kicker sub", textContent: "Walls" });
+    const sws = h("div", { className: "tilesws", id: "tilesws", role: "group" });
+    sws.setAttribute("aria-label", "Wall set to draw with");
+    const none = h("p", { className: "hint", hidden: true });
+    const status = h("p", { className: "hint", id: "tilestatus" });
+    el.replaceChildren(h("div", { className: "row tilepick" }, pick, bApply, bUndo), sheet, warn, upload, wallsHead, sws, none, status);
+
+    const ogMap = h("optgroup", { label: "This map" }, h("option", { value: "map", textContent: "Its own tiles" }));
+    const ogDef = h("optgroup", { label: "Defaults", className: "defaults" });
+    for (const d of defaults(data)) ogDef.append(h("option", { value: d.id, textContent: d.name, className: "gen" }));
+    pick.append(ogMap, ogDef);
+    const isGen = (v) => !!data.themes[v] || data.styles.some((st) => st.id === v);
+    const styleName = (id) => (defaults(data).find((d) => d.id === id) || { name: id }).name;
+
+    let sources = new Map(), applied = "map", undo = [], shown = null, seq = 0, wallPick = null;
     function setSources(list) {
       const was = pick.value;
       for (const g of [...pick.querySelectorAll("optgroup.src")]) g.remove();
+      for (const o of [...ogDef.querySelectorAll("option.src")]) o.remove();
       sources = new Map();
       const groups = new Map();
       for (const it of list || []) {
-        if (!groups.has(it.group)) groups.set(it.group, h("optgroup", { label: it.group, className: "src" }));
-        groups.get(it.group).append(h("option", { value: it.value, textContent: it.label }));
         sources.set(it.value, it);
+        const o = h("option", { value: it.value, textContent: it.label, className: "src" });
+        if (it.group === "Defaults") { ogDef.prepend(o); continue; }
+        if (!groups.has(it.group)) groups.set(it.group, h("optgroup", { label: it.group, className: "src" }));
+        groups.get(it.group).append(o);
       }
-      pick.prepend(...groups.values());
-      const own = (list || []).find((it) => it.own);
-      if (touched && [...pick.options].some((o) => o.value === was)) pick.value = was;
-      else pick.value = own ? own.value : og1.firstElementChild ? og1.firstElementChild.value : was;
-      showMode(); showPreview().catch(() => {});
+      ogMap.after(...groups.values());
+      pick.value = [...pick.options].some((o) => o.value === was) ? was : "map";
     }
 
-    let before = null; // { prefix, tileset } to put back
-    const showPreview = async () => {
-      if (sources.has(pick.value)) return;
-      await ready();
-      const ctx = preview.getContext("2d");
-      const st = stylesFor(pick.value, data);
-      [[openMask("E"), 0], [openMask("EW"), 1], [openMask("SW"), 2], [0, 3]].forEach(([m, i]) => {
-        const im = atlases.get(st[i % st.length]);
-        ctx.drawImage(im, data.masks.indexOf(m) * TS, 0, TS, TS, i * TS, 0, TS, TS);
-      });
-    };
+    // What a choice looks like in this map: { canvas, spec, names, check, label }
+    async function candidate(v) {
+      const s = editor.get(), spec = await editor.spec();
+      const label = pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : v;
+      if (v === "map") return { canvas: s.tileset || s.shown, spec, check: !!s.tileset, label: "this map's own tiles", own: true };
+      if (isGen(v)) {
+        await ready();
+        const plan = restylePlan(s.grid, v, data, spec);
+        // on a map that doesn't follow the layout, restyling draws some pack slots as the map uses
+        // them: only packs still drawn as their roles are wall sets
+        const roles = (spec && spec.roles) || {};
+        const keep = (p) => Object.entries(p.tiles || {}).every(([r, t]) => !roles[r] || !plan.has(t) || plan.get(t).mask === openMask(roles[r].open));
+        return { canvas: paint(s.tileset, plan, stylesFor(v, data)[0]), spec, label, keep,
+          names: (p) => styleName(packStyle(v, p.id, data, spec)) };
+      }
+      const got = await editor.load(v);
+      if (!got) return null;
+      return { canvas: got.canvas, spec: got.spec || spec, check: !got.spec && v !== "std", label: got.name || label };
+    }
+    async function show() {
+      const my = ++seq, v = pick.value;
+      let c;
+      try { c = await candidate(v); } catch (err) { c = null; status.textContent = "Couldn't show that tileset: " + err.message; }
+      if (my !== seq) return; // picked again meanwhile
+      shown = c;
+      const ctx = sheet.getContext("2d");
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, sheet.width, sheet.height);
+      if (c && c.canvas) ctx.drawImage(c.canvas, 0, 0);
+      sheet.setAttribute("aria-label", c ? `The whole tileset: ${c.label}` : "No tileset");
+      editor.preview(v === applied || v === "map" || !c ? null : c.canvas, c && c.label);
+      drawWalls();
+      noteState();
+    }
+    function drawWalls() {
+      const c = shown;
+      if (!c || !c.canvas || !c.spec) { sws.replaceChildren(); none.hidden = true; editor.walls(null, null); return; }
+      const rgba = c.check ? c.canvas.getContext("2d").getImageData(0, 0, COLS * TS, ROWS * TS).data : null;
+      const sets = wallSets(c.spec, c.names, c.keep || (rgba ? (p) => packReads(rgba, COLS * TS, c.spec, p) >= 0.6 : null));
+      none.hidden = sets.length > 0;
+      none.replaceChildren("No wall sets in this tileset. ", h("a", { href: "/arena/me#tiles", textContent: "Set them up in the Tile editor" }), ". Drawing places the tile you pick.");
+      if (!sets.some((st) => st.pack === wallPick)) wallPick = sets.length ? sets[0].pack : null;
+      sws.replaceChildren(...sets.map((st) => {
+        const p = c.spec.packs.find((q) => q.id === st.pack);
+        const cv = h("canvas", { className: "px", width: SAMPLE[0].length * TS, height: SAMPLE.length * TS });
+        const x2 = cv.getContext("2d");
+        for (const { x, y, t } of sampleTiles(c.spec, p)) {
+          const i = t - 1;
+          x2.drawImage(c.canvas, (i % COLS) * TS, Math.floor(i / COLS) * TS, TS, TS, x * TS, y * TS, TS, TS);
+        }
+        const b = h("button", { type: "button", className: "sw", title: `Draw walls with ${st.name}` }, cv, h("span", { textContent: st.name }));
+        b.setAttribute("aria-pressed", String(st.pack === wallPick));
+        b.addEventListener("click", () => {
+          wallPick = st.pack;
+          for (const x of sws.children) x.setAttribute("aria-pressed", String(x === b));
+          editor.walls(c.spec, wallPick); noteState();
+        });
+        return b;
+      }));
+      editor.walls(c.spec, wallPick);
+    }
+    function noteState() {
+      const v = pick.value, name = shown ? shown.label : "";
+      const set = wallPick && sws.querySelector('[aria-pressed="true"] span');
+      bApply.disabled = v === applied || v === "map" || !shown;
+      bUndo.disabled = !undo.length;
+      status.textContent = v === applied || v === "map"
+        ? (set ? `Drawing with ${set.textContent}.` : "")
+        : `Showing ${name} on the map. Apply keeps it.`;
+    }
     const refresh = () => {
       const s = editor.get();
-      const n = s.blank ? [...s.blank.keys()].filter(isWall).length : 0;
-      bBlank.disabled = n === 0;
-      bBlank.textContent = n ? `Paint ${n} blank slot${n === 1 ? "" : "s"}` : "Paint blank slots";
+      const n = s.blank ? [...s.blank.keys()].filter(isWall) : [];
+      let tiles = 0;
+      if (n.length) { const b = new Set(n); for (const t of s.grid) if (b.has(t)) tiles++; }
+      warn.hidden = tiles === 0;
+      warnText.textContent = `${tiles.toLocaleString()} wall tiles in this map are flat colour `;
+      noteState();
     };
-    async function apply(kind) {
+    function keep(prefix, tileset, value, note) {
+      const s = editor.get();
+      undo.push({ prefix: s.prefix, tileset: s.tileset, value: applied });
+      applied = value;
+      editor.set(prefix, tileset, note);
+    }
+    bApply.addEventListener("click", async () => {
+      const c = shown, v = pick.value;
+      if (!c || !c.canvas || v === applied) return;
+      const s = editor.get(), spec = await editor.spec();
+      // a tileset that doesn't draw the standard wall sets, on a map whose walls use them
+      if (c.check && followsLayout(usage(s.grid), spec)) {
+        const rgba = c.canvas.getContext("2d").getImageData(0, 0, COLS * TS, ROWS * TS).data;
+        const bad = spec.packs.filter((p) => packReads(rgba, COLS * TS, spec, p) < 0.6);
+        if (bad.length && !(await ask(`This map's walls are drawn with the standard wall sets, and ${c.label} doesn't draw ${bad.length === spec.packs.length ? "them" : bad.map((p) => p.name).join(", ")} as walls: those walls will show other art. ↶ puts it back.`, { title: "Apply this tileset?", ok: "Apply" }))) return;
+      }
+      keep(withTileset(s.prefix, rgbaOf(c.canvas)), c.canvas, v, `This map now uses ${c.label}. Publish to use it in game; ↶ puts the old tiles back.`);
+      await show();
+    });
+    bUndo.addEventListener("click", async () => {
+      const u = undo.pop(); if (!u) return;
+      applied = u.value;
+      editor.set(u.prefix, u.tileset, "Previous tiles put back.");
+      pick.value = [...pick.options].some((o) => o.value === u.value) ? u.value : "map";
+      await show();
+    });
+    bFill.addEventListener("click", async () => {
       try {
         await ready();
-        const s = editor.get(), lay = await layout();
-        const plan = kind === "blank" ? blankPlan(s.blank, s.grid, pick.value, data, lay) : restylePlan(s.grid, pick.value, data, lay);
-        // Restyling keeps the old sheet only where the plan draws nothing: slots 162-190.
-        const canvas = paint(s.tileset, plan, stylesFor(pick.value, data)[0]);
-        if (!before) before = { prefix: s.prefix, tileset: s.tileset };
-        editor.set(withTileset(s.prefix, rgbaOf(canvas)), canvas,
-          `${kind === "blank" ? "Painted" : "Redrew"} ${plan.size} tile slots in ${pick.selectedOptions[0].textContent}. Publish to use it in game.`);
-        bBack.hidden = false;
-      } catch (err) { note.textContent = "Tile art failed: " + err.message; }
-      refresh();
-    }
-    bBlank.addEventListener("click", () => apply("blank"));
-    bAll.addEventListener("click", async () => {
-      const text = "Redraw every wall slot this map uses in the new style? Decorations drawn in the old tileset (lettering, pictures) are replaced too. You can put the old tiles back.";
-      if (await ask(text, { title: "Restyle all walls", ok: "Restyle" })) apply("all");
-    });
-    bUse.addEventListener("click", async () => {
-      const s = editor.get(), prev = { prefix: s.prefix, tileset: s.tileset };
-      bUse.disabled = true;
-      try {
-        if (await editor.use(pick.value, pick.selectedOptions[0].textContent)) { if (!before) before = prev; bBack.hidden = false; }
-      } finally { bUse.disabled = false; }
+        const s = editor.get(), spec = await editor.spec(), v = isGen(pick.value) ? pick.value : "foundry";
+        const plan = blankPlan(s.blank, s.grid, v, data, spec);
+        const canvas = paint(s.tileset, plan, stylesFor(v, data)[0]);
+        keep(withTileset(s.prefix, rgbaOf(canvas)), canvas, "fill", `Drew ${plan.size} flat-colour slots in ${styleName(v)}. ↶ puts them back.`);
+        pick.value = "map"; await show();
+      } catch (err) { status.textContent = "Couldn't fill them: " + err.message; }
       refresh();
     });
-    bBack.addEventListener("click", () => {
-      if (!before) return;
-      editor.set(before.prefix, before.tileset, "Old tiles put back.");
-      before = null; bBack.hidden = true; refresh();
+    file.addEventListener("change", async () => {
+      const f = file.files[0]; file.value = "";
+      if (!f || !editor.upload) return;
+      const v = await editor.upload(f);
+      if (v && [...pick.options].some((o) => o.value === v)) { pick.value = v; await show(); }
     });
-    pick.addEventListener("change", () => { touched = true; showMode(); showPreview().catch(() => {}); });
-    showMode();
-    showPreview().catch(() => {});
+    pick.addEventListener("change", () => { show(); });
     refresh();
-    return { refresh, setSources, forget: () => { before = null; bBack.hidden = true; refresh(); } };
+    return {
+      refresh,
+      setSources: (list) => { setSources(list); show(); },
+      // a new map: its own tiles, nothing to undo
+      forget: () => { undo = []; applied = "map"; pick.value = "map"; show(); refresh(); },
+      show,
+      // pick a menu entry (and preview it); false when it isn't there
+      pick: (v) => { if (![...pick.options].some((o) => o.value === v)) return false; pick.value = v; show(); return true; },
+    };
   }
 
-  window.TileArt = Object.assign(api, { data, ready, layout, paint, mount });
+  window.TileArt = Object.assign(api, { data, ready, layout, paint, mount,
+    // the generated tilesets as 304x160 canvases in the standard layout (the tile editor's Defaults)
+    sheet: async (id) => { await ready(); return paint(null, sheetPlan(await layout(), id, data), stylesFor(id, data)[0]); } });
 })();

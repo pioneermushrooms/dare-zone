@@ -2,18 +2,31 @@
 
 Maps get wall art from the tileset at the start of their `.lvl`. Some maps paint slots one flat
 colour (their real art came from an `.lvz` we don't have), so their walls show as solid blocks.
-The map editor's **Tile art** panel fixes that:
+The map editor's **Tileset** panel picks the map's tileset and the walls you draw with:
 
-- **Paint N blank slots**: each flat-colour wall slot gets the piece its walls call for (worked out
-  from how the map places that slot: which of its eight neighbours are walls), so bars run on,
-  corners turn and ends close. Slots that touch each other in the map share a style.
-- **Restyle all walls**: every wall slot is redrawn. On a map that follows the standard layout
-  (`tile-layout.json`), each pack's slots (roles, `interior`, `calm`, `inner`) keep the pack's style
-  and piece, so each pack still matches its Wall tiles entry (`TileArt.packStyle` names it); other
-  slots are drawn as the piece their walls call for. On a map that doesn't follow the layout, every
-  slot the map uses is drawn from how the map uses it. Doors, safe zone, goal and fly-over/under (162-190) keep
-  the map's own art (or get generated art when the map has no tileset).
-- **Put old tiles back** undoes either. Nothing changes in game until **Publish**.
+- **The menu**: *This map* (its own tiles), *Your tilesets* (the Tile editor's library, the Armory,
+  kept from the Foundry: `/arena/api/tilesets`), *Uploaded* (when one couldn't be kept), and
+  *Defaults*: Standard (`standard-tiles.bmp`) and the generated tilesets (Foundry, Station, Ruins and
+  the single styles). Picking one shows it on the map and under the menu (the whole sheet); nothing
+  is kept until **Apply** puts it in the map's own tileset (published with the map). **↶** puts the
+  previous one back, as often as Apply was used.
+- A generated tileset is drawn for this map: on a map that follows the standard layout each pack's
+  slots get that pack's style and pieces; on one that doesn't, every slot the map uses is drawn as
+  the piece its walls call for. Slots 162-190 keep the map's own art.
+- **Walls**: the picked tileset's wall sets as swatches, named by what they look like (Foundry's
+  grey-plate pack is *Steel plate*; a single style offers one). The drawing tools and **Fit pieces**
+  use the chosen one. Where they come from:
+  - a tileset saved with its own wall roles (Tile editor): its packs, with its names;
+  - Standard and the generated tilesets: the standard packs (only those still drawn as their roles);
+  - anything else (uploads, a map's own tiles): the standard packs whose tiles read as their roles
+    with the tile editor's edge reader (`readOpen`, at least 60% of a pack's tiles). None: "No wall
+    sets in this tileset", a link to the Tile editor, and drawing places the tile you pick.
+- **Apply** warns before putting in a tileset that doesn't draw the standard packs as walls on a map
+  whose walls use them.
+- **Fill them** (shown when the map has flat-colour wall slots): each such slot gets the piece its
+  walls call for, in the picked generated style (or Foundry). ↶ undoes it.
+- **Upload tileset…**: a .bmp/.bm2 (kept as 8-bit) or a .lvl's tileset, saved to Your tilesets
+  when it can be.
 
 The new tileset is written as a 24-bit BMP; the map's eLVL data (regions, attributes) is kept.
 
@@ -41,7 +54,7 @@ filled (a 3×3 block reads as one plate).
   previews; `styles-preview.png` shows every style's 47 pieces.
 - `src/Dare.Arenas/Web/wwwroot/tileart-styles.js`: generated; every style's pieces for the site.
 - `src/Dare.Arenas/Web/wwwroot/tileart.js`: slot inference, plans, BMP writing, the panel.
-- `ships/interiors.py`: plain interior pieces for the standard packs (thick walls), in tactical2 slots 128-133, and calm edge pieces (rim kept, plain inside) for grey-plate 90-93, grey-round 109-112, green-lit 147-150, steel-blue 151, 152, 94, 113 (top, left, right, bottom); writes `ships/tilesets/tactical2-interior.bmp` and the site copy `wwwroot/standard-tiles.bmp`.
+- `ships/interiors.py`: plain interior pieces for the standard packs (thick walls), in tactical2 slots 128-133, and calm edge pieces (rim kept, plain inside) for grey-plate 90-93, grey-round 109-112, green-lit 147-150, steel-blue 151, 152, 94, 113 (top, left, right, bottom), and inside corners (`inner`, keyed by the open diagonal NE SE SW NW, made from the calm edges: the two rims meet square) in decor slots tactical2 barely uses: grey-plate 20, 56, 75, 76, grey-round 95, 119, 134, 135, green-lit 136, 137, 115, 153, steel-blue 154-157; writes `ships/tilesets/tactical2-interior.bmp` and the site copy `wwwroot/standard-tiles.bmp`.
 - Tests: `cd ships && python3 -m unittest test_tilegen test_interiors` (Pillow), `node --test tests/js/*.test.js`.
 
 Adding a style: add a `Style` (and a shader if it's a new kind) to `STYLES`, run `tilegen.py`.

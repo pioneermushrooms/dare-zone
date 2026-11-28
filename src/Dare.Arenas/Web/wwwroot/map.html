@@ -64,15 +64,11 @@
       <label class="hint" title="Give the walls the chosen pack's ends, bars, corners and junctions, and put the standard tiles in the map"><input type="checkbox" id="genauto" checked> Fit wall pieces from the pack</label></div>
     <p class="hint" id="genseed"></p>
     <section class="tilegroup" id="tilegroup" aria-labelledby="tilegrouptitle">
-      <p class="kicker" id="tilegrouptitle">Tile art</p>
+      <p class="kicker" id="tilegrouptitle">Tileset</p>
       <div id="tileart"></div>
-      <label class="hint ownts">Try a tileset file (.bm2/.bmp; only in your browser) <input type="file" id="tilesetfile" accept=".bm2,.bmp"></label>
-      <p class="kicker sub">Wall tiles</p>
-      <div class="row"><select id="tilelayout" aria-label="Wall pieces: the pack to fit"></select>
-        <button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the piece that fits its spot: end, bar, corner, edge, inside corner or junction">Fit pieces: whole map</button>
+      <div class="row"><button type="button" class="ghost small" id="tidyall" title="Give every wall on the map the piece that fits its spot: end, bar, corner, edge, inside corner or junction">Fit pieces: whole map</button>
         <button type="button" class="ghost small" id="tidysel" disabled title="Fit pieces to the walls in the selection (make one with Select, Lasso or Magic wand)">Fit pieces: selection</button></div>
-      <label class="hint"><input type="checkbox" id="roleview"> Show wall roles (draws each tile as the shape it stands for)</label>
-      <p class="hint" id="stdnote">The wall packs are drawn in the standard tiles: pick Standard tiles above to see (and publish) them as they're meant to look.</p>
+      <label class="hint"><input type="checkbox" id="roleview"> Show wall roles</label>
     </section>
     <p class="kicker">Current tile</p>
     <div class="row"><canvas id="current" class="px" width="16" height="16" aria-hidden="true"></canvas><span id="curName"></span></div>
@@ -80,7 +76,6 @@
     <canvas id="palette" class="px" width="608" height="320" tabindex="0" aria-label="Tile palette: click a tile, or use the arrow keys, to draw with it"></canvas>
     <p class="hint" id="tilesetnote"></p>
     <p class="hint warnnote" id="blanknote" hidden></p>
-    <label class="hint"><input type="checkbox" id="flatview"> Plain colours (ignore the map's tileset)</label>
     <section id="lvzpanel" aria-label="LVZ objects"></section>
     <section id="labelspanel" class="labelspanel" aria-label="Game labels"></section>
     <p class="kicker">Special tiles</p>
