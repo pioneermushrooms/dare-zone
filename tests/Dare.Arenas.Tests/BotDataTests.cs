@@ -63,4 +63,13 @@ public class BotDataTests
         var args = BotCommand.Parse("Big Bob sentry ship 4 team 3 chat on");
         Assert.Equal(("Big Bob", "sentry", 4, 3, true), (args.Label, args.Behaviour, args.Ship, args.Team, args.Chat));
     }
+
+    [Fact]
+    public void create_can_save_a_bot_stopped()
+    {
+        var args = BotCommand.Parse("Quiet fighter ship 1 team 0 chat off stopped");
+        Assert.Equal(("Quiet", "fighter", true), (args.Label, args.Behaviour, args.Stopped));
+        Assert.False(BotCommand.Parse("Quiet fighter").Stopped);
+        Assert.Equal("Stopped", BotCommand.Parse("Stopped").Label); // a bot may still be called Stopped
+    }
 }

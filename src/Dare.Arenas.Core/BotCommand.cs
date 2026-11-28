@@ -12,7 +12,7 @@ public static class BotCommand
     public static readonly string[] ShipNames =
         ["Warbird", "Javelin", "Spider", "Leviathan", "Terrier", "Weasel", "Lancaster", "Shark"];
 
-    public sealed record Args(string Label, string? Behaviour, int? Ship, bool? Chat = null, int? Team = null, int? Priority = null);
+    public sealed record Args(string Label, string? Behaviour, int? Ship, bool? Chat = null, int? Team = null, int? Priority = null, bool Stopped = false);
 
     public static Args Parse(string text)
     {
@@ -21,10 +21,18 @@ public static class BotCommand
         int? ship = null;
         bool? chat = null;
         int? team = null, priority = null;
+        bool stopped = false;
 
         bool TakeOption(int i)
         {
             var word = words[i].ToLowerInvariant();
+            // "stopped": create it without sending it in (the in-game window's Save stopped)
+            if (!stopped && word == "stopped" && words.Count > 1)
+            {
+                stopped = true;
+                words.RemoveAt(i);
+                return true;
+            }
             if (behaviour is null && (Behaviours.Contains(word) || word == "behavior" || word == "behaviour"))
             {
                 if (word is "behavior" or "behaviour")
@@ -85,7 +93,7 @@ public static class BotCommand
         // ... then at the front ("fighter Sparring", the old ?bots save order)
         while (words.Count > 1 && TakeOption(0)) { }
 
-        return new(Label(string.Join(' ', words)), behaviour, ship, chat, team, priority);
+        return new(Label(string.Join(' ', words)), behaviour, ship, chat, team, priority, stopped);
     }
 
     /// <summary>A bot name on its own (deploy, stop, remove): "Sparring" or "Sparring [bot]".</summary>

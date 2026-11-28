@@ -625,10 +625,10 @@ public sealed partial class ArenaOwnership
                 }
                 var saved = SaveBot(owned.Name, owner, args.Label, BotCommand.Apply(null, args.Behaviour, args.Ship, args.Chat, args.Team, args.Priority));
                 if (!saved.Ok) { Reply(player, "Bots: " + saved.Message); break; }
-                var deployed = Store.SetBotDeployment(owned.Name, owner, args.Label, true);
+                var deployed = args.Stopped ? new Result(true, "It is saved stopped; ?bots deploy sends it in.") : Store.SetBotDeployment(owned.Name, owner, args.Label, true);
                 var bot = Store.Bots(owned.Name).First(b => string.Equals(b.Label, args.Label, StringComparison.OrdinalIgnoreCase));
                 Reply(player, $"Bots: created {bot.Label} ({BotCommand.Describe(bot.Script)}). " +
-                    (deployed.Ok ? JoinNote() : deployed.Message));
+                    (deployed.Ok && !args.Stopped ? JoinNote() : deployed.Message));
                 if (!bot.Script.Contains("casual ", StringComparison.Ordinal))
                     Reply(player, $"Bots: it doesn't talk yet. ?bots set {bot.Label} chat on lets it answer when a pilot says its name.");
                 if (!bot.Script.Contains("point ", StringComparison.Ordinal) && !bot.Script.Contains("behaviour idle", StringComparison.Ordinal) &&
