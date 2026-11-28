@@ -5,6 +5,11 @@
 // from oss-client crates/oss-client/src/game/hud.rs screen_refs() (measured against Continuum at
 // 1888x1016; the icon columns' y is exact only at that height, chat moves with its line count).
 // A screen object sits at (anchor[xRef].x + x, anchor[yRef].y + y), its image's top-left corner.
+// Placing works like a design tool: smart guides (guides(), snapBox()) line an image up with the screen's
+// centre and edges, the HUD's blocks and other images' edges and centres, or space it evenly; otherwise
+// it settles on whole pixels or a small grid. The reference point is picked for it afterwards
+// (refsFor()): the HUD part it was lined up with, else the nearest screen edge or centre by thirds, so
+// it stays put at other window sizes. The view shows that only as a hint.
 //
 // Browser: LvzScreen.mount(host, hooks) puts a screen view over `host` (position: relative) and handles
 // drawing, click-to-place, drag, Alt+drag copy, drop from a palette (HTML drag and drop with the type
@@ -111,6 +116,81 @@
     return { xRef, yRef, x: clampOff(x - refs[xRef][0]), y: clampOff(y - refs[yRef][1]), snapped: false };
   }
 
+  /**
+   * The lines an image can line up with: the screen's edges and centre, and the HUD's blocks (energy bar,
+   * radar, radar text, player list, item columns, chat). Each { v, label, ref? }: ref is the reference
+   * point a line belongs to, when the game measures from it, so an image lined up there follows that part
+   * of the HUD at other window sizes.
+   */
+  function guides(w, h, opts = {}) {
+    const g = hud(w, h, opts), xs = [], ys = [];
+    const X = (v, label, ref) => xs.push({ v, label, ref }), Y = (v, label, ref) => ys.push({ v, label, ref });
+    X(0, "screen left", 0); X(Math.floor(w / 2), "screen centre", 1); X(w, "screen right", 2);
+    Y(0, "screen top", 0); Y(Math.floor(h / 2), "screen middle", 1); Y(h, "screen bottom", 2);
+    if (g.energy) { X(g.energy.x, "energy bar left"); X(g.energy.x + g.energy.w, "energy bar right"); Y(g.belowEnergy, "below the energy bar", 6); }
+    X(g.radar.x, "radar left", 8); X(g.radar.x + g.radar.dim, "radar right"); X(g.radar.x + g.radar.dim / 2, "radar centre");
+    Y(g.radar.y, "radar top", 8); Y(g.radar.y + g.radar.dim / 2, "radar middle");
+    X(g.radarText.x, "radar text left", 9); Y(g.radarText.y, "radar text top", 9);
+    if (g.statbox) { X(g.statbox.corner[0], "player list right", 3); Y(g.statbox.corner[1], "player list bottom", 3); }
+    X(SPECIALS_RIGHT, "left item column", 4); Y(g.specials.y, "item columns top", 4); Y(g.specials.y + 7 * ICON_PITCH, "left item column bottom", 5);
+    X(w - SPECIALS_RIGHT, "right item column", 10); Y(g.weapons.y + 6 * ICON_PITCH, "right item column bottom", 11);
+    Y(g.chat.y, "chat top", 7);
+    return { xs, ys };
+  }
+
+  const overlap = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 0;
+  // one axis: k = 0 for x (positions x, sizes w), 1 for y
+  function snapAxis(k, pos, size, crossPos, crossSize, lines, others, threshold) {
+    let best = null;
+    const tryAt = (target, dist, info) => { if (dist <= threshold && (!best || dist < best.d)) best = Object.assign({ d: dist, target }, info); };
+    const pts = [0, size / 2, size];
+    for (const ln of lines) pts.forEach((p, i) => tryAt(ln.v - p, Math.abs(pos + p - ln.v), { line: ln, at: i }));
+    const P = (o) => (k ? o.y : o.x), S = (o) => (k ? o.h : o.w), CP = (o) => (k ? o.x : o.y), CS = (o) => (k ? o.w : o.h);
+    for (const o of others) {
+      [P(o), P(o) + S(o) / 2, P(o) + S(o)].forEach((v, j) => pts.forEach((p, i) => tryAt(v - p, Math.abs(pos + p - v), { line: { v, label: j === 1 ? "image centre" : "image edge", image: true }, at: i })));
+    }
+    // equal spacing, among the images in the same row (column for y)
+    const row = others.filter((o) => overlap(CP(o), CP(o) + CS(o), crossPos, crossPos + crossSize)).sort((a, b) => P(a) - P(b));
+    const before = row.filter((o) => P(o) + S(o) <= pos + size / 2).filter((o) => P(o) + S(o) <= pos + threshold);
+    const after = row.filter((o) => P(o) >= pos + size / 2 - threshold && P(o) >= pos + size - threshold);
+    const L1 = before[before.length - 1], R1 = after[0];
+    if (L1 && R1) { // centred between two
+      const t = (P(L1) + S(L1) + P(R1) - size) / 2;
+      tryAt(t, Math.abs(pos - t), { gap: { a: P(L1) + S(L1), b: P(R1), size, t } });
+    }
+    const L2 = before[before.length - 2];
+    if (L1 && L2) { const gap = P(L1) - (P(L2) + S(L2)); if (gap > 0) { const t = P(L1) + S(L1) + gap; tryAt(t, Math.abs(pos - t), { chain: [[P(L2) + S(L2), P(L1)], [P(L1) + S(L1), t]] }); } }
+    const R2 = after[1];
+    if (R1 && R2) { const gap = P(R2) - (P(R1) + S(R1)); if (gap > 0) { const t = P(R1) - gap - size; tryAt(t, Math.abs(pos - t), { chain: [[t + size, P(R1)], [P(R1) + S(R1), P(R2)]] }); } }
+    return best;
+  }
+
+  /**
+   * Where a dragged w x h image at (x, y) settles: lined up with a guide line or another image's edge or
+   * centre, or spaced evenly between images, when within `threshold` px (each axis on its own); else on
+   * the grid. Whole pixels always. opts: { xs, ys } (guides()), others [{ x, y, w, h }], threshold, grid.
+   * Returns { x, y, gx, gy }: gx/gy describe what it snapped to on that axis (null: the grid).
+   */
+  function snapBox(x, y, w, h, opts = {}) {
+    const th = opts.threshold === undefined ? 6 : opts.threshold, grid = Math.max(1, opts.grid || 1), others = opts.others || [];
+    const gx = th > 0 ? snapAxis(0, x, w, y, h, opts.xs || [], others, th) : null;
+    const gy = th > 0 ? snapAxis(1, y, h, gx ? gx.target : x, w, opts.ys || [], others, th) : null;
+    const onGrid = (v) => Math.round(v / grid) * grid;
+    return { x: Math.round(gx ? gx.target : onGrid(x)), y: Math.round(gy ? gy.target : onGrid(y)), gx, gy };
+  }
+
+  /**
+   * The reference points a placed image is measured from, picked so it stays put at other window sizes:
+   * the one of the HUD line it was lined up with (it then follows that part of the HUD), else, per axis,
+   * the nearest of the screen's start, centre or end by thirds. Returns { xRef, yRef, x, y } (offsets).
+   */
+  function refsFor(x, y, w, h, refs, W, H, snap = {}) {
+    const third = (c, n) => (c < n / 3 ? 0 : c > (2 * n) / 3 ? 2 : 1);
+    const xr = snap.gx && snap.gx.line && Number.isInteger(snap.gx.line.ref) ? snap.gx.line.ref : third(x + w / 2, W);
+    const yr = snap.gy && snap.gy.line && Number.isInteger(snap.gy.line.ref) ? snap.gy.line.ref : third(y + h / 2, H);
+    return { xRef: xr, yRef: yr, x: clampOff(x - refs[xr][0]), y: clampOff(y - refs[yr][1]) };
+  }
+
   /** Draws the mock HUD (faint) and, with labels, the reference points, on ctx at scale z. */
   function drawHud(ctx, g, refs, z, opts = {}) {
     const S = (v) => v * z;
@@ -153,12 +233,14 @@
     const stat = Object.assign(document.createElement("label"), { className: "hint" });
     const statBox = Object.assign(document.createElement("input"), { type: "checkbox", checked: true });
     stat.append(statBox, document.createTextNode(" Player list open"));
-    const snapL = Object.assign(document.createElement("label"), { className: "hint", title: "Shift while dragging turns it off" });
-    const snapBox = Object.assign(document.createElement("input"), { type: "checkbox", checked: true });
-    snapL.append(snapBox, document.createTextNode(" Snap to the game's points"));
+    const snapL = Object.assign(document.createElement("label"), { className: "hint", title: "Line images up with the screen's centre, the HUD and each other; equal spacing. Shift while dragging turns it off" });
+    const guideBox = Object.assign(document.createElement("input"), { type: "checkbox", checked: true });
+    snapL.append(guideBox, document.createTextNode(" Smart guides"));
+    const gridSel = document.createElement("select"); gridSel.setAttribute("aria-label", "Grid"); gridSel.title = "Where images settle when no guide is near";
+    for (const g of [1, 2, 4, 8, 16]) gridSel.append(new Option(g === 1 ? "Whole pixels" : `${g} px grid`, String(g)));
     const note = Object.assign(document.createElement("span"), { className: "hint lzs-note" });
     const extra = document.createElement("span"); extra.className = "lzs-extra";
-    bar.append(sizeSel, stat, snapL, extra, note);
+    bar.append(sizeSel, stat, snapL, gridSel, extra, note);
     const cv = document.createElement("canvas"); cv.className = "lzs-canvas"; cv.tabIndex = 0;
     cv.setAttribute("aria-label", "The game screen: drop or click to place images; they keep their place at every window size");
     el.append(bar, cv); host.append(el);
@@ -172,7 +254,7 @@
     fillSizes();
     const size = () => (sizeSel.value === "own" ? own() : sizeSel.value.split("x").map(Number));
     const opts = () => ({ statbox: statBox.checked ? STATBOX_OPEN : null });
-    let z = 1, drag = null, hot = -1, animating = false;
+    let z = 1, drag = null, hot = -1, animating = false, live = null, view_hint = null; // live: the guides shown while dragging
     const labels = (Lvz ? Lvz.REFS : []).map((r) => r[1]);
     const editable = (o) => !o.map && (!hooks.editable || hooks.editable(o));
     const lvz = () => hooks.lvz && hooks.lvz();
@@ -193,7 +275,7 @@
       const [w, h] = size(), refs = anchors(w, h, opts()), g = hud(w, h, opts());
       const dpr = window.devicePixelRatio || 1, ctx = cv.getContext("2d"), zz = z * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      drawHud(ctx, g, refs, zz, { labels, hot });
+      drawHud(ctx, g, refs, zz, { refs: false });
       const m = lvz(); if (!m) return;
       const t = performance.now(); let anim = false;
       const show = !hooks.visible || hooks.visible();
@@ -208,12 +290,32 @@
         }
         ctx.strokeStyle = i === sel ? "#ffffff" : !editable(o) ? "#c084fc99" : "#ffcf7a66"; ctx.lineWidth = i === sel ? 2 : 1;
         ctx.strokeRect(x * zz - 0.5, y * zz - 0.5, fw * zz + 1, fh * zz + 1);
-        if (i === sel) { // a line to its reference point
+        if (i === sel && !drag) { // a small pin where the game measures it from (a hint, not a handle)
           const a = refs[o.xRef] || refs[0], b = refs[o.yRef] || refs[0];
-          ctx.strokeStyle = "#ffcf7a99"; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(a[0] * zz, b[1] * zz); ctx.lineTo(x * zz, y * zz); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = "#ffcf7a"; ctx.beginPath(); ctx.arc(Math.min(w * zz - 3, Math.max(3, a[0] * zz)), Math.min(h * zz - 3, Math.max(3, b[1] * zz)), 3, 0, Math.PI * 2); ctx.fill();
         }
       }
+      if (live) drawGuides(ctx, live, w, h, zz);
       if (anim && !animating) { animating = true; setTimeout(() => { animating = false; draw(); }, 100); }
+    }
+    function drawGuides(ctx, L, w, h, zz) {
+      ctx.save(); ctx.strokeStyle = "#ff4fd8"; ctx.fillStyle = "#ff4fd8"; ctx.lineWidth = 1;
+      const vline = (v) => { ctx.beginPath(); ctx.moveTo(Math.round(v * zz) + 0.5, 0); ctx.lineTo(Math.round(v * zz) + 0.5, h * zz); ctx.stroke(); };
+      const hline = (v) => { ctx.beginPath(); ctx.moveTo(0, Math.round(v * zz) + 0.5); ctx.lineTo(w * zz, Math.round(v * zz) + 0.5); ctx.stroke(); };
+      const seg = (k, a, b, at) => { // a spacing marker: |<-->| along axis k at cross position `at`
+        ctx.beginPath();
+        if (!k) { ctx.moveTo(a * zz, at * zz); ctx.lineTo(b * zz, at * zz); ctx.moveTo(a * zz, at * zz - 4); ctx.lineTo(a * zz, at * zz + 4); ctx.moveTo(b * zz, at * zz - 4); ctx.lineTo(b * zz, at * zz + 4); }
+        else { ctx.moveTo(at * zz, a * zz); ctx.lineTo(at * zz, b * zz); ctx.moveTo(at * zz - 4, a * zz); ctx.lineTo(at * zz + 4, a * zz); ctx.moveTo(at * zz - 4, b * zz); ctx.lineTo(at * zz + 4, b * zz); }
+        ctx.stroke();
+      };
+      [[L.gx, 0], [L.gy, 1]].forEach(([g, k]) => {
+        if (!g) return;
+        const cross = k ? L.x + L.w / 2 : L.y + L.h / 2;
+        if (g.line) (k ? hline : vline)(g.line.v);
+        if (g.gap) { seg(k, g.gap.a, g.gap.t, cross); seg(k, g.gap.t + g.gap.size, g.gap.b, cross); }
+        if (g.chain) for (const [a, b] of g.chain) seg(k, a, b, cross);
+      });
+      ctx.restore();
     }
     function screenPx(clientX, clientY) { const r = cv.getBoundingClientRect(); return [(clientX - r.left) / z, (clientY - r.top) / z]; }
     function hit(px, py) {
@@ -223,13 +325,22 @@
       for (const [o, i] of list) { const [x, y] = place(o, refs), [fw, fh] = boxOf(o); if (px >= x && py >= y && px < x + fw && py < y + fh) return i; }
       return -1;
     }
-    const radius = (e) => (snapBox.checked && !(e && e.shiftKey) ? 24 : 0);
-    function setPos(o, x, y, e) {
-      const [fw, fh] = boxOf(o), refs = anchors(...size(), opts());
-      const a = anchorBox(x, y, fw, fh, refs, radius(e));
+    // guides within 6 screen pixels (in game pixels at this zoom); Shift or "Smart guides" off: the grid only
+    const threshold = (e) => (guideBox.checked && !(e && e.shiftKey) ? Math.max(2, 6 / z) : 0);
+    const AXIS = ["left", "centre", "right"], AYIS = ["top", "middle", "bottom"];
+    function hint(o) {
+      const n = (i, k) => (i <= 2 ? (k ? AYIS : AXIS)[i] : (labels[i] || "").toLowerCase());
+      return `Stays put from the ${n(o.xRef, 0)}${o.yRef !== o.xRef || o.xRef > 2 ? ` / ${n(o.yRef, 1)}` : ""} at any window size`;
+    }
+    function setPos(o, x, y, e, self) {
+      const m = lvz(), [fw, fh] = boxOf(o), [W, H] = size(), refs = anchors(W, H, opts()), gl = guides(W, H, opts());
+      const others = m ? m.objects.filter((p) => !p.map && p !== o && p !== self).map((p) => { const [px, py] = place(p, refs), [pw, ph] = boxOf(p); return { x: px, y: py, w: pw, h: ph }; }) : [];
+      const sn = snapBox(x, y, fw, fh, { xs: gl.xs, ys: gl.ys, others, threshold: threshold(e), grid: +gridSel.value });
+      const a = refsFor(sn.x, sn.y, fw, fh, refs, W, H, sn);
       Object.assign(o, { xRef: a.xRef, yRef: a.yRef, x: a.x, y: a.y });
-      hot = a.snapped ? a.xRef : -1;
-      note.textContent = `${labels[a.xRef] || "Top-left"} ${a.x >= 0 ? "+" : ""}${a.x}, ${a.y >= 0 ? "+" : ""}${a.y}`;
+      live = { gx: sn.gx, gy: sn.gy, x: sn.x, y: sn.y, w: fw, h: fh };
+      const what = [sn.gx, sn.gy].filter(Boolean).map((g) => (g.line ? g.line.label : "equal spacing"));
+      note.textContent = `${sn.x}, ${sn.y}${what.length ? ` · lined up with ${[...new Set(what)].join(" and ")}` : ""}`;
     }
     function add(image, px, py, e) {
       const m = lvz(); if (!m || !m.images[image]) return -1;
@@ -270,7 +381,13 @@
       if (hooks.changed) hooks.changed(true);
       draw();
     });
-    const up = () => { if (!drag) return; drag = null; hot = -1; if (hooks.changed) hooks.changed(); draw(); };
+    const up = () => {
+      if (!drag) return;
+      drag = null; hot = -1; live = null;
+      const m = lvz(), o = m && m.objects[hooks.selected ? hooks.selected() : -1];
+      if (o && !o.map) note.textContent = hint(o);
+      if (hooks.changed) hooks.changed(); draw();
+    };
     cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
     cv.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("application/x-lvz-image")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
     cv.addEventListener("drop", (e) => {
@@ -281,23 +398,45 @@
       const m = lvz(), i = hooks.selected ? hooks.selected() : -1, o = m && m.objects[i];
       if (!o || o.map || !editable(o)) return;
       const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-      if (d) { e.preventDefault(); e.stopPropagation(); const k = e.shiftKey ? 10 : 1; o.x = clampOff(o.x + d[0] * k); o.y = clampOff(o.y + d[1] * k); if (hooks.changed) hooks.changed(); draw(); }
+      if (d) {
+        e.preventDefault(); e.stopPropagation();
+        const k = e.shiftKey ? 10 : 1, [W, H] = size(), refs = anchors(W, H, opts()), [x, y] = place(o, refs), [fw, fh] = boxOf(o);
+        const keepX = o.xRef > 2 ? { gx: { line: { ref: o.xRef } } } : {}, keepY = o.yRef > 2 ? { gy: { line: { ref: o.yRef } } } : {};
+        Object.assign(o, refsFor(x + d[0] * k, y + d[1] * k, fw, fh, refs, W, H, Object.assign({}, keepX, keepY)));
+        note.textContent = hint(o);
+        if (hooks.changed) hooks.changed(); draw();
+      }
       else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); e.stopPropagation(); m.objects.splice(i, 1); if (hooks.select) hooks.select(-1); if (hooks.changed) hooks.changed(); draw(); }
     });
     for (const c of [sizeSel, statBox]) c.addEventListener("change", () => { layout(); });
+    // the hint for the selected image, kept current as the selection changes
+    view_hint = () => { const m = lvz(), o = m && m.objects[hooks.selected ? hooks.selected() : -1]; note.textContent = o && !o.map ? hint(o) : "Drag an image here; it lines up with the centre, the HUD and other images."; };
     window.addEventListener("resize", () => { if (el.hidden) return; fillSizes(); layout(); });
 
     const view = {
       el, bar: extra, canvas: cv,
       show(on) { el.hidden = !on; if (on) { fillSizes(); requestAnimationFrame(layout); } },
       get shown() { return !el.hidden; },
-      redraw: draw,
+      redraw: () => { if (!drag && view_hint) view_hint(); draw(); },
       size, anchors: () => anchors(...size(), opts()),
+      /** "Stays put from the right / top at any window size": which reference point, said plainly. */
+      hint,
+      /** Where o's top-left is at the size shown, and moving it there (the reference point re-picked). */
+      position(o) { return place(o, anchors(...size(), opts())); },
+      moveTo(o, x, y) {
+        const [W, H] = size(), refs = anchors(W, H, opts()), [fw, fh] = boxOf(o);
+        const keep = Object.assign(o.xRef > 2 ? { gx: { line: { ref: o.xRef } } } : {}, o.yRef > 2 ? { gy: { line: { ref: o.yRef } } } : {});
+        Object.assign(o, refsFor(Math.round(x), Math.round(y), fw, fh, refs, W, H, keep)); draw();
+      },
       /** Places image `image` with its centre under (clientX, clientY), as a drop does. */
-      dropAt(image, clientX, clientY, e) { const [px, py] = screenPx(clientX, clientY); const i = add(image, px, py, e); draw(); return i; },
+      dropAt(image, clientX, clientY, e) {
+        const [px, py] = screenPx(clientX, clientY); const i = add(image, px, py, e); live = null;
+        const m = lvz(); if (i >= 0 && m) note.textContent = hint(m.objects[i]);
+        draw(); return i;
+      },
     };
     return view;
   }
 
-  return { RADAR_MARGIN, PRESETS, STATBOX_OPEN, OFFSET_MIN, OFFSET_MAX, iconsTop, radarDim, chatRows, hud, anchors, place, anchorBox, drawHud, mount };
+  return { RADAR_MARGIN, PRESETS, STATBOX_OPEN, OFFSET_MIN, OFFSET_MAX, iconsTop, radarDim, chatRows, hud, anchors, place, anchorBox, guides, snapBox, refsFor, drawHud, mount };
 });

@@ -12,7 +12,7 @@
 //   withTileset(prefix, canvas)  the map's new .lvl prefix (24-bit BMP, eLVL data kept)
 //   readOpen / packReads / wallSets / sampleTiles   which wall sets a tileset offers, and swatches
 //   mount(el, editor)  the map editor's Tileset panel: a menu of whole tilesets (the map's own, the
-//                      pilot's, uploads, Defaults), the whole sheet, Apply and ↶, and the Walls swatches
+//                      pilot's, uploads, Defaults), Apply and ↶, and the Walls swatches (named by look)
 //   sheet(id)          a generated tileset as a canvas (the tile editor's Defaults)
 // Pure parts (no DOM) are exported for node tests through module.exports.
 "use strict";
@@ -216,6 +216,66 @@
     }
     return out;
   }
+  // Names for a tileset's wall sets by how they look: packs drawn alike share one name (so the
+  // swatches show each look once); a pack that matches a reference sheet at its slots takes that
+  // reference's name (refs: [{ rgba, name: string | (pack) => string }], e.g. the standard tiles
+  // with their pack names, each generated style with its name); otherwise its colour. Distinct
+  // looks with the same name are numbered. -> Map(packId -> name)
+  function roleTiles(spec, pack) {
+    const roles = (spec && spec.roles) || {};
+    return Object.entries(pack.tiles || {}).filter(([r, t]) => roles[r] && isWall(t)).map(([, t]) => t);
+  }
+  function tilesAlike(a, b, w, tiles, b2) {
+    let d = 0, n = 0;
+    for (const [t, u] of tiles) {
+      const x0 = ((t - 1) % COLS) * TS, y0 = Math.floor((t - 1) / COLS) * TS;
+      const x1 = ((u - 1) % COLS) * TS, y1 = Math.floor((u - 1) / COLS) * TS;
+      for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++) {
+        const i = ((y0 + y) * w + x0 + x) * 4, j = ((y1 + y) * w + x1 + x) * 4;
+        d += Math.abs(a[i] - (b2 || b)[j]) + Math.abs(a[i + 1] - (b2 || b)[j + 1]) + Math.abs(a[i + 2] - (b2 || b)[j + 2]); n += 3;
+      }
+    }
+    return n > 0 && d / n < 12;
+  }
+  function colourName(rgba, w, tiles) {
+    let r = 0, g = 0, b = 0, n = 0;
+    for (const t of tiles) {
+      const x0 = ((t - 1) % COLS) * TS, y0 = Math.floor((t - 1) / COLS) * TS;
+      for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++) {
+        const i = ((y0 + y) * w + x0 + x) * 4;
+        if (rgba[i] + rgba[i + 1] + rgba[i + 2] < 24) continue;
+        r += rgba[i]; g += rgba[i + 1]; b += rgba[i + 2]; n++;
+      }
+    }
+    if (!n) return "Dark";
+    r /= n * 255; g /= n * 255; b /= n * 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, c = mx - mn;
+    if (c < 0.08) return l > 0.7 ? "White" : l > 0.3 ? "Grey" : "Dark grey";
+    let hue = mx === r ? ((g - b) / c) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4;
+    hue = (hue * 60 + 360) % 360;
+    return hue < 15 || hue >= 340 ? "Red" : hue < 45 ? "Bronze" : hue < 70 ? "Yellow" : hue < 165 ? "Green"
+      : hue < 200 ? "Cyan" : hue < 250 ? (l < 0.35 ? "Navy" : "Blue") : hue < 290 ? "Purple" : "Pink";
+  }
+  // Whether a pack's tiles match a reference sheet's at the same slots.
+  function matchesRef(rgba, w, spec, pack, refs) {
+    const self = roleTiles(spec, pack).map((t) => [t, t]);
+    return (refs || []).some((f) => tilesAlike(rgba, null, w, self, f.rgba));
+  }
+  function namesByLook(rgba, w, spec, packs, refs) {
+    const out = new Map(), looks = [], used = new Map();
+    for (const p of packs) {
+      const tiles = roleTiles(spec, p);
+      const same = looks.find((k) => k.tiles.length === tiles.length && tilesAlike(rgba, rgba, w, tiles.map((t, i) => [t, k.tiles[i]])));
+      if (same) { out.set(p.id, same.name); continue; }
+      const self = tiles.map((t) => [t, t]);
+      const ref = (refs || []).find((f) => tilesAlike(rgba, null, w, self, f.rgba));
+      let name = ref ? (typeof ref.name === "function" ? ref.name(p) : ref.name) : colourName(rgba, w, tiles);
+      const k = (used.get(name) || 0) + 1; used.set(name, k);
+      if (k > 1) name += " " + k;
+      looks.push({ tiles, name }); out.set(p.id, name);
+    }
+    return out;
+  }
   // The swatch: a small structure (bar, corners, junction, a 2x2 block) built from a pack's roles.
   const SAMPLE = ["XXXXXX..X", "X....XXXX", "X.XX.X..X", "XXXX.X...", "X........"];
   function sampleTiles(spec, pack) {
@@ -277,7 +337,7 @@
     return out;
   }
 
-  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, layoutSlots, followsLayout, packStyle, withTileset, isWall, readOpen, packReads, wallSets, sampleTiles, SAMPLE, defaults };
+  const api = { TS, COLS, ROWS, canon, openMask, usage, groups, stylesFor, blankPlan, restylePlan, sheetPlan, layoutSlots, followsLayout, packStyle, withTileset, isWall, readOpen, packReads, wallSets, namesByLook, matchesRef, colourName, sampleTiles, SAMPLE, defaults };
   if (typeof module !== "undefined" && module.exports) { module.exports = api; return; }
 
   // ---- browser ---------------------------------------------------------------------------------
@@ -335,8 +395,6 @@
     const bApply = h("button", { type: "button", className: "btn small", id: "tileapply", textContent: "Apply", title: "Put this tileset in the map (published with it)" });
     const bUndo = h("button", { type: "button", className: "ghost small icon", id: "tileundo", textContent: "↶", title: "Put the map's previous tileset back", disabled: true });
     bUndo.setAttribute("aria-label", "Undo tileset change");
-    const sheet = h("canvas", { className: "px tilesheet", width: COLS * TS, height: ROWS * TS, id: "tilesheet" });
-    sheet.setAttribute("role", "img");
     const warn = h("p", { className: "hint warnnote tilewarn", hidden: true });
     const warnText = h("span"), bFill = h("button", { type: "button", className: "ghost small", textContent: "Fill them", title: "Draw wall art into those slots, each as the piece its walls need" });
     warn.append(warnText, bFill);
@@ -347,7 +405,7 @@
     sws.setAttribute("aria-label", "Wall set to draw with");
     const none = h("p", { className: "hint", hidden: true });
     const status = h("p", { className: "hint", id: "tilestatus" });
-    el.replaceChildren(h("div", { className: "row tilepick" }, pick, bApply, bUndo), sheet, warn, upload, wallsHead, sws, none, status);
+    el.replaceChildren(h("div", { className: "row tilepick" }, pick, bApply, bUndo), warn, upload, wallsHead, sws, none, status);
 
     const ogMap = h("optgroup", { label: "This map" }, h("option", { value: "map", textContent: "Its own tiles" }));
     const ogDef = h("optgroup", { label: "Defaults", className: "defaults" });
@@ -355,6 +413,16 @@
     pick.append(ogMap, ogDef);
     const isGen = (v) => !!data.themes[v] || data.styles.some((st) => st.id === v);
     const styleName = (id) => (defaults(data).find((d) => d.id === id) || { name: id }).name;
+    // reference sheets for naming wall sets by look: the standard tiles (their pack names), and the
+    // standard layout drawn in each generated style (the style's name)
+    let refsP = null;
+    const lookRefs = (spec) => refsP || (refsP = (async () => {
+      await ready();
+      const refs = [];
+      try { const std = editor.load && await editor.load("std"); if (std && std.canvas) refs.push({ rgba: rgbaOf(std.canvas), name: (p) => p.name || p.id }); } catch { /* none */ }
+      for (const st of data.styles) refs.push({ rgba: rgbaOf(paint(null, sheetPlan(spec, st.id, data), st.id)), name: st.name });
+      return refs;
+    })());
 
     let sources = new Map(), applied = "map", undo = [], shown = null, seq = 0, wallPick = null;
     function setSources(list) {
@@ -399,19 +467,25 @@
       try { c = await candidate(v); } catch (err) { c = null; status.textContent = "Couldn't show that tileset: " + err.message; }
       if (my !== seq) return; // picked again meanwhile
       shown = c;
-      const ctx = sheet.getContext("2d");
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, sheet.width, sheet.height);
-      if (c && c.canvas) ctx.drawImage(c.canvas, 0, 0);
-      sheet.setAttribute("aria-label", c ? `The whole tileset: ${c.label}` : "No tileset");
       editor.preview(v === applied || v === "map" || !c ? null : c.canvas, c && c.label);
-      drawWalls();
+      await drawWalls(my);
       noteState();
     }
-    function drawWalls() {
+    async function drawWalls(my = seq) {
       const c = shown;
       if (!c || !c.canvas || !c.spec) { sws.replaceChildren(); none.hidden = true; editor.walls(null, null); return; }
       const rgba = c.check ? c.canvas.getContext("2d").getImageData(0, 0, COLS * TS, ROWS * TS).data : null;
-      const sets = wallSets(c.spec, c.names, c.keep || (rgba ? (p) => packReads(rgba, COLS * TS, c.spec, p) >= 0.6 : null));
+      const refs = rgba ? await lookRefs(c.spec) : [];
+      // a pack is a wall set when its tiles read as their roles, or match a known tileset's
+      const keepP = c.keep || (rgba ? (p) => packReads(rgba, COLS * TS, c.spec, p) >= 0.6 || matchesRef(rgba, COLS * TS, c.spec, p, refs) : null);
+      let names = c.names;
+      if (rgba && !names) {
+        // a tileset without its own names (the map's own tiles, an upload): name packs by their look
+        const look = namesByLook(rgba, COLS * TS, c.spec, (c.spec.packs || []).filter((p) => !keepP || keepP(p)), refs);
+        names = (p) => look.get(p.id) || p.name || p.id;
+      }
+      if (my !== seq) return;
+      const sets = wallSets(c.spec, names, keepP);
       none.hidden = sets.length > 0;
       none.replaceChildren("No wall sets in this tileset. ", h("a", { href: "/arena/me#tiles", textContent: "Set them up in the Tile editor" }), ". Drawing places the tile you pick.");
       if (!sets.some((st) => st.pack === wallPick)) wallPick = sets.length ? sets[0].pack : null;

@@ -53,3 +53,50 @@ test("anchorBox snaps the nearest handle onto a reference point, else anchors to
   const far = S.anchorBox(-5000, 3000, 8, 8, [[0, 0]], 0);
   assert.deepEqual([far.x, far.y], [S.OFFSET_MIN, S.OFFSET_MAX]);
 });
+
+test("snapBox lines an image up with the screen centre, the HUD and other images, else the grid", () => {
+  const W = 1024, H = 768, gl = S.guides(W, H);
+  // 40x20 image whose centre is 3 px right of the screen centre: centred exactly
+  let r = S.snapBox(512 - 20 + 3, 250.4, 40, 20, { xs: gl.xs, ys: gl.ys, threshold: 6 });
+  assert.equal(r.x, 492); assert.equal(r.gx.line.label, "screen centre");
+  assert.equal(r.gy, null); assert.equal(r.y, 250, "whole pixels when nothing is near");
+  // the grid when no guide is near
+  r = S.snapBox(301, 203, 10, 10, { xs: [], ys: [], threshold: 6, grid: 8 });
+  assert.deepEqual([r.x, r.y], [304, 200]);
+  // the radar's left edge: right edge of the image on it
+  const radarLeft = gl.xs.find((g) => g.label === "radar left");
+  r = S.snapBox(radarLeft.v - 30 - 4, 500, 30, 10, { xs: gl.xs, ys: [], threshold: 6 });
+  assert.equal(r.x + 30, radarLeft.v); assert.equal(r.gx.line.ref, 8);
+  // another image's top edge
+  const others = [{ x: 100, y: 100, w: 50, h: 50 }];
+  r = S.snapBox(400, 103, 10, 10, { xs: [], ys: [], others, threshold: 6 });
+  assert.equal(r.y, 100); assert.ok(r.gy.line.image);
+  // off: nothing but whole pixels
+  r = S.snapBox(509.6, 100.2, 40, 20, { xs: gl.xs, ys: gl.ys, threshold: 0 });
+  assert.deepEqual([r.x, r.y, r.gx, r.gy], [510, 100, null, null]);
+});
+
+test("snapBox spaces an image evenly: centred between two, or the same gap as its neighbours", () => {
+  const row = [{ x: 100, y: 50, w: 20, h: 20 }, { x: 200, y: 50, w: 20, h: 20 }];
+  // between 120 and 200 a 20-wide image is centred with 30 px either side: x 150
+  let r = S.snapBox(147, 52, 20, 20, { xs: [], ys: [], others: row, threshold: 6 });
+  assert.equal(r.x, 150); assert.ok(r.gx.gap);
+  // after two with an 80 px gap: the same gap again
+  r = S.snapBox(302, 52, 20, 20, { xs: [], ys: [], others: row, threshold: 6 });
+  assert.equal(r.x, 300); assert.ok(r.gx.chain);
+});
+
+test("refsFor picks the reference point: the HUD line it was lined up with, else thirds of the screen", () => {
+  const W = 1024, H = 768, refs = S.anchors(W, H);
+  // free, top-right area: x from the right edge, y from the top
+  assert.deepEqual(S.refsFor(950, 10, 40, 20, refs, W, H), { xRef: 2, yRef: 0, x: -74, y: 10 });
+  // middle of the screen: from the centre
+  assert.deepEqual(S.refsFor(492, 374, 40, 20, refs, W, H), { xRef: 1, yRef: 1, x: -20, y: -10 });
+  // lined up with the radar's left edge (ref 8): x follows the radar
+  const radarLeft = S.guides(W, H).xs.find((g) => g.label === "radar left");
+  const a = S.refsFor(radarLeft.v - 30, 600, 30, 10, refs, W, H, { gx: { line: radarLeft } });
+  assert.equal(a.xRef, 8); assert.equal(a.x, -30); assert.equal(a.yRef, 2);
+  // and it stays put relative to the radar at another size
+  const big = S.anchors(1920, 1080);
+  assert.equal(S.place(a, big)[0] + 30, S.guides(1920, 1080).xs.find((g) => g.label === "radar left").v);
+});
