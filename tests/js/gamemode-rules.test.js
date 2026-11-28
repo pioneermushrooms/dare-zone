@@ -90,6 +90,21 @@ test("free-for-all is one per team; private teams off caps MaxFrequency", () => 
   assert.equal(R.settings(game("fight", { teams: { private: true } }), specs())["Team:MaxFrequency"], "10000");
 });
 
+test("free-for-all leaves room for every pilot", () => {
+  const ffa = R.settings(game("fight", { teams: { count: 0, private: false } }), specs());
+  assert.equal(ffa["Team:MaxPerTeam"], "1");
+  assert.equal(ffa["Team:MaxFrequency"], "100"); // up to PrivFreqStart: one public freq per pilot, private freqs still off
+  assert.equal(R.settings(game("fight", { teams: { count: 0, private: true } }), specs())["Team:MaxFrequency"], "10000");
+});
+
+test("games without flags switch the static flag game off too (turf then fight)", () => {
+  for (const o of ["fight", "powerball", "king"]) {
+    const out = R.settings(game(o), specs());
+    assert.equal(out["Flag:CarryFlags"], "1", o);
+    assert.equal(out["Flag:FlagCount"], "0", o);
+  }
+});
+
 test("fixed kill reward or bounty", () => {
   assert.equal(R.settings(game("fight"), specs())["Kill:FixedKillReward"], "-1");
   assert.equal(R.settings(game("fight", { scoring: { kill: "fixed", fixedKill: 25 } }), specs())["Kill:FixedKillReward"], "25");

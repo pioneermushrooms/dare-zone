@@ -43,9 +43,11 @@ const GameModeTab = (() => {
   }
 
   const ships = () => st.data.ships;
-  const game = () => st.data.game;
+  // A Phase 1 game mode has no game yet (data.game null): its panels show the defaults, but nothing of the
+  // game is sent until the owner changes one of those panels (setG makes it real).
+  const game = () => st.data.game || R.withDefaults(undefined);
   // Ships first, then the game panels: the game wins where both set a key (only Flag:Flagger* can overlap).
-  const computed = () => ({ ...G.settings(ships(), specs()), ...R.settings(game(), specs()) });
+  const computed = () => ({ ...G.settings(ships(), specs()), ...(st.data.game ? R.settings(st.data.game, specs()) : {}) });
   function withoutTweak(name) {
     const t = { ...ships().tweaks }; delete t[name];
     return G.settings({ ...ships(), tweaks: t }, specs())[name];
@@ -75,7 +77,7 @@ const GameModeTab = (() => {
     st.data.ships.start = { ...G.defaults().start, ...(st.data.ships.start || {}) };
     st.data.ships.roles = { ...G.defaults().roles, ...(st.data.ships.roles || {}) };
     st.data.ships.tweaks = { ...(st.data.ships.tweaks || {}) };
-    st.data.game = R.withDefaults(d.game);
+    st.data.game = d.game ? R.withDefaults(d.game) : null;
     // Phase 1 game modes have no wizard answer: they keep opening as tabs.
     st.data.wizard = { experience: "expert", ...(d.wizard || {}) };
     st.open = null; st.step = 0; st.tab = "objective";
@@ -215,7 +217,8 @@ const GameModeTab = (() => {
       b.addEventListener("click", () => { st.data.wizard.experience = to; st.step = 0; changed(); });
       return b;
     };
-    const head = el("div", { class: "gmsummary" }, el("p", { text: R.summary(game(), ships()) }),
+    const head = el("div", { class: "gmsummary" }, el("p", { text: st.data.game ? R.summary(st.data.game, ships())
+      : "Ships only so far: applying changes ship and prize settings. Choose an objective, teams, scoring or time to add the game." }),
       el("div", { class: "gmviews small" }, exp !== "first" ? link("Walk me through it", "first") : null,
         exp !== "some" ? link("Show everything on one page", "some") : null, exp !== "expert" ? link("Show as tabs", "expert") : null));
     const list = steps();
@@ -274,7 +277,8 @@ const GameModeTab = (() => {
     flags: (k) => (k.startsWith("Flag:") && !["Flag:CarryFlags", "Flag:FlagMode", "Flag:FlagReward", "Flag:SplitPoints"].includes(k)) || (k.startsWith("Soccer:") && k !== "Soccer:Reward") || (k.startsWith("King:") && k !== "King:RewardFactor"),
   };
   function changes(id) {
-    const out = R.settings(game(), specs());
+    if (!st.data.game) return null;
+    const out = R.settings(st.data.game, specs());
     const mine = Object.entries(out).filter(([k]) => id === "objective"
       ? !Object.values(PANEL_KEYS).some((f) => f(k)) : PANEL_KEYS[id]?.(k));
     if (!mine.length) return null;
@@ -290,7 +294,7 @@ const GameModeTab = (() => {
     return box;
   }
 
-  const setG = (fn) => { fn(game()); changed(); };
+  const setG = (fn) => { if (!st.data.game) st.data.game = R.withDefaults(undefined); fn(st.data.game); changed(); };
   function row(label, hint, ...controls) {
     return el("div", { class: "gmrow2" }, el("div", { class: "gmlab" }, el("b", { text: label }), hint ? el("span", { class: "dim small", text: hint }) : null),
       el("div", { class: "gmval" }, ...controls.filter(Boolean)));
@@ -416,7 +420,8 @@ const GameModeTab = (() => {
 
   function reviewPanel() {
     const n = Object.keys(computed()).length;
-    return [el("p", { class: "gmq", text: `${st.name}, ready to apply` }), el("p", { class: "gmbig", text: R.summary(game(), ships()) }),
+    return [el("p", { class: "gmq", text: `${st.name}, ready to apply` }),
+      el("p", { class: "gmbig", text: st.data.game ? R.summary(st.data.game, ships()) : "Ships only: no game chosen yet." }),
       el("p", { class: "dim small", text: `Sets ${n} settings. You see every change before it's applied.` })];
   }
 

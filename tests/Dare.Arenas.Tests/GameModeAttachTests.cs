@@ -47,4 +47,16 @@ public sealed class GameModeAttachTests
         var (_, d) = GameModeAttach.Diff(new HashSet<string>([Kill]), GameModeModules.None, staff);
         Assert.Empty(d);
     }
+
+    [Fact]
+    public void failed_attach_is_forgotten_and_failed_detach_is_kept()
+    {
+        var ours = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Kill };
+        GameModeAttach.Settle(ours, Kill, attaching: true, ok: false);   // e.g. staff attached it by command first
+        Assert.DoesNotContain(Kill, ours);                             // so removing Kills later won't detach theirs
+        GameModeAttach.Settle(ours, Kill, attaching: false, ok: false);  // a detach that failed: still ours
+        Assert.Contains(Kill, ours);
+        GameModeAttach.Settle(ours, Kill, attaching: false, ok: true);
+        Assert.Contains(Kill, ours);                                   // a success changes nothing (already planned)
+    }
 }

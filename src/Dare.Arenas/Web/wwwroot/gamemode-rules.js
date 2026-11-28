@@ -90,7 +90,8 @@
       "Team:DesiredTeams": count || 1,
       "Team:MaxPerTeam": count ? +t.perTeam : 1,
       "Team:ForceEvenTeams": b(t.even && count > 0),
-      "Team:MaxFrequency": t.private ? 10000 : Math.max(count, 1),
+      // Free-for-all needs a public freq per pilot: up to PrivFreqStart (100) keeps private freqs off.
+      "Team:MaxFrequency": t.private ? 10000 : count ? count : 100,
       "LegalShip:ArenaMask": +t.ships & 255,
       "Misc:ShipChangeInterval": ticks(t.shipChangeSec),
       "Kill:FixedKillReward": s.kill === "fixed" ? +s.fixedKill : -1,
@@ -100,7 +101,8 @@
       "GameMode:Attach": attach(g).join(", ") || "None",
     };
     const noBall = { "Soccer:BallCount": 0 };
-    const noFlags = { "Flag:FlagCount": 0, "Flag:FlagMode": "None" };
+    // CarryFlags 1 too: CarryFlags 0 is the static (turf) flag game, which runs whenever the map has flag tiles.
+    const noFlags = { "Flag:CarryFlags": 1, "Flag:FlagCount": 0, "Flag:FlagMode": "None" };
     const noPeriodic = { "Periodic:RewardDelay": 0 };
     switch (g.objective) {
       case "carryall": case "ownall": case "rabbit":

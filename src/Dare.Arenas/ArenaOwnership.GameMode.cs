@@ -74,8 +74,9 @@ public sealed partial class ArenaOwnership
             {
                 var ok = await modules.DetachModuleAsync(t, arena).ConfigureAwait(false);
                 Log(ok ? LogLevel.Info : LogLevel.Warn, $"{{{arena.Name}}} GameMode: {(ok ? "detached" : "could not detach")} {t}.");
+                if (!ok) Settle(arena, t, attaching: false);
             }
-            catch (Exception ex) { Log(LogLevel.Error, $"{{{arena.Name}}} GameMode: detaching {t} failed: {ex.Message}"); }
+            catch (Exception ex) { Log(LogLevel.Error, $"{{{arena.Name}}} GameMode: detaching {t} failed: {ex.Message}"); Settle(arena, t, attaching: false); }
         }
         foreach (var t in attach)
         {
@@ -83,8 +84,16 @@ public sealed partial class ArenaOwnership
             {
                 var ok = await modules.AttachModuleAsync(t, arena).ConfigureAwait(false);
                 Log(ok ? LogLevel.Info : LogLevel.Warn, $"{{{arena.Name}}} GameMode: {(ok ? "attached" : "could not attach")} {t}.");
+                if (!ok) Settle(arena, t, attaching: true);
             }
-            catch (Exception ex) { Log(LogLevel.Error, $"{{{arena.Name}}} GameMode: attaching {t} failed: {ex.Message}"); }
+            catch (Exception ex) { Log(LogLevel.Error, $"{{{arena.Name}}} GameMode: attaching {t} failed: {ex.Message}"); Settle(arena, t, attaching: true); }
         }
     }
+
+    /// <summary>A failed attach or detach, corrected on the mainloop (where _gameModeAttached lives).</summary>
+    private void Settle(Arena arena, string type, bool attaching) =>
+        _mainloop.QueueMainWorkItem(s =>
+        {
+            if (_gameModeAttached.TryGetValue(s.arena, out var ours)) GameModeAttach.Settle(ours, s.type, s.attaching, ok: false);
+        }, (arena, type, attaching));
 }

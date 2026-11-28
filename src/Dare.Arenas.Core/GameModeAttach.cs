@@ -75,6 +75,16 @@ public static class GameModeAttach
         return (attach, detach);
     }
 
+    /// <summary>
+    /// Corrects what we recorded once the module manager answers (we record a change before awaiting it):
+    /// a failed attach isn't ours (it may be someone else's, attached by command), a failed detach still is.
+    /// </summary>
+    public static void Settle(ISet<string> ours, string type, bool attaching, bool ok)
+    {
+        if (ok) return;
+        if (attaching) ours.Remove(type); else ours.Add(type);
+    }
+
     /// <summary>The type names in a Modules:AttachModules value (split like the server: whitespace, ':' and ';').</summary>
     public static IReadOnlySet<string> StaffAttached(string? attachModules)
     {
