@@ -60,7 +60,7 @@ public class BotLineupHostLimitTests
                 case "seat": Assert.Contains(value, new[] { "in", "spec" }); break;
                 case "team": Assert.InRange(int.Parse(value), 0, 9999); break;
                 case "ship": Assert.InRange(int.Parse(value), 1, 8); break;
-                case "behaviour": Assert.Contains(value, new[] { "idle", "patrol", "sentry", "fighter" }); break;
+                case "behaviour": Assert.Contains(value, new[] { "idle", "patrol", "sentry", "fighter", "swarm" }); break;
                 case "point":
                     Assert.True(++points <= 64);
                     Assert.All(value.Split(' '), v => Assert.InRange(int.Parse(v), 0, 1023)); break;
@@ -99,6 +99,15 @@ public class BotLineupHostLimitTests
         }
         var full = BotLineup.Render("a", "o", [(bot, new BotPlacement(bot.Label, BotSeat.Spectating, 9999), "P")]);
         AssertHostTakes(full.Split("controller o\n")[1]);
+    }
+
+    [Fact]
+    public void HostProblem_AcceptsSwarm()
+    {
+        // The tutorial's training bots; the zone's own bot lineups only, not something an arena owner can save.
+        var swarm = new ArenaBot("Swarm One", "ship 1\nbehaviour swarm\nrange 12", true);
+        Assert.Null(BotLineup.HostProblem(swarm));
+        AssertHostTakes(BotLineup.Render("a", "o", [(swarm, new BotPlacement("Swarm One", BotSeat.In, 0), "P")]).Split("controller o\n")[1]);
     }
 
     [Fact]

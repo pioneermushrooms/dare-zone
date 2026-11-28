@@ -33,7 +33,7 @@ public static class BotLineup
             string? why = parts[0] switch
             {
                 "ship" => int.TryParse(value, out int ship) && ship is >= 1 and <= 8 ? null : "the ship must be 1-8",
-                "behaviour" => value is "idle" or "patrol" or "sentry" or "fighter" ? null : "unknown behaviour",
+                "behaviour" => value is "idle" or "patrol" or "sentry" or "fighter" or "swarm" ? null : "unknown behaviour",
                 "point" => ++points > HostMaxPoints ? $"more than {HostMaxPoints} points"
                     : fields.Length == 2 && fields.All(f => int.TryParse(f, out int n) && n is >= 0 and <= 1023) ? null
                     : "a point must be two tiles, 0-1023",
