@@ -19,6 +19,9 @@ public static class ArenaName
         // staff.conf sections the server reserves (CapabilityManager.IsReservedStaffConfSection):
         // arena-scoped groups can't be stored for arenas with these names.
         "general", "grouppasswords",
+        // the tutorial's module-owned arena folder (arenas/#training, for #training1, #training2, ...): a draft of
+        // this name would be #training and share it
+        "training",
     };
 
     /// <param name="existing">Folder names already in <c>arenas/</c>; compared case-insensitively.</param>

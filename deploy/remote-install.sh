@@ -22,7 +22,8 @@
 #  4. runs deploy/apply-local.sh on the zone: module line, AuthFile commented out and the
 #     FoundationAuth line in its place (before AuthBan; the plugin imports passwd.conf [Users] once
 #     on first load), cmd_passwd removed from groupdef.dir/default, groupdef sections and files,
-#     default caps, arenas/_template (existing files kept), the plugin folder bin/modules/Dare.Arenas;
+#     default caps, arenas/_template (existing files kept), arenas/#training (the tutorial arena,
+#     overwritten), the plugin folder bin/modules/Dare.Arenas;
 #     --sysop <name>: adds "<name> = sysop" to staff.conf [(global)] unless already listed there
 #  5. unless --no-restart: checks players online again, restarts subspace, and requires the module
 #     to load, 8088 to listen on loopback only and the local API to answer 200. Otherwise it rolls
@@ -264,6 +265,7 @@ if [ -d "$SITE" ]; then cp -a "$SITE" "$BACKUP/site"; fi
 if [ -d "$ZONE/bin/modules/Dare.Arenas" ]; then cp -a "$ZONE/bin/modules/Dare.Arenas" "$BACKUP/zone-bin-modules/"; fi
 if [ -f "$ZONE/bin/libe_sqlite3.so" ]; then cp -a "$ZONE/bin/libe_sqlite3.so" "$BACKUP/zone-bin-libe_sqlite3.so"; fi
 if [ -d "$ZONE/arenas/_template" ]; then cp -a "$ZONE/arenas/_template" "$BACKUP/zone-arenas/"; fi
+if [ -d "$ZONE/arenas/#training" ]; then cp -a "$ZONE/arenas/#training" "$BACKUP/zone-arenas/"; fi
 if [ -f "$ZONE/data/dare-arenas.db" ]; then
   mkdir -p "$BACKUP/data"
   backup_db "$ZONE/data/dare-arenas.db" "$BACKUP/data/dare-arenas.db" || die "backing up data/dare-arenas.db failed"
@@ -332,7 +334,7 @@ if [ ! -f "$STAGE/plugin/oss-bot" ]; then
   fi
 fi
 bash "$STAGE/deploy/apply-local.sh" "$ZONE" "$STAGE/plugin"
-chown -R "$OWNER" "$ZONE/bin/modules/Dare.Arenas" "$ZONE/arenas/_template"
+chown -R "$OWNER" "$ZONE/bin/modules/Dare.Arenas" "$ZONE/arenas/_template" "$ZONE/arenas/#training"
 # the server's native SQLite (the version the plugin builds against; same C API as before)
 if [ -f "$STAGE/native/libe_sqlite3.so" ] && ! cmp -s "$STAGE/native/libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so"; then
   install -m 0755 "$STAGE/native/libe_sqlite3.so" "$ZONE/bin/libe_sqlite3.so.new"

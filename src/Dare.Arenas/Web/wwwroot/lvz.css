@@ -62,3 +62,13 @@ body.lvzplacing #drawtools [data-tool].on { opacity:.45; }
 .lvzpanel .lzp-save.lit { box-shadow:0 0 0 2px #ffcf7a; }
 .lvzpanel details summary { cursor:pointer; }
 .lvzpanel .lzp-more select { width:100%; margin:4px 0; }
+/* map editor: LVZ on the screen (lvz-screen.js), over the map while "On the screen" is picked */
+.lvzscreen { position:absolute; inset:0; z-index:4; display:flex; flex-direction:column; align-items:center; gap:6px; padding:58px 8px 8px; background:var(--panel, #0b1220); overflow:hidden; }
+.lvzscreen[hidden] { display:none; }
+.lvzscreen .lzs-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center; font-size:.8rem; }
+.lvzscreen .lzs-bar select { font-size:.8rem; }
+.lvzscreen .lzs-bar label { margin:0; }
+.lvzscreen .lzs-note { min-width:12em; color:#ffcf7a; }
+.lvzscreen .lzs-canvas { border:1px solid #6b86a8; box-shadow:0 0 0 1px #000; cursor:copy; touch-action:none; image-rendering:pixelated; }
+.lvzscreen .lzs-canvas:focus { outline:2px solid #ffcf7a88; }
+.lvzpanel .lzp-pal button[draggable=true] { cursor:grab; }

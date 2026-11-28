@@ -475,6 +475,7 @@ internal sealed partial class WebServer : IDisposable
             case "/lvz.js": return Get(method, () => Static("lvz.js"));
             case "/lvz-studio.js": return Get(method, () => Static("lvz-studio.js"));
             case "/lvz-layer.js": return Get(method, () => Static("lvz-layer.js"));
+            case "/lvz-screen.js": return Get(method, () => Static("lvz-screen.js"));
             case "/lvz.css": return Get(method, () => Static("lvz.css"));
             case "/gamemode.js": return Get(method, () => Static("gamemode.js"));
             case "/gamemode-ships.js": return Get(method, () => Static("gamemode-ships.js"));
@@ -1190,7 +1191,7 @@ internal sealed partial class WebServer : IDisposable
     }
 
     /// <summary>The tile editor (/arena/tiles) and the tile layout it and map tools read (docs/tile-layout.md).</summary>
-    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
+    private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz-screen.js", "lvz.css"];
 
     /// <summary>The Game mode tab of /arena/me (docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md).</summary>
     private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js", "gamemode-rules.js", "elvl.js", "labels-layer.js"];

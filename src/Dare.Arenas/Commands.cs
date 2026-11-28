@@ -38,6 +38,12 @@ public sealed partial class ArenaOwnership
         // voice menu (any player; the Dare client's V menu sends these)
         Add("v", Command_v);
 
+        // the in-game tutorial (any player; ?tutorialclient is sent by the Dare client)
+        Add("tutorial", Command_tutorial);
+        Add("skip", Command_skip);
+        Add("leave", Command_leave);
+        Add("tutorialclient", Command_tutorialclient);
+
         // drafts (any signed-in pilot)
         RegisterDraftCommands();
 
@@ -45,6 +51,7 @@ public sealed partial class ArenaOwnership
         Add("approvearena", Command_approvearena);
         Add("declinearena", Command_declinearena);
         Add("createarena", Command_createarena);
+        Add("tutorialstats", Command_tutorialstats);
 
         // staff overrides (smod and up: cmd_arenaadmin)
         Add("arenaadmin", Command_arenaadmin);

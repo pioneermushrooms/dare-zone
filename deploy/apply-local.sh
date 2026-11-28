@@ -14,6 +14,8 @@
 # - removes the old staff caps that earlier versions appended to groupdef.dir/mod
 # - appends default-caps.txt to groupdef.dir/default (missing lines only)
 # - copies arenas/_template/ into <zone>/arenas/_template/ (existing files are kept, so local edits survive)
+# - copies arenas/#training/ (the tutorial arena: conf, map, generated LVZ) into <zone>/arenas/#training/
+#   (overwrites: module-owned files)
 # - adds the Dare.Arenas <module> line to conf/Modules.config before </modules> (once)
 # - game logins from Foundation accounts: comments out the SS.Core.Modules.AuthFile line in
 #   conf/Modules.config and puts the Dare.Arenas.FoundationAuth line in its place (it must load
@@ -153,6 +155,10 @@ fi
 mkdir -p "$ZONE/arenas/_template"
 cp -Rn "$HERE/arenas/_template/." "$ZONE/arenas/_template/" 2>/dev/null || true
 echo "arenas/_template present"
+
+mkdir -p "$ZONE/arenas/#training"
+cp -R "$HERE/arenas/#training/." "$ZONE/arenas/#training/"
+echo "arenas/#training copied"
 
 if grep -qF 'Dare.Arenas.ArenaOwnership' "$CONF/Modules.config"; then
   echo "Modules.config already loads Dare.Arenas"

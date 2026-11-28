@@ -33,7 +33,7 @@ public static class BotLineup
             string? why = parts[0] switch
             {
                 "ship" => int.TryParse(value, out int ship) && ship is >= 1 and <= 8 ? null : "the ship must be 1-8",
-                "behaviour" => value is "idle" or "patrol" or "sentry" or "fighter" ? null : "unknown behaviour",
+                "behaviour" => value is "idle" or "patrol" or "sentry" or "fighter" or "swarm" ? null : "unknown behaviour",
                 "point" => ++points > HostMaxPoints ? $"more than {HostMaxPoints} points"
                     : fields.Length == 2 && fields.All(f => int.TryParse(f, out int n) && n is >= 0 and <= 1023) ? null
                     : "a point must be two tiles, 0-1023",
@@ -51,13 +51,15 @@ public static class BotLineup
 
     /// <summary>
     /// The lineup text. A bot the host would refuse (<see cref="HostProblem"/>) is left out, so it cannot stop the rest.
+    /// With no <paramref name="controller"/> (null or empty) the line is left out: the bots take no orders and don't
+    /// announce that they do.
     /// </summary>
-    public static string Render(string arena, string controller,
+    public static string Render(string arena, string? controller,
         IReadOnlyList<(ArenaBot Bot, BotPlacement Placement, string Password)> bots)
     {
         var text = new System.Text.StringBuilder();
         text.Append("lineup ").Append(arena).Append('\n');
-        text.Append("controller ").Append(controller).Append('\n');
+        if (!string.IsNullOrEmpty(controller)) text.Append("controller ").Append(controller).Append('\n');
         foreach (var (bot, placement, password) in bots)
         {
             if (placement.Seat == BotSeat.Out || HostProblem(bot) is not null) continue;
