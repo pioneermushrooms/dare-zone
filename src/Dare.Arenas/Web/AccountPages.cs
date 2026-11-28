@@ -488,22 +488,16 @@ internal sealed partial class WebServer
     }
 
     /// <summary>
-    /// Deletes one of the signed-in pilot's names: {"name", "keep": {"arena": "other name", ...}}
-    /// (arenas and drafts not listed are archived). Deleting the name signed in now switches the
-    /// session to another of the pilot's names.
+    /// Deletes one of the signed-in pilot's names: {"name"}. Its arenas and saved items stay with the
+    /// account. Deleting the name signed in now switches the session to another of the pilot's names.
     /// </summary>
     private async Task<Reply> DeletePilotAsync(HttpListenerRequest req, System.Text.Json.JsonElement? body)
     {
         if (CurrentAccount(req) is not { } cur) return NotSignedInReply();
         var name = Str(body, "name") ?? "";
-        var keep = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (body is { } b && b.TryGetProperty("keep", out var k) && k.ValueKind == System.Text.Json.JsonValueKind.Object)
-            foreach (var p in k.EnumerateObject())
-                if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String && p.Name.Length <= 32)
-                    keep[p.Name] = p.Value.GetString() ?? "";
         var before = _m.Accounts.PilotsOf(cur.Account.Id);
         Account? deleted = null;
-        var r = await OnMain(() => _m.DeletePilotName(cur.Account.Id, name, keep, out deleted)).ConfigureAwait(false);
+        var r = await OnMain(() => _m.DeletePilotName(cur.Account.Id, name, out deleted)).ConfigureAwait(false);
         if (!r.Ok || deleted is null) return Bad(r.Message);
         // deleted the name signed in now: carry on as another of the pilot's names
         if (deleted.Id == cur.Account.Id && before.FirstOrDefault(a => a.Id != deleted.Id) is { } next

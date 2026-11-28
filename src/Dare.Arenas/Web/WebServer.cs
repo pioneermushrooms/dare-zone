@@ -125,7 +125,9 @@ public sealed partial class ArenaOwnership
             limits = new { maxLevelFiles = MaxLevelFiles, mapBytes = 2 * 1024 * 1024, lvzBytes = 5 * 1024 * 1024, settingChangesPerMinute = SettingChangesPerMinute },
             settings = cfg is null ? null : SettingsForWeb(cfg),
             configMissing = cfg is null,
-            maxPerPilot = ArenaStore.MaxPerPilot,
+            maxPerPilot = Store.ArenaLimitOf(player),
+            ownedCount = Store.OwnedCountOf(player),
+            limitRequest = LimitRequestData(player),
             staff = StaffFlags(player),
             restart = RestartData(arena, player),
         };
@@ -143,7 +145,9 @@ public sealed partial class ArenaOwnership
             role = (string?)null,
             pendingRequest = pending is null ? null : new { pending.Arena, pending.Pitch, pending.At },
             maxPitch = MaxPitchLength,
-            maxPerPilot = ArenaStore.MaxPerPilot,
+            maxPerPilot = Store.ArenaLimitOf(player),
+            ownedCount = Store.OwnedCountOf(player),
+            limitRequest = LimitRequestData(player),
             staff = StaffFlags(player),
         };
     }
@@ -444,6 +448,12 @@ internal sealed partial class WebServer : IDisposable
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffArena(p, Str(b, "arena") ?? "", Str(b, "action") ?? "", Str(b, "reason") ?? "")).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/commands": return method == "GET" ? await StaffCommandsAsync(req).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/can": return method == "GET" ? await StaffCanAsync(req).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/staff/limit":
+                return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffLimit(p, long.TryParse(Str(b, "id"), out var lid) ? lid : 0,
+                    Str(b, "action") ?? "", int.TryParse(Str(b, "max"), out var lmax) ? lmax : 0, Str(b, "note"))).ConfigureAwait(false) : MethodNotAllowed();
+            case "/api/arenas/more":
+                return method == "POST" ? await DraftActionAsync(req, (p, b) => _m.RequestMoreArenasFor(p,
+                    int.TryParse(Str(b, "wanted"), out var w) ? w : 0, Str(b, "reason"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/api/staff/create":
                 return method == "POST" ? await StaffActionAsync(req, (p, b) => _m.WebStaffCreate(p, Str(b, "arena") ?? "", Str(b, "owner"))).ConfigureAwait(false) : MethodNotAllowed();
             case "/app.js": return Get(method, () => Static("app.js"));
@@ -776,7 +786,7 @@ internal sealed partial class WebServer : IDisposable
         return JsonReply(200, new
         {
             player,
-            max = ArenaStore.MaxPerPilot,
+            max = store.ArenaLimitOf(player),
             maxInvites = ArenaStore.MaxInvites,
             drafts = store.DraftsOwnedBy(player).Select(d => new
             {
@@ -886,7 +896,7 @@ internal sealed partial class WebServer : IDisposable
         if (Gate(req, write: false, out var player) is { } denied) return denied;
         var arena = req.QueryString["arena"];
         if (arena is null || _m.WebStore.Get(arena) is not { Status: ArenaStatus.Active } owned ||
-            !string.Equals(owned.Owner, player, StringComparison.OrdinalIgnoreCase))
+            !_m.WebStore.SameAccount(owned.Owner, player))
             return JsonReply(403, new { ok = false, message = "Only the active arena's owner can manage bots." });
         return JsonReply(200, new { ok = true, bots = _m.WebStore.Bots(owned.Name) });
     }

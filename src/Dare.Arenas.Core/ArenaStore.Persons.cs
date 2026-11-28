@@ -48,4 +48,77 @@ public sealed partial class ArenaStore
             Exec($"CREATE INDEX IF NOT EXISTS ix_{t}_person ON {t}(person_id);");
         }
     }
+
+    /// <summary>
+    /// The active names of <paramref name="player"/>'s account, <paramref name="player"/> itself
+    /// included (just that name when it has no account). Arena owner, co-mod and invite entries
+    /// hold one of these names; any of them counts as the account.
+    /// </summary>
+    public IReadOnlyList<string> NamesOfAccount(string player)
+    {
+        lock (_gate)
+        {
+            var list = new List<string>();
+            if (PersonOfName(player) is { } p)
+            {
+                using var c = Cmd("SELECT name FROM accounts WHERE person_id = $p AND status = 'active' ORDER BY name COLLATE NOCASE", ("$p", p));
+                using var r = c.ExecuteReader();
+                while (r.Read()) list.Add(r.GetString(0));
+            }
+            if (!list.Any(n => Same(n, player))) list.Add((player ?? "").Trim());
+            return list;
+        }
+    }
+
+    /// <summary>
+    /// <c>column IN (...)</c> over <paramref name="player"/>'s account names, adding the parameters
+    /// to <paramref name="ps"/> (prefix <paramref name="tag"/> keeps two lists in one query apart).
+    /// </summary>
+    private string InAccount(string column, string player, List<(string, object)> ps, string tag = "an")
+    {
+        var names = NamesOfAccount(player);
+        var keys = new List<string>();
+        for (var i = 0; i < names.Count; i++)
+        {
+            keys.Add($"${tag}{i}");
+            ps.Add(($"${tag}{i}", names[i]));
+        }
+        return $"{column} IN ({string.Join(",", keys)})";
+    }
+
+    /// <summary>
+    /// Hands everything the pilot name <paramref name="deleted"/> holds in the arena system to
+    /// <paramref name="to"/>, another name of the same account: arenas and drafts it shows as owner,
+    /// its co-mod places, invites and pending requests. Nothing is archived; the account owns it
+    /// all before and after. Call before the name's account row goes, so a freed name is never
+    /// anyone's owner, co-mod or invitee. Returns the arenas touched (drafts as <c>#name</c>).
+    /// </summary>
+    public IReadOnlyList<string> HandOverName(string deleted, string to, string actor)
+    {
+        var touched = new List<string>();
+        Tx(() =>
+        {
+            if (Same(deleted, to)) return Fail("same name");
+            using (var c = Cmd("""
+                SELECT name FROM arenas WHERE owner = $d
+                UNION SELECT '#' || name FROM drafts WHERE owner = $d
+                UNION SELECT arena FROM comods WHERE player = $d
+                UNION SELECT '#' || name FROM draft_invites WHERE player = $d
+                """, ("$d", deleted)))
+            using (var r = c.ExecuteReader())
+                while (r.Read()) touched.Add(r.GetString(0));
+            Run("UPDATE arenas SET owner = $t WHERE owner = $d", ("$t", to), ("$d", deleted));
+            Run("UPDATE drafts SET owner = $t WHERE owner = $d", ("$t", to), ("$d", deleted));
+            // a place the other name already has is just dropped
+            Run("UPDATE OR IGNORE comods SET player = $t WHERE player = $d", ("$t", to), ("$d", deleted));
+            Run("DELETE FROM comods WHERE player = $d", ("$d", deleted));
+            Run("UPDATE OR IGNORE draft_invites SET player = $t WHERE player = $d", ("$t", to), ("$d", deleted));
+            Run("DELETE FROM draft_invites WHERE player = $d", ("$d", deleted));
+            Run("UPDATE requests SET player = $t WHERE player = $d AND status = 'Pending'", ("$t", to), ("$d", deleted));
+            var now = Now();
+            foreach (var a in touched) AddEvent(now, a, actor, "rename", $"{deleted} -> {to} (name deleted; same account)");
+            return Ok("");
+        });
+        return touched;
+    }
 }
