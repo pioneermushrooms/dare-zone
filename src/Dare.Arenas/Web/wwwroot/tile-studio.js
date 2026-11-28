@@ -74,7 +74,7 @@ window.TileStudio = (() => {
           <button type="button" class="ghost small st-dlroles">Roles .json</button></div>
         <p class="hint st-libhint"></p>
         <ul class="st-lib"></ul>
-        <p class="hint st-defhint" hidden>Default tilesets (generated in the standard layout; Save keeps a copy to change):</p>
+        <p class="hint st-defhint" hidden>Defaults (in the standard layout; Save keeps a copy to change):</p>
         <div class="st-defaults"></div>
       </section>
       <section class="st-card">
@@ -829,17 +829,14 @@ window.TileStudio = (() => {
       return [Bmp.fitSheet(Bmp.read(s.bmp)), Object.assign({ name: name.replace(/\.lvl$/i, ""), elvl: s.elvl, tiles: s.tiles, from: "lvl" }, extra)];
     }
     async function fetchBytes(url) { const r = await fetch(url, { credentials: "same-origin" }).catch(() => null); if (!r || !r.ok) return null; return { bytes: new Uint8Array(await r.arrayBuffer()), r }; }
-    // ---- default tilesets: tile art's generated styles (tileart.js), each drawn as a whole sheet in the
-    // standard layout. [value, label]: the mixed themes first, then one sheet per style.
-    const cap = (w) => w.replace(/(^|-)(\w)/g, (m, d, c) => (d ? " " : "") + c.toUpperCase());
+    // ---- default tilesets: tile art's generated sets (tileart.js TileArt.defaults / TileArt.sheet), each a
+    // whole sheet in the standard layout. [value, label]: the mixed themes first, then one sheet per style.
     function defaults() {
-      const d = window.TileArt && TileArt.data; if (!d) return [];
-      return [...Object.keys(d.themes || {}).map((id) => [id, `${cap(id)} (mixed)`]), ...(d.styles || []).map((st) => [st.id, st.name])];
+      if (!window.TileArt || !TileArt.defaults || !TileArt.data) return [];
+      return TileArt.defaults(TileArt.data).map((x) => [x.id, x.kind === "theme" ? `${x.name} (mixed)` : x.name]);
     }
     async function defaultSheet(id) {
-      await TileArt.ready();
-      const d = TileArt.data, lay = await TileArt.layout();
-      const canvas = TileArt.paint(null, TileArt.sheetPlan(lay, id, d), TileArt.stylesFor(id, d)[0]);
+      const canvas = await TileArt.sheet(id);
       const rgba = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
       return [Bmp.fitSheet(Bmp.quantize(rgba, canvas.width, canvas.height)), (defaults().find(([v]) => v === id) || [id, id])[1]];
     }
@@ -921,8 +918,8 @@ window.TileStudio = (() => {
       const open = q("st-open"); open.replaceChildren(new Option("Open…", ""));
       const group = (label, items) => { if (!items.length) return; const g = document.createElement("optgroup"); g.label = label; for (const [v, t2] of items) g.append(new Option(t2, v)); open.append(g); };
       if (arena) group("This arena", [["arena:", `${arena}'s current map`]]);
-      group("Standard", [["std:", "Standard tiles (the standard layout's packs)"]]);
-      group("Default tilesets (generated)", defaults().map(([v, t2]) => ["gen:" + v, t2]));
+      // as the map editor's menu: Standard first, then the generated sets
+      group("Defaults", [["std:", "Standard tiles"], ...defaults().map(([v, t2]) => ["gen:" + v, t2])]);
       group("Your tilesets", tilesets.map((x) => ["set:" + x.id, x.name]));
       group("Your maps", maps.map((x) => ["map:" + x.id, x.name]));
       group("Ready-made maps", ((s.body && s.body.maps) || []).map((n) => ["shared:" + n, n]));
@@ -935,7 +932,10 @@ window.TileStudio = (() => {
     }
     function renderLib() {
       const box = q("st-defaults"); box.replaceChildren();
-      q("st-defhint").hidden = !defaults().length;
+      q("st-defhint").hidden = false;
+      { const b = document.createElement("button"); b.type = "button"; b.className = "ghost small"; b.textContent = "Standard"; b.title = "Open the standard tiles";
+        if (src.name === "standard tiles") b.classList.add("on");
+        b.addEventListener("click", async () => { if (await confirmDiscard()) openChoice("std:"); }); box.append(b); }
       for (const [v, t2] of defaults()) {
         const b = document.createElement("button"); b.type = "button"; b.className = "ghost small"; b.textContent = t2;
         b.title = `Open the default tileset ${t2}`; if (src.label === `${t2} (default tileset)`) b.classList.add("on");
