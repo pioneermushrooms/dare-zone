@@ -154,6 +154,12 @@
 
     const out = {};
     for (const [name, val] of Object.entries(all)) if (specs && specs[name]) out[name] = String(clamp(val, specs[name]));
+    // A tweak or a clamp can leave a start above its maximum: the maximum wins.
+    const pairs = [...INITIAL_TO_MAX, ...START_ITEMS.map((i) => [`Initial${i}`, `${i}Max`])];
+    for (const ship of SHIPS) for (const [ini, max] of pairs) {
+      const a = `${ship}:${ini}`, b = `${ship}:${max}`;
+      if (a in out && b in out && +out[a] > +out[b]) out[a] = out[b];
+    }
     return out;
   }
 

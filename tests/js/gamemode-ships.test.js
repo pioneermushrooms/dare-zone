@@ -92,6 +92,14 @@ test("start items never exceed cap", () => {
   assert.equal(out["Warbird:InitialRepel"], "0");
 });
 
+test("tweaks never leave a start value above its maximum", () => {
+  const d = { ...G.defaults(), tweaks: { "Shark:RepelMax": "0", "Warbird:InitialSpeed": "9000", "Warbird:InitialGuns": "3", "Warbird:MaxGuns": "1" } };
+  const out = G.settings(d, specsAll());
+  assert.equal(out["Shark:InitialRepel"], "0");
+  assert.equal(out["Warbird:InitialSpeed"], out["Warbird:MaximumSpeed"]);
+  assert.equal(out["Warbird:InitialGuns"], "1");
+});
+
 test("greens off sets PrizeFactor 0", () => {
   assert.equal(G.settings({ ...G.defaults(), greens: false }, specsAll())["Prize:PrizeFactor"], "0");
   assert.equal(G.settings({ ...G.defaults(), items: "loads" }, specsAll())["Prize:PrizeFactor"], "3500");

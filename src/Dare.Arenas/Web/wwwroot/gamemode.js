@@ -20,7 +20,7 @@ const GameModeTab = (() => {
   ];
   const STATUS = ["No", "Can get", "Starts with"]; // CloakStatus etc. 0/1/2
 
-  const st = { modes: [], max: 25, id: null, name: "", data: null, open: null, saveTimer: 0, loaded: false };
+  const st = { modes: [], max: 25, id: null, name: "", data: null, open: null, saveTimer: 0, saving: null, loaded: false };
 
   const words = (k) => k.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^Initial /, "Start ").replace(/^Maximum |^Max /, "Max ");
 
@@ -73,6 +73,7 @@ const GameModeTab = (() => {
   }
 
   async function create() {
+    await flush();
     if (st.modes.length >= st.max) { note(`You have ${st.max} game modes; delete one to add another.`, false); return; }
     const name = await Dlg.prompt("Name your game mode.", { value: "My game mode", maxLength: 40 });
     if (name == null) return;
@@ -88,16 +89,40 @@ const GameModeTab = (() => {
     renderShips();
     clearTimeout(st.saveTimer);
     note("Saving…", true);
-    st.saveTimer = setTimeout(save, 800);
+    st.saveTimer = setTimeout(() => { st.saveTimer = 0; st.saving = save(); }, 800);
   }
+
+  // What a save sends, taken when it starts (not when its reply comes back).
+  const saveBody = () => ({ id: st.id, name: st.name, data: st.data, settings: computed() });
 
   async function save() {
     if (st.id == null) return;
-    const { body } = await postJson("/gamemodes/save", { id: st.id, name: st.name, data: st.data, settings: computed() });
-    note(body?.ok ? "Saved." : body?.message || "Not saved.", !!body?.ok);
+    try {
+      const { body } = await postJson("/gamemodes/save", saveBody());
+      note(body?.ok ? "Saved." : body?.message || "Not saved.", !!body?.ok);
+    } catch {
+      note("Not saved: the server didn't answer. Your changes are still here; change anything to try again.", false);
+    }
   }
 
+  /** Sends a waiting save now and waits for any save on its way, so nothing that follows can overtake it. */
+  async function flush() {
+    if (st.saveTimer) { clearTimeout(st.saveTimer); st.saveTimer = 0; st.saving = save(); }
+    if (st.saving) { await st.saving; st.saving = null; }
+  }
+
+  // Leaving the page with a save waiting: send it anyway.
+  window.addEventListener("pagehide", () => {
+    if (!st.saveTimer || st.id == null) return;
+    clearTimeout(st.saveTimer); st.saveTimer = 0;
+    try {
+      fetch(API + "/gamemodes/save", { method: "POST", keepalive: true, credentials: "same-origin",
+        headers: { ...HDR, "Content-Type": "application/json" }, body: JSON.stringify(saveBody()) });
+    } catch { /* nothing more to do while the page goes away */ }
+  });
+
   async function rename() {
+    await flush();
     const name = await Dlg.prompt("New name for this game mode.", { value: st.name, maxLength: 40 });
     if (name == null) return;
     const { body } = await postJson("/gamemodes/rename", { id: st.id, name });
@@ -106,12 +131,14 @@ const GameModeTab = (() => {
   }
 
   async function duplicate() {
+    await flush();
     const { body } = await postJson("/gamemodes/duplicate", { id: st.id });
     note(body?.message, !!body?.ok);
     if (body?.ok) { await loadList(body.id); render(); }
   }
 
   async function remove() {
+    await flush();
     if (!await Dlg.confirm(`Delete the game mode ${st.name}? This can't be undone.`, { title: "Delete game mode", ok: "Delete", danger: true })) return;
     const { body } = await postJson("/gamemodes/remove", { id: st.id });
     note(body?.message, !!body?.ok);
@@ -143,7 +170,7 @@ const GameModeTab = (() => {
     pick.value = st.id != null ? String(st.id) : "new";
     pick.addEventListener("change", async () => {
       if (pick.value === "new") { pick.value = st.id != null ? String(st.id) : "new"; await create(); return; }
-      await open(+pick.value); render();
+      await flush(); await open(+pick.value); render();
     });
     const btn = (text, fn, cls = "small ghost") => { const b = el("button", { type: "button", class: cls, text }); b.addEventListener("click", fn); return b; };
     const top = el("div", { class: "gmtop" }, pick,
