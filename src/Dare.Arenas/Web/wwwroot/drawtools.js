@@ -370,7 +370,7 @@
   const Shapes = { linePts, path, brush, line, rect, roundRect, ellipse, polygon, curve, spray, flood, mirror, mirrorPoint, text, copy, transform, stamp, apply, fill };
 
   // ---- the tools in the editor ------------------------------------------------------------------------
-  // [id, name, key, what it does, group]; the editor itself handles pan and tidy
+  // [id, name, key, what it does, group]; the editor itself handles pan and tidy (fit pieces)
   const TOOLS = [
     ["pencil", "Pencil", "b", "Draw walls freehand", "draw"],
     ["line", "Line", "l", "Drag a straight wall; Shift keeps it level, upright or at 45°", "draw"],
@@ -389,7 +389,7 @@
     ["lasso", "Lasso", "f", "Draw round what to select", "select"],
     ["wand", "Magic wand", "w", "Click a wall to select it and every wall joined to it (or an open area); Shift adds", "select"],
     ["pan", "Pan", "space", "Drag the map (or hold Space, or right-drag, with any tool)", "view"],
-    ["tidy", "Tidy walls", "t", "Drag over walls to give each the right end, bar, corner or junction piece", "view"],
+    ["tidy", "Fit pieces", "t", "Drag over walls to give each the piece that fits: end, bar, corner, edge, inside corner or junction", "view"],
   ];
   const OWN = new Set(TOOLS.map((t) => t[0]).filter((t) => t !== "pan" && t !== "tidy"));
   const GROUPS = { draw: "Draw", shapes: "Shapes", fill: "Fill and pick", text: "Text", select: "Select", view: "View" };
@@ -531,7 +531,7 @@
       } else if (what === "tidysel") {
         const changes = Autotile.tidyCells(ed.grid, ed.layout(), [...sel], false);
         ed.commit(changes);
-        ed.say(changes.length ? `Tidied ${changes.length.toLocaleString()} wall tiles.` : "Those walls were already tidy.", true);
+        ed.say(changes.length ? `Fitted ${changes.length.toLocaleString()} wall pieces in the selection. Undo puts them back.` : "The walls in the selection already have the pieces that fit.", true);
       } else if (what === "h" || what === "v" || what === "rot") {
         const { clip, changes } = lift();
         const turned = transform(clip, what);
@@ -792,6 +792,7 @@
       },
       down, move, up, key, overlay, cancel,
       get selection() { return sel; },
+      fitSelection: () => selAct("tidysel"),
     };
   }
 
