@@ -18,5 +18,6 @@ cmd_rmlvz
 cmd_weblogin
 cmd_bots
 
-; Never add cmd_quickfix/changesettings here for arena purposes: changesettings edits shared
-; config files zone-wide.
+; Never add changesettings here for arena purposes: outside player-owned arenas it edits any
+; arena-scope setting, shared defaults included. (?quickfix itself is in groupdef.dir/default:
+; Dare.Arenas answers it and checks the arena role.)

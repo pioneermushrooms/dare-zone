@@ -155,22 +155,7 @@ public sealed partial class ArenaOwnership
         var policy = new SettingsPolicy(documented.Values);
         var editable = documented.Values.Where(v => policy.IsEditable(v.Section, v.Key)).ToList();
 
-        var help = new Dictionary<(string, string), IConfigHelpAttribute?>();
-        _configHelp.Lock();
-        try
-        {
-            foreach (var (section, key) in editable)
-            {
-                var helpSection = ShipSections.Contains(section) ? "All" : section;
-                help[(section, key)] = _configHelp.TryGetSettingHelp(helpSection, key, out var list) && list.Count > 0
-                    ? (list.FirstOrDefault(r => r.Attribute.Scope == ConfigScope.Arena).Attribute ?? list[0].Attribute)
-                    : null;
-            }
-        }
-        finally
-        {
-            _configHelp.Unlock();
-        }
+        var help = editable.ToDictionary(v => v, v => SettingHelp(v.Section, v.Key));
 
         return editable
             .GroupBy(v => v.Section)
