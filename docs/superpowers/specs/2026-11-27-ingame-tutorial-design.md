@@ -135,12 +135,14 @@ LVZ arrow pointing at it, and over big centre-screen text for key lines only.
   very high energy (they effectively can't die in the skit), and weak bullets that still
   do damage, so the swarm takes a while by hand. Prizes enabled for the greens step. No
   stats that count elsewhere.
-- **How many at once:** each tutorial arena with bots runs its own bot-host process,
-  and every guest goes in. My call: at most **3** tutorials run with bots at the same
-  time (a setting). Beyond that, a tutorial runs without bots: the target and swarm
-  steps use stationary map targets (or are skipped with a mentor line). Bot names are
-  unique across the zone but look like ordinary pilot names, from a tutorial-specific
-  lineup rather than an arena record in `ArenaStore`.
+- **How many at once** (Chris: 10): up to **10** tutorials run at the same time (a
+  setting), each with its own bot host and full cast (target, swarm, teammate). Bots
+  only fly during the steps that use them. The builder measures one tutorial host's
+  memory and CPU on a local zone and reports it before shipping. An 11th newcomer isn't
+  taken in; they get the one-time "Try the tutorial" offer, which works once a place is
+  free (my call; no bot-less version of the tutorial is built). Bot names are unique
+  across the zone but look like ordinary pilot names, from a tutorial-specific lineup
+  rather than an arena record in `ArenaStore`.
 
 ### The mentor
 
