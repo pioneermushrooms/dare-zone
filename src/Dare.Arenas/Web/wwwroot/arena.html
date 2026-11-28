@@ -16,6 +16,7 @@
 <script src="/arena/tiles.js" defer></script>
 <script src="/arena/tile-studio.js" defer></script>
 <script src="/arena/lvz.js" defer></script>
+<script src="/arena/lvz-screen.js" defer></script>
 <script src="/arena/lvz-studio.js" defer></script>
 <script src="/arena/app.js" defer></script>
 <script src="/arena/gamemode-ships.js" defer></script>
@@ -44,7 +45,7 @@
     <a href="#overview" data-view="overview" data-needs="arena">Overview</a>
     <a href="#map" data-view="map" data-needs="arena">Map</a>
     <a href="#tiles" data-view="tiles" data-needs="arena">Tile Editor</a>
-    <a href="#lvz" data-view="lvz" data-needs="arena">LVZ</a>
+    <a href="#lvz" data-view="lvz" data-needs="arena">LVZ (Advanced)</a>
     <a href="#graphics" data-view="graphics" data-needs="arena">Armory</a>
     <a href="#settings" data-view="settings" data-needs="arena">Settings</a>
     <a href="#gamemode" data-view="gamemode" data-needs="arena">Game mode</a>
@@ -275,8 +276,9 @@
     </section>
 
     <section data-view="lvz" class="lvzview" hidden>
-      <p class="kicker">LVZ</p>
+      <p class="kicker">LVZ · Advanced</p>
       <h2>Overlays (.lvz)</h2>
+      <p class="hint">To place LVZ on the map or on the screen, use the map editor's LVZ panel. This tab is for the rest: image timing and frames, .ini import and export, and whole files.</p>
       <p class="dim">An .lvz carries pictures for the game to show: map objects, placed on the map (decoration that doesn't block anything), and screen objects, placed on the player's screen. Edit one of this arena's, or start one; keep drafts in Your LVZ, and Publish when it's ready. Players get it when the arena restarts.</p>
       <div id="lvzstudio"></div>
       <div class="restart-note" data-restart-note hidden><span>Saved, but the running arena isn't using it yet.</span> <button type="button" class="hot small" data-restart>Restart arena</button></div>

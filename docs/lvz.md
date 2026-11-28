@@ -6,18 +6,33 @@ player's screen (placed from one of twelve HUD reference points).
 
 ## Where
 
-- **LVZ tab** of the arena editor (`/arena/me#lvz`, `lvz-studio.js`): open one of the arena's
-  `.lvz` files, one of Your LVZ, an `.lvz` or a Toolkit `.ini` project (pick the `.ini` together
-  with its images) from disk, or start empty. Manage images (PNG/BMP/GIF; frames as columns ×
-  rows, period in 1/100 s for the whole run) and files; list and edit objects (kind, image, id,
-  position and reference points, layer, when shown, seconds). Screen objects show on a
-  screen-sized preview (1024 × 768 and other sizes) and can be dragged there. Downloads: `.lvz`
-  and `.ini`.
-- **Map editor** (`/arena/map`, panel "LVZ objects", `lvz-layer.js`): the chosen `.lvz`'s map
-  objects are drawn on the map at their layer (BelowAll and AfterBackground under the tiles, the
-  rest over them), animated. With "Place and move" on: pick an image, click the map to place it;
-  drag to move (snaps to tiles unless turned off), Alt+drag to copy, Del deletes, arrows nudge,
-  Ctrl/Cmd+D copies. `?lvz=<file>` or `?lvzlib=<id>` opens one straight away.
+- **Map editor** (`/arena/map`, panel "LVZ images", `lvz-layer.js`): where LVZ is placed.
+  - Images come from Upload (PNG/BMP/GIF), the pilot's Armory, or the images of another `.lvz`.
+    Select one, then click to place; drag to move, Alt+drag to copy, Del deletes, arrows nudge,
+    Ctrl/Cmd+D copies; Esc, Done or picking any drawing tool or tile goes back to walls.
+  - **On the map**: drawn at its layer (BelowAll and AfterBackground under the tiles, the rest
+    over them), animated; snaps to tiles unless turned off.
+  - **On the screen**: a mimic game screen (`lvz-screen.js`) replaces the map view: the pilot's
+    own window size by default, or 640×480 to 1920×1080; a faint HUD (energy bar, radar and its
+    text, player list, item columns, chat) and the twelve reference points. Drag an image from the
+    palette onto it (or select one and click). It snaps a corner, edge middle or centre onto the
+    nearest reference point within 24 px (Shift: no snap); placed freely, each axis is measured
+    from the nearest screen edge or centre, so it keeps its place at every window size. New screen
+    objects are always shown (layer AfterChat); "Shown" and "Seconds" can be changed per object.
+  - **Show LVZ** hides them all to work on the map underneath; nothing is removed.
+  - **Save LVZ** keeps the placements with the map (see below); the list under "Placed" shows
+    every object, on the map and on the screen.
+- **LVZ (Advanced) tab** of the arena editor (`/arena/me#lvz`, `lvz-studio.js`): whole files.
+  Open one of the arena's `.lvz` files, one of Your LVZ, an `.lvz` or a Toolkit `.ini` project
+  (with its images) from disk, or start empty; images (frames as columns × rows, period in
+  1/100 s), files, and every object's fields. Downloads: `.lvz` and `.ini`.
+
+**Reference points** (`lvz-screen.js` `anchors(w, h)`, the order of `Lvz.REFS`) are our client's
+own, ported from oss-client `crates/oss-client/src/game/hud.rs` `screen_refs()`, which was
+measured against Continuum at 1888×1016 (tests: `tests/js/lvz-screen.test.js`). Screen corners and
+centre are exact everywhere; the item columns' height is exact only at that size, chat moves with
+its line count, and the player list's corner is where it is in its default view (or the screen
+origin when closed). Both our browser game and the native client are oss-client, so they agree.
 
 ## Ids kept for game modes
 
@@ -31,7 +46,9 @@ in other files: publishing replaces an `.lvz` whole.
 ## Drafts and publishing
 
 Save keeps the `.lvz` in **Your LVZ** (`/arena/api/lvzlib`: list, file, save, rename, duplicate,
-remove; 10 per pilot, 5 MB each). Nothing in the arena changes until **Publish**, which uploads it
+remove; 10 per pilot, 5 MB each). In the map editor, Save LVZ also notes it (per arena, in the
+browser) as part of the map's next **Publish**, which uploads it along with the map before the
+restart (`window.mapPublishHooks`). Nothing in the arena changes until **Publish**, which uploads it
 through `/arena/api/upload?kind=lvz` (owner only; the arena's usual rules: 10 files, safe names,
 the live-edit lock). Players get it when the arena restarts; the LVZ tab offers the restart. An
 arena's own `.lvz` files are read by its owner and co-mods through `/arena/api/lvz/arena`.
