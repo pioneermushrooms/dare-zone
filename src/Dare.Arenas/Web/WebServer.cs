@@ -479,6 +479,8 @@ internal sealed partial class WebServer : IDisposable
             case "/gamemode.js": return Get(method, () => Static("gamemode.js"));
             case "/gamemode-ships.js": return Get(method, () => Static("gamemode-ships.js"));
             case "/gamemode-rules.js": return Get(method, () => Static("gamemode-rules.js"));
+            case "/elvl.js": return Get(method, () => Static("elvl.js"));
+            case "/labels-layer.js": return Get(method, () => Static("labels-layer.js"));
             case "/tiles.css": return Get(method, () => Static("tiles.css"));
             case "/tile-layout.json": return Get(method, () => Static("tile-layout.json"));
             case "/autotile.js": return Get(method, () => Static("autotile.js"));
@@ -1191,7 +1193,7 @@ internal sealed partial class WebServer : IDisposable
     private static readonly string[] TileEditorFiles = ["tiles.html", "tiles.js", "tile-studio.js", "tiles.css", "tile-layout.json", "lvz.js", "lvz-studio.js", "lvz-layer.js", "lvz.css"];
 
     /// <summary>The Game mode tab of /arena/me (docs/superpowers/specs/2026-11-27-game-mode-phase1-ships-design.md).</summary>
-    private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js", "gamemode-rules.js"];
+    private static readonly string[] GameModeFiles = ["gamemode.js", "gamemode-ships.js", "gamemode-rules.js", "elvl.js", "labels-layer.js"];
 
     private static Dictionary<string, (byte[], string)> LoadStatic()
     {

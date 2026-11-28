@@ -43,10 +43,26 @@ function signedIn() {
   const tileset = () => roleView || (flatView ? null : (ownTileset || mapTileset || defaultTileset));
 
   const say = (text, ok) => { const m = $("msg"); m.textContent = text || ""; m.className = "edmsg " + (ok ? "ok" : "bad"); };
-  const setDirty = (d) => { dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d; };
-  // "Are you sure?" only when something could be lost: unpublished changes, or a draft opened from
-  // Your maps (both set dirty, which is also what shows the Draft tag). Otherwise the action just happens.
-  const needsAsk = () => dirty;
+  // dirty: differs from the arena's map (Publish, the Draft tag). Changes: edits since the map was last
+  // loaded, opened from Your maps, saved there or published (Save to my maps, and whether to ask first).
+  let changeSeq = 0, savedSeq = 0;
+  const hasChanges = () => changeSeq !== savedSeq;
+  const noteChanges = () => {
+    const c = hasChanges(), b = $("libsave");
+    b.disabled = !c; b.classList.toggle("lit", c);
+    b.title = c ? "Keep this map in Your maps (not published)" : "No unsaved changes";
+    document.dispatchEvent(new CustomEvent("mapeditor:changes", { detail: { changes: c } }));
+  };
+  const markSaved = () => { savedSeq = changeSeq; noteChanges(); };
+  window.MapEditor = Object.assign(window.MapEditor || {}, { hasChanges });
+  noteChanges();
+  const setDirty = (d) => {
+    dirty = d; $("publish").disabled = !d || role !== "owner"; $("drafttag").hidden = !d;
+    if (d) { changeSeq++; noteChanges(); } else markSaved(); // not dirty = loaded or published: nothing unsaved
+  };
+  // "Are you sure?" only when something could be lost: unsaved changes, or a draft (the Draft tag: the map
+  // differs from the arena's). With neither, the action just happens.
+  const needsAsk = () => hasChanges() || dirty;
   const ask = (text, opts) => (needsAsk() ? Dlg.confirm(text, opts) : Promise.resolve(true));
 
   // Walls placed in flat-coloured (unused) tileset slots show as solid colour, here and in game,
@@ -83,18 +99,29 @@ function signedIn() {
       prefix = p; mapTileset = ts; ownTileset = null; flatView = false; $("flatview").checked = false;
       noteTileset(); setDirty(true); noteBlankSlots(); drawPalette(); draw(); say(note, true);
     },
-    use: (value) => (value === "std" ? useStandardTiles() : value.startsWith("ts:") ? applyMyTileset(Number(value.slice(3))) : Promise.resolve(false)),
+    use: async (value) => {
+      if (value.startsWith("ts:")) return applyMyTileset(Number(value.slice(3)));
+      if (value !== "std") return false;
+      const ok = await useStandardTiles();
+      if (!ok) say("Couldn't load the standard tiles.", false);
+      return ok;
+    },
     ask,
   });
   const STANDARD = { group: "Ready-made", label: "Standard tiles", value: "std",
     note: "The standard tiles: the wall packs' art, with plain wall interiors. Use in this map so the packs look here and in game as they're meant to." };
 
-  // the standard tileset (the packs' art, with plain interiors for thick walls) into this map
-  async function useStandardTiles() {
-    const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
-    if (!r || !r.ok || !window.TileArt) { say("Couldn't load the standard tiles.", false); return false; }
-    useTileset(Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer())),
-      "This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.");
+  // "Use the standard tiles": the standard tileset (the packs' art, with plain interiors for thick
+  // walls) into this map, so the packs look here and in game as they're meant to
+  let standardTiles = null; // the standard tileset canvas, once loaded
+  async function useStandardTiles(note) {
+    if (!standardTiles) {
+      const r = await fetch("/arena/standard-tiles.bmp", { credentials: "same-origin" }).catch(() => null);
+      if (!r || !r.ok || !window.TileArt) return false;
+      standardTiles = Lvl.decodeBmp(new Uint8Array(await r.arrayBuffer()));
+    }
+    if (mapTileset === standardTiles) { if (note) say(note, true); return true; } // already
+    useTileset(standardTiles, note || "This map now uses the standard tiles (published with it). Its other tiles show as the standard set draws them.");
     return true;
   }
   // A tileset into this map's own prefix (eLVL data kept), so it is published with the map.
@@ -156,6 +183,7 @@ function signedIn() {
     centre();
     drawPalette(); drawMini(); draw();
     setDirty(false);
+    if (r.ok) setLibOpen(false); // a map is open: the list folds away (its title brings it back)
   }
 
   // ---- start from a ready-made map, or a random one (one undoable change) -------------------------
@@ -249,6 +277,8 @@ function signedIn() {
     libId = id; libName = name;
     $("edname").textContent = `${arena} · draft from your maps: ${name}`;
     setDirty(true); // a draft until published, even if it matches
+    markSaved(); // ...but nothing unsaved: it is what Your maps holds
+    setLibOpen(false);
     loadLibrary();
   }
   // a copy of a downloaded map (same bytes only once); the editor keeps editing what it was editing
@@ -258,13 +288,12 @@ function signedIn() {
     loadLibrary();
     return j;
   }
-  $("libjump").addEventListener("click", () => {
-    const p = $("libpanel");
-    p.scrollIntoView({ block: "start", behavior: "smooth" });
-    p.classList.remove("flash"); void p.offsetWidth; p.classList.add("flash");
-    const first = p.querySelector("button.open");
-    if (first) first.focus({ preventScroll: true });
-  });
+  // the list folds away once a map is open; its title shows and hides it
+  function setLibOpen(open) {
+    $("libpanel").classList.toggle("folded", !open);
+    $("libtoggle").setAttribute("aria-expanded", String(open));
+  }
+  $("libtoggle").addEventListener("click", () => setLibOpen($("libtoggle").getAttribute("aria-expanded") !== "true"));
   $("libfile").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
@@ -282,7 +311,7 @@ function signedIn() {
     const url = API + "/library/save?name=" + encodeURIComponent(name) + (libId ? "&id=" + libId : "");
     const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: hdrs("application/octet-stream"), body: bytes });
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
-    if (j.ok) { libId = j.id; libName = name; }
+    if (j.ok) { libId = j.id; libName = name; markSaved(); }
     say(j.ok ? `${j.message} Not published: ${arena} still has its old map.` : j.message, j.ok);
     loadLibrary();
   });
@@ -294,18 +323,20 @@ function signedIn() {
     for (const name of (j && j.maps) || []) {
       const o = document.createElement("option");
       o.value = name; o.textContent = name.replace(/\.lvl$/i, "");
-      $("startfrom").append(o);
+      $("servermaps").append(o);
     }
   }
   $("startfrom").addEventListener("change", async (e) => {
     const name = e.target.value;
     e.target.value = "";
     if (!name) return;
-    if (name === "!empty") { replaceMap(new Uint8Array(N * N), null, null, "Started from an empty map."); return; }
+    // a new map: no longer the one from Your maps, so Save to my maps adds it instead of overwriting that one
+    const fresh = () => { libId = null; libName = null; $("edname").textContent = `${arena} · new map`; loadLibrary(); };
+    if (name === "!empty") { if (await replaceMap(new Uint8Array(N * N), null, null, "Started from an empty map.")) fresh(); return; }
     const r = await fetch(API + "/maps/file?name=" + encodeURIComponent(name), { credentials: "same-origin" });
     if (!r.ok) { say("Couldn't open that map.", false); return; }
     const m = Lvl.parse(new Uint8Array(await r.arrayBuffer()));
-    replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name}: ${m.count} tiles. Publish to use it.`);
+    if (await replaceMap(m.grid, m.prefix, m.tileset, `Started from ${name.replace(/\.lvl$/i, "")}: ${m.count} tiles. Publish to use it.`)) fresh();
   });
   // ---- random maps, and tidying walls (autotile.js) -------------------------------------------------
   for (const [id, label] of Object.entries(Lvl.GEN_LAYOUTS)) $("genlayout").append(new Option(label, id));
@@ -330,6 +361,7 @@ function signedIn() {
     const teams = $("genlayout").value === "teams";
     $("gensym").disabled = teams; // left vs right, always
     $("genflags").disabled = teams; // always has flag rooms
+    if (teams) $("genflags").checked = true;
   });
   $("randomize").addEventListener("click", async () => {
     const seed = (Math.random() * 2 ** 32) >>> 0;
@@ -338,8 +370,11 @@ function signedIn() {
       thickness: Number($("genthick").value), density: Number($("gendensity").value), flags: $("genflags").checked,
       tile: cur > 0 && cur <= 161 ? cur : 1, tiles: $("genauto").checked ? tileLayout() : null,
     });
-    if (await replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`))
-      $("genseed").textContent = `Seed ${seed}`;
+    if (!await replaceMap(g.grid, undefined, undefined, `A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map. Randomize again for another, or draw on it.`)) return;
+    $("genseed").textContent = `Seed ${seed}`;
+    // walls tidied with a standard pack only look right on the standard tiles: put them in the map
+    if ($("genauto").checked && tileLayout().spec)
+      await useStandardTiles(`A random ${Lvl.GEN_LAYOUTS[g.layout].toLowerCase()} map in ${tileLayout().name.replace(/^.*: /, "")}, on the standard tiles. Randomize again for another, or draw on it.`);
   });
   // tidy walls over an area (x0, y0, x1, y1) or the whole map, as one undoable change
   function tidy(area) {
@@ -390,6 +425,15 @@ function signedIn() {
   // Other scripts draw on the map through these (lvz-layer.js: the arena's LVZ map objects).
   const overlays = window.mapOverlays = window.mapOverlays || [];
   window.mapView = { view, get cam() { return cam; }, get arena() { return arena; }, redraw: () => draw() };
+  // Game labels (labels-layer.js): team spawns, bases, flag spots, areas, kept as eLVL regions in this
+  // map's own prefix, so they're published, downloaded and kept in Your maps with it.
+  if (window.GameLabels) GameLabels.mount($("labelspanel"), {
+    get: () => ({ grid, prefix, arena }),
+    // Tile art's "Put the old tiles back" restores a whole earlier prefix: after a label change that would
+    // drop the labels, so it's forgotten (the tiles can still be repainted).
+    set: (p, note) => { prefix = p; if (tileArt) tileArt.forget(); setDirty(true); draw(); say(note, true); },
+  });
+
   let dragRect = null;
   function draw() {
     vctx.imageSmoothingEnabled = false;
@@ -582,7 +626,9 @@ function signedIn() {
   $("undo").addEventListener("click", undo);
   $("redo").addEventListener("click", redo);
 
-  function pickTile(t) { cur = t; if (["erase", "pan", "tidy", "pick", "select", "lasso", "wand"].includes(tool)) setTool("pencil"); drawPalette(); }
+  // tells other panels (lvz-layer.js leaves LVZ placement) that the pilot went back to drawing
+  const toolNote = () => window.dispatchEvent(new CustomEvent("map:tool", { detail: { tool, tile: cur } }));
+  function pickTile(t) { cur = t; if (["erase", "pan", "tidy", "pick", "select", "lasso", "wand"].includes(tool)) setTool("pencil"); drawPalette(); toolNote(); }
   pal.addEventListener("click", (e) => { const t = palTileAt(e); if (t) pickTile(t); });
   mini.addEventListener("click", (e) => {
     const r = mini.getBoundingClientRect();
@@ -634,12 +680,13 @@ function signedIn() {
     }
     view.classList.toggle("panning", t === "pan");
     if (tools) tools.toolOn(t);
+    toolNote();
   }
   // the drawing tools (drawtools.js): shapes, fill, text, selections, all auto-tiled
   const tools = window.DrawTools && DrawTools.mount({
     N, get grid() { return grid; },
     cur: () => cur, tool: () => tool, layout: () => tileLayout(),
-    setTool, pick: (t) => { cur = t; drawPalette(); say(`Drawing with tile ${t}.`, true); },
+    setTool, pick: (t) => { cur = t; drawPalette(); say(`Drawing with tile ${t}.`, true); toolNote(); },
     commit(change) { if (change.length) { undoStack.push(change); redoStack.length = 0; setDirty(true); drawMini(); } draw(); },
     draw: () => draw(), drawTile, say,
   });
@@ -707,11 +754,13 @@ function signedIn() {
     const j = await r.json().catch(() => ({ ok: false, message: "HTTP " + r.status }));
     if (!j.ok) { say(j.message, false); setDirty(true); return false; }
     if (j.library) { libId = j.library; libName = libName || arena.replace(/^#/, ""); loadLibrary(); } // the server kept a copy in Your maps
+    // spawn labels become arena settings, before the restart so the arena starts with them
+    const spawnNote = window.GameLabels ? await GameLabels.publishSettings(arena) : "";
     // the draft of a live arena: publish it (copies the draft to the live arena and restarts it);
     // otherwise restart this arena so the new map loads
     if (!liveName && !choice.restart) {
       setDirty(false);
-      say(`Saved to ${arena}; the running arena keeps the old map until you restart it. `, true);
+      say(`Saved to ${arena}; the running arena keeps the old map until you restart it. ${spawnNote ? spawnNote + " " : ""}`, true);
       $("msg").append(Object.assign(document.createElement("a"),
         { href: "/arena/me?arena=" + encodeURIComponent(arena) + "#map", textContent: "Restart it in the arena editor" }));
       $("edname").textContent = `${arena} · ${fileName}`;
@@ -722,7 +771,7 @@ function signedIn() {
       : await fetch(API + "/restart", { method: "POST", credentials: "same-origin", headers: Object.assign({ "Content-Type": "application/json" }, hdr), body: JSON.stringify({ arena, message: choice.message }) });
     const jj = await rr.json().catch(() => ({ ok: false, message: "HTTP " + rr.status }));
     setDirty(false);
-    say(jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`, jj.ok);
+    say((jj.ok ? `Published. ${jj.message}` : `Saved to ${arena}, but: ${jj.message}`) + (spawnNote ? " " + spawnNote : ""), jj.ok);
     $("edname").textContent = `${arena} · ${fileName}`;
     return !!jj.ok;
   }

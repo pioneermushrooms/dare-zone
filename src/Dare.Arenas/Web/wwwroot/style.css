@@ -373,8 +373,14 @@ dialog .warn { color:var(--hot); }
 .edside > * { flex-shrink:0; }
 .libpanel { display:flex; flex-direction:column; gap:6px; border-radius:6px; }
 .libpanel .kicker { margin-top:0; }
-.libpanel.flash { animation:libflash 1.2s ease-out; }
-@keyframes libflash { from { box-shadow:0 0 0 2px var(--accent); } to { box-shadow:0 0 0 2px transparent; } }
+.libpanel.folded .libbody { display:none; }
+.libbody { display:flex; flex-direction:column; gap:6px; }
+button.libtoggle, button.libtoggle:hover:not(:disabled) { all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font:inherit; color:inherit; letter-spacing:inherit; text-transform:inherit; }
+button.libtoggle::before { content:"▾"; display:inline-block; width:1em; transition:transform .15s; }
+.libpanel.folded button.libtoggle::before { transform:rotate(-90deg); }
+button.libtoggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:3px; }
+/* Save to my maps: grey until there is something to save, then lit */
+#libsave.lit { color:var(--accent); border-color:#3f6a8c; box-shadow:inset 0 -2px 0 var(--accent); }
 .libmaps { list-style:none; margin:0; padding:0; display:grid; gap:4px; max-height:260px; overflow:auto; }
 .libmaps li { display:flex; align-items:center; gap:4px; font-size:.8rem; min-width:0; }
 .libmaps li button.open { flex:1; min-width:0; text-align:left; justify-content:flex-start; display:flex; flex-direction:column; align-items:flex-start; gap:1px; overflow:hidden; }
@@ -708,6 +714,7 @@ dl.howto dd { margin:4px 0 0; color:var(--dim); line-height:1.5; }
   .railgroup:last-child { border-right:0; }
   .edopts .opthint { display:none; }
 }
+.edside .gendensity input[type=range] { flex:1 1 90px; min-width:0; accent-color:var(--accent); }
 
 /* ---- public pilot profile (/pilot/<name>) ----
    Two columns: who this is on the left (picture top-left, name, bio, then arenas and ships), what they made and
@@ -964,3 +971,17 @@ button.dd-btn[aria-expanded="true"] .dd-chev { transform:rotate(180deg); }
   border-left:0; background:none; box-shadow:none; }
 .dd-list li.dd-group:first-child { padding-top:4px; }
 @media (prefers-reduced-motion: reduce) { button.dd-btn, .dd-chev { transition:none; } }
+
+/* Map editor: Game labels panel (labels-layer.js) */
+.labelspanel { border-top:1px solid var(--line); padding-top:10px; }
+.lbtoggles { gap:14px; }
+.lblist { list-style:none; padding:0; margin:6px 0; border:1px solid var(--line); border-radius:5px; max-height:220px; overflow:auto; }
+.lblist li { display:flex; justify-content:space-between; gap:6px; padding:3px 8px; border-bottom:1px solid var(--line); cursor:pointer; font-size:.85rem; }
+.lblist li:last-child { border-bottom:0; }
+.lblist li.on { background:#14223a; }
+.lbdot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+.lbkind { color:var(--dim); font-size:.75rem; }
+.lbform { margin-top:6px; }
+.lbrow { display:grid; grid-template-columns:70px minmax(0, 1fr); gap:6px; align-items:center; margin:5px 0; font-size:.85rem; }
+.lbrow input[type=number] { width:6em; }
+.lbrules { display:flex; flex-wrap:wrap; gap:8px; }

@@ -469,29 +469,44 @@ function setPickTab(which) {
 
 async function loadSaved() {
   const list = $("savedlist");
-  list.replaceChildren(el("li", { class: "empty", text: "Loading…" }));
+  list.replaceChildren(el("p", { class: "empty", text: "Loading…" }));
   try {
     const [a, y] = await Promise.all([call("/armory"), call("/shipyard")]);
     const labels = Object.fromEntries(a.kinds.map((k) => [k.name, k.label]));
     const items = [
-      ...y.ships.map((s) => ({ from: "shipyard", id: s.id, kind: "ship", name: s.name, prompt: s.prompt ?? "", url: `${API}/shipyard/sheet?id=${s.id}`,
+      ...y.ships.map((s) => ({ from: "shipyard", id: s.id, kind: "ship", name: s.name, prompt: s.prompt ?? "", created: s.created ?? "", url: `${API}/shipyard/sheet?id=${s.id}`,
         label: "Ship" })),
-      ...a.items.map((i) => ({ from: "armory", id: i.id, kind: i.kind, name: i.name, prompt: i.prompt ?? "", url: `${API}/armory/sheet?id=${i.id}`,
+      ...a.items.map((i) => ({ from: "armory", id: i.id, kind: i.kind, name: i.name, prompt: i.prompt ?? "", created: i.created ?? "", url: `${API}/armory/sheet?id=${i.id}`,
         label: labels[i.kind] ?? i.kind })),
     ];
-    if (!items.length) { list.replaceChildren(el("li", { class: "empty", text: "Your Shipyard and Armory are empty. Make some in the game's Graphics overlay (Esc → G)." })); return; }
-    list.replaceChildren(...items.map((it) => {
-      const b = el("button", { type: "button", "aria-pressed": "false", title: it.prompt || it.name },
-        iconFrom(iconCanvas(48, it.name), it.url, it.kind), el("span", { class: "name", text: it.name }), el("span", { class: "kind", text: it.label }));
-      b.addEventListener("click", () => {
-        for (const x of list.querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
-        void pickSaved(it);
-      });
-      return el("li", null, b);
-    }));
+    if (!items.length) { list.replaceChildren(el("p", { class: "empty", text: "Your Shipyard and Armory are empty. Make some in the game's Graphics overlay (Esc → G)." })); return; }
+    list.replaceChildren(...savedGroups(items).map(([title, group]) =>
+      el("section", { class: "savedgroup", "aria-label": title },
+        el("h3", null, title, el("small", { text: String(group.length) })),
+        el("ul", { class: "savedgrid" }, ...group.map((it) => {
+          const b = el("button", { type: "button", "aria-pressed": "false", title: it.prompt || it.name },
+            iconFrom(iconCanvas(48, it.name), it.url, it.kind), el("span", { class: "name", text: it.name }));
+          b.addEventListener("click", () => {
+            for (const x of list.querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
+            void pickSaved(it);
+          });
+          return el("li", null, b);
+        })))));
   } catch (e) {
-    list.replaceChildren(el("li", { class: "empty", text: e.status === 401 ? "Sign in to share from your Shipyard or Armory." : e.message }));
+    list.replaceChildren(el("p", { class: "empty", text: e.status === 401 ? "Sign in to share from your Shipyard or Armory." : e.message }));
   }
+}
+
+/** The pilot's saved designs grouped by kind, in the Kind menu's order (Ships, Maps, Tilesets, Banners, then the
+ *  graphics), newest first within each kind. Returns [heading, items][]. */
+function savedGroups(items) {
+  const order = ["ship", ...kinds.filter((k) => PLURAL[k.name]).map((k) => k.name), ...kinds.filter((k) => k.name !== "ship" && !PLURAL[k.name]).map((k) => k.name)];
+  const rank = (kind) => { const i = order.indexOf(kind); return i < 0 ? order.length : i; };
+  const byKind = new Map();
+  for (const it of items) (byKind.get(it.kind) ?? byKind.set(it.kind, []).get(it.kind)).push(it);
+  const newest = (a, b) => String(b.created).localeCompare(String(a.created)) || b.id - a.id;
+  return [...byKind].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)).map(([kind, group]) =>
+    [kind === "ship" ? "Ships" : PLURAL[kind] ?? kindOf(kind)?.label ?? group[0].label, group.sort(newest)]);
 }
 
 async function pickSaved(it) {

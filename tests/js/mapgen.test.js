@@ -253,3 +253,51 @@ test("the real tile-layout.json, when present, gives usable layouts", (t) => {
   assert.ok(layouts.length >= 1);
   for (const l of layouts) assert.deepEqual(Autotile.check(l), [], l.id);
 });
+
+test("solid rock with smooth edges: every open tile is still reachable from the centre", () => {
+  for (const layout of Object.keys(Lvl.GEN_LAYOUTS)) for (const seed of [3, 8]) {
+    const g = Lvl.generate(seed, { layout, size: "small", thickness: 0, flags: true });
+    const T = g.C * 3, o = Math.floor(N / 2 - T / 2), seen = new Uint8Array(T * T);
+    const open = (x, y) => x >= 0 && y >= 0 && x < T && y < T && (g.grid[(o + y) * N + o + x] === 0 || g.grid[(o + y) * N + o + x] > 161);
+    const c = Math.floor(T / 2), q = [c * T + c];
+    assert.ok(open(c, c), `${layout}: centre open`);
+    seen[q[0]] = 1;
+    while (q.length) {
+      const i = q.pop(), x = i % T, y = (i - x) / T;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) if (open(nx, ny) && !seen[ny * T + nx]) { seen[ny * T + nx] = 1; q.push(ny * T + nx); }
+    }
+    let sealed = 0;
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (open(x, y) && !seen[y * T + x]) sealed++;
+    assert.equal(sealed, 0, `${layout} seed ${seed}: ${sealed} open tiles sealed off`);
+  }
+});
+
+test("the density slider changes how much rock there is, more each step, in every layout", () => {
+  for (const layout of Object.keys(Lvl.GEN_LAYOUTS)) {
+    const rock = (d) => { let f = 0; for (const seed of [1, 2, 3]) { const g = Lvl.generate(seed, { layout, density: d, size: "small" }); f += g.cells.reduce((a, b) => a + b, 0) / g.cells.length; } return f / 3; };
+    const lo = rock(0.2), hi = rock(0.6);
+    assert.ok(hi > lo + 0.05, `${layout}: ${lo.toFixed(2)} -> ${hi.toFixed(2)}`);
+  }
+});
+
+test("flags: every layout puts them in when asked, mirrored, in open space", () => {
+  for (const layout of Object.keys(Lvl.GEN_LAYOUTS)) {
+    const g = Lvl.generate(9, { layout, symmetry: 4, flags: true });
+    const flags = g.specials.filter((s) => s.tile === 170);
+    assert.ok(flags.length >= 2, `${layout}: ${flags.length} flags`);
+    if (layout !== "teams" && layout !== "base") assert.equal(flags.length, 4, `${layout}: one per quarter`);
+    const none = Lvl.generate(9, { layout, symmetry: 4, flags: false }).specials.filter((s) => s.tile === 170);
+    if (layout !== "teams") assert.equal(none.length, 0, `${layout}: no flags unless asked`);
+  }
+});
+
+test("solid rock stays under the .lvl size limit even on huge dense maps", () => {
+  for (const layout of ["base", "caves"]) {
+    const g = Lvl.generate(5, { layout, size: "huge", density: 0.6, thickness: 0 });
+    let n = 0;
+    for (const t of g.grid) if (t) n++;
+    assert.ok(n * 4 < 1.8 * 1024 * 1024, `${layout}: ${n} tiles`);
+  }
+  const small = Lvl.generate(5, { layout: "caves", size: "medium", thickness: 0 });
+  assert.ok(small.solidDepth > 1000, "medium maps are solid all the way in");
+});
