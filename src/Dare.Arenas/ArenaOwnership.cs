@@ -122,6 +122,7 @@ public sealed partial class ArenaOwnership : IModule
         PromoteDrafts();
 
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
+        LoadTutorial(broker);
         LoadVoice();
         RegisterCommands();
         LoadQuickfix(broker);
@@ -147,6 +148,7 @@ public sealed partial class ArenaOwnership : IModule
         UnregisterStaff(broker);
         UnloadQuickfix(broker);
         UnregisterCommands();
+        UnloadTutorial(broker);
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
         CloseConfs();
         _store?.Dispose();
@@ -169,6 +171,7 @@ public sealed partial class ArenaOwnership : IModule
 
     private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
     {
+        TutorialPlayerAction(player, action, arena);
         if (action == PlayerAction.Disconnect) BotPasses.ForgetSession(player);
         if (action != PlayerAction.EnterArena || arena is null || player.Name is null || _store is null)
             return;

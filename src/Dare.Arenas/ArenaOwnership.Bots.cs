@@ -63,6 +63,8 @@ public sealed partial class ArenaOwnership
         public IReadOnlyList<ArenaBot> Bots = [];
         /// <summary>What the lineup shows each bot now (Out = absent).</summary>
         public IReadOnlyList<BotPlacement> Shown = [];
+        /// <summary>Placements the host shows as they are (the tutorial's casts), not planned by the match director; null for arena bots.</summary>
+        public IReadOnlyList<BotPlacement>? Fixed;
         /// <summary>Each listed bot's one-time pass, kept (so the text stays the same) until it is replaced.</summary>
         public readonly BotPassBook Passes = BotPasses.NewBook();
     }
@@ -339,7 +341,7 @@ public sealed partial class ArenaOwnership
 
         int cap = Math.Clamp(_configManager.GetInt(_configManager.Global, ConfigSection, "MaxBots", 30), 0, 100);
         int total = 0;
-        var desired = new Dictionary<string, (string Owner, IReadOnlyList<ArenaBot> Bots)>(StringComparer.OrdinalIgnoreCase);
+        var desired = new Dictionary<string, (string Owner, IReadOnlyList<ArenaBot> Bots, IReadOnlyList<BotPlacement>? Fixed)>(StringComparer.OrdinalIgnoreCase);
         foreach (var (arena, lastSeen) in _botOccupancy.ToArray())
         {
             if (now - lastSeen > TimeSpan.FromMinutes(1))
@@ -355,8 +357,11 @@ public sealed partial class ArenaOwnership
             }).Take(cap - total).ToList();
             if (bots.Count == 0) continue;
             total += bots.Count;
-            desired[owned.Name] = (owned.Owner, bots);
+            desired[owned.Name] = (owned.Owner, bots, null);
         }
+        // the tutorial's casts: placed by the run's current step, and not counted against MaxBots
+        foreach (var (arena, bots, placements) in TutorialLineups())
+            desired[arena] = (TutorialOwner, bots, placements);
 
         foreach (var (arena, run) in _hosts.ToArray())
         {
@@ -374,13 +379,14 @@ public sealed partial class ArenaOwnership
             _hosts.Remove(arena);
         }
 
-        foreach (var (arena, (owner, bots)) in desired)
+        foreach (var (arena, (owner, bots, fixedPlacements)) in desired)
         {
             if (!_hosts.TryGetValue(arena, out var run))
                 _hosts[arena] = run = new HostRun();
             if (run.StopDeadline != default) continue; // still stopping; started again once it has gone
             run.Owner = owner;
             run.Bots = bots;
+            run.Fixed = fixedPlacements;
 
             if (run.Process?.HasExited == true)
             {
@@ -392,11 +398,12 @@ public sealed partial class ArenaOwnership
 
             // A bot still in the zone from before (an old host's session) counts as out until it has left;
             // then it comes in like any arriving bot, after its own short wait.
-            var target = BotDirector.Plan(bots, Store.MatchSizes(arena),
-                    flying.TryGetValue(arena, out var freqs) ? freqs : new Dictionary<int, int>())
+            var planned = run.Fixed ?? BotDirector.Plan(bots, Store.MatchSizes(arena),
+                flying.TryGetValue(arena, out var freqs) ? freqs : new Dictionary<int, int>());
+            var target = planned
                 .Select(p => botsInZone.Contains(p.Label) && !run.Passes.Holds(p.Label) ? p with { Seat = BotSeat.Out } : p)
                 .ToList();
-            run.Shown = run.Stagger.Apply(run.Seats.Step(target));
+            run.Shown = run.Fixed is not null ? target : run.Stagger.Apply(run.Seats.Step(target));
             if (run.Process is not { } host) continue;
 
             var lineup = new List<(ArenaBot Bot, BotPlacement Placement, string Password)>();
