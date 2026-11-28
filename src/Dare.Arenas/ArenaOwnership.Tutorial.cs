@@ -93,6 +93,9 @@ public sealed partial class ArenaOwnership
         public int LastRotation = -1, LastTileX = -1, LastTileY = -1;
         /// <summary>The screen was sent again on the first position packet (the position callback's thread sets it).</summary>
         public bool ScreenResent;
+        /// <summary>When the player entered the tutorial arena, and how many timed re-sends of the screen were made since.</summary>
+        public DateTimeOffset EnteredAt;
+        public int TimedResends;
         public readonly HashSet<HudPart> Revealed = new();
     }
 
@@ -356,6 +359,7 @@ public sealed partial class ArenaOwnership
             BotNames = names,
             CastNow = TutorialCast.ForStep(whole, [], lean), // the whole cast comes in spectating
             StartBy = now + HintClientWait,
+            EnteredAt = now,
         };
         _tutorials[player] = session;
         if (_hintClients.ContainsKey(player)) StartRun(session);
@@ -377,6 +381,7 @@ public sealed partial class ArenaOwnership
         var earlier = _tutorialScript!.Steps.Take(s.Run.StepIndex).SelectMany(st => st.Reveal).Distinct();
         Apply(s, [.. earlier.Select(p => new RevealPart(p)), .. s.Run.Start()]);
         if (!s.Run.Done) ShowSkipPopup(s); // the skip/leave popup shows at the start
+        ResendScreen(s);
         RecordProgress(s);
         LogStep(s);
     }
@@ -498,6 +503,12 @@ public sealed partial class ArenaOwnership
 
             foreach (var s in _tutorials.Values.ToArray())
             {
+                // the LVZ may still have been downloading at entry: re-assert the screen 3 s and 8 s in
+                if (TutorialScreenResend.Due(now - s.EnteredAt, s.TimedResends))
+                {
+                    s.TimedResends++;
+                    ResendScreen(s);
+                }
                 if (!s.Started)
                 {
                     if (now >= s.StartBy) StartRun(s);
@@ -546,6 +557,7 @@ public sealed partial class ArenaOwnership
             RecordProgress(s);
             LogStep(s);
             if (s.SkipPopupUntil is not null) HideSkipPopup(s);
+            ResendScreen(s);
         }
     }
 
